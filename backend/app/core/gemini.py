@@ -10,7 +10,7 @@ from app.core.config import settings
 genai.configure(api_key=settings.gemini_api_key)
 
 # Pinned model name for the platform (플랫폼에 고정된 모델 이름)
-_MODEL_NAME = "gemini-2.5-flash"
+_MODEL_NAME = "gemini-3.1-flash-lite"
 
 
 def get_gemini_model(system_instruction: str) -> genai.GenerativeModel:

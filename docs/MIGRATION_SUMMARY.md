@@ -23,7 +23,7 @@
 |----------|--------------|--------------|
 | `config.py` | `src/config/env.js` | Pydantic-settings replaces dotenv; strict validation at startup |
 | `auth.py` | `src/middlewares/tenant.js` | JWT decoded locally (python-jose); no Supabase round-trip per request |
-| `gemini.py` | `src/services/llm/gemini.js` | Same model (`gemini-2.5-flash`); factory pattern isolates config |
+| `gemini.py` | `src/services/llm/gemini.js` | Model upgraded to `gemini-3.1-flash-lite`; factory pattern isolates config |
 | `models/base.py` | (implicit in Supabase schema) | Explicit `TenantBase` enforces `tenant_id` on every SQLAlchemy model |
 
 ### Layer 2 — Universal Shared Skills (`backend/app/skills/`)

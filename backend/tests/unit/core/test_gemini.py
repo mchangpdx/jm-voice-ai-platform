@@ -27,7 +27,7 @@ def test_get_gemini_model_returns_generative_model():
         result = get_gemini_model("You are helpful")
 
         mock_model_cls.assert_called_once_with(
-            model_name="gemini-2.5-flash",
+            model_name="gemini-3.1-flash-lite",
             system_instruction="You are helpful",
         )
         assert result is mock_instance
