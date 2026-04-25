@@ -1,0 +1,36 @@
+# Core Framework (핵심 프레임워크)
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# Database (데이터베이스)
+supabase>=2.10.0
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Pydantic & Settings (스키마 및 설정)
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# Google Gemini AI (Gemini AI 엔진)
+google-generativeai==0.8.3
+
+# HTTP Client for external APIs (외부 API 클라이언트)
+httpx>=0.25.0
+
+# Authentication & Security (인증 및 보안)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.19
+
+# Template Engine for prompts (프롬프트 템플릿 엔진)
+jinja2==3.1.4
+
+# Testing (테스트)
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+
+# Code Quality (코드 품질)
+ruff==0.8.4
+mypy==1.13.0

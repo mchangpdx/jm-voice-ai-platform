@@ -1,0 +1,61 @@
+# Python (파이썬)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+*.pyo
+
+# pytest / coverage (테스트·커버리지)
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Node.js / npm (노드·패키지)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+.next/
+out/
+
+# Vite
+frontend/dist/
+frontend/.vite/
+
+# IDE (개발 환경)
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Secrets (보안 정보 — 절대 커밋 금지)
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Logs (로그)
+*.log
+logs/
+
+# Compiled output (빌드 결과물)
+*.pyc
+*.class
