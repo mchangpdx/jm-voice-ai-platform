@@ -1,0 +1,250 @@
+openapi: "3.0.3"
+
+info:
+  title: JM Voice AI Platform API
+  description: |
+    One Stop Total Solution — Voice AI + POS + CCTV.
+    This is the Living API Contract for Phase 1 Foundation.
+    All endpoints require a Supabase JWT (Bearer token) to resolve tenant_id.
+    Phase 2 frontend agents MUST use this document as their sole source of truth.
+    (이 문서는 Phase 2 프론트엔드 에이전트의 유일한 작업 지시서입니다.)
+  version: "0.1.0"
+  contact:
+    email: mchang@jmtechone.com
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (Vite proxy → FastAPI)
+  - url: https://api.jmtechone.com
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase JWT. The `sub` claim is used as `tenant_id` for all RLS queries.
+
+  schemas:
+    # --- Health ---
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: jm-voice-ai-platform
+
+    # --- Catalog Navigator (Layer 2) ---
+    MenuItemOut:
+      type: object
+      required: [variant_id, item_id, name, category, price, stock_quantity]
+      properties:
+        variant_id:
+          type: string
+          description: Loyverse variant UUID (primary key)
+          example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        item_id:
+          type: string
+          description: Loyverse item UUID
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        name:
+          type: string
+          example: "Classic Burger"
+        category:
+          type: string
+          example: "Mains"
+        price:
+          type: integer
+          description: Price in US cents
+          example: 1200
+        stock_quantity:
+          type: integer
+          example: 50
+
+    # --- Slot Filler (Layer 2) ---
+    Intent:
+      type: string
+      enum: [reservation, order]
+      description: Dialog intent type (다이얼로그 의도 타입)
+
+    SlotCheckRequest:
+      type: object
+      required: [intent, collected]
+      properties:
+        intent:
+          $ref: '#/components/schemas/Intent'
+        collected:
+          type: object
+          description: Key-value pairs of already-collected slot values
+          additionalProperties: true
+          example:
+            customer_name: "John Kim"
+            customer_phone: "503-555-1234"
+
+    SlotCheckResult:
+      type: object
+      required: [missing, next_prompt, complete]
+      properties:
+        missing:
+          type: array
+          items:
+            type: string
+          description: List of slot names still required
+          example: ["customer_email", "reservation_date"]
+        next_prompt:
+          type: string
+          nullable: true
+          description: Voice prompt to ask for the next missing slot
+          example: "And your email address?"
+        complete:
+          type: boolean
+          description: True when all required slots are filled
+          example: false
+
+    # --- Errors ---
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          example: "Invalid or expired token"
+
+paths:
+  # ── Health ──────────────────────────────────────────────────────────────
+  /health:
+    get:
+      summary: Health check
+      description: Returns service liveness status. No auth required.
+      operationId: healthCheck
+      security: []
+      tags: [System]
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ── Catalog Navigator (Layer 2) ─────────────────────────────────────────
+  /api/catalog/menu:
+    get:
+      summary: Get live menu for the authenticated tenant
+      description: |
+        Returns all active menu items for the calling tenant, ordered by
+        category then name. The `tenant_id` is extracted from the JWT — never
+        passed as a parameter. This enforces Row-Level Security at the API layer.
+        (JWT에서 tenant_id를 추출 — RLS 강제)
+      operationId: getCatalogMenu
+      tags: [Catalog Navigator]
+      responses:
+        "200":
+          description: Menu items for tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItemOut'
+              example:
+                - variant_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  item_id: "a1b2c3d4-0000-0000-0000-000000000001"
+                  name: "Classic Burger"
+                  category: "Mains"
+                  price: 1200
+                  stock_quantity: 50
+        "401":
+          description: Missing or invalid JWT
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: Bearer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Slot Filler (Layer 2) ───────────────────────────────────────────────
+  /api/slots/check:
+    post:
+      summary: Check slot completeness for a dialog intent
+      description: |
+        Given an intent (reservation | order) and the slots already collected
+        during conversation, returns which fields are still missing and the
+        next voice prompt to deliver. Used by the Gemini orchestration loop.
+        (대화 중 수집된 슬롯을 기반으로 누락 필드와 다음 음성 안내를 반환)
+      operationId: checkSlots
+      tags: [Slot Filler]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlotCheckRequest'
+            examples:
+              reservation_partial:
+                summary: Partial reservation — name collected
+                value:
+                  intent: reservation
+                  collected:
+                    customer_name: "John Kim"
+              order_complete:
+                summary: Order fully collected
+                value:
+                  intent: order
+                  collected:
+                    customer_name: "Jane Lee"
+                    customer_phone: "503-555-9999"
+                    customer_email: "jane@example.com"
+                    items: [{"variant_id": "f47ac10b", "quantity": 2}]
+                    user_explicit_confirmation: true
+      responses:
+        "200":
+          description: Slot check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlotCheckResult'
+              examples:
+                incomplete:
+                  summary: Missing slots remain
+                  value:
+                    missing: ["customer_phone", "customer_email", "reservation_date", "reservation_time", "party_size"]
+                    next_prompt: "What's the best phone number to reach you?"
+                    complete: false
+                complete:
+                  summary: All slots filled
+                  value:
+                    missing: []
+                    next_prompt: null
+                    complete: true
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          description: Validation error — invalid intent or malformed body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: System
+    description: Infrastructure and health endpoints
+  - name: Catalog Navigator
+    description: Layer 2 — Live menu retrieval with RLS-enforced tenant isolation
+  - name: Slot Filler
+    description: Layer 2 — Dialog slot collection and completeness checking
