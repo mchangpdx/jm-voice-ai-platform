@@ -81,16 +81,25 @@ def test_settings_debug_defaults_to_false(monkeypatch):
 
 
 def test_settings_missing_required_raises(monkeypatch):
-    # Assert ValidationError raised when required env vars are absent
-    # (필수 환경 변수 누락 시 ValidationError 발생 확인)
+    # Assert ValidationError raised when required env vars are absent.
+    # env_file must be disabled — otherwise pydantic-settings reads from .env
+    # even after monkeypatch.delenv removes them from the process environment.
+    # (필수 환경 변수 누락 시 ValidationError 확인 — .env 파일 로딩 비활성화 필수)
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("DEBUG", raising=False)
 
-    # Use cached Settings class; instantiation reads env vars fresh each time
-    # (캐시된 Settings 클래스 사용; 인스턴스화 시 매번 환경 변수를 새로 읽음)
-    Settings = _get_settings_class()
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+
+    # Create an isolated Settings subclass that ignores the .env file
+    # (env_file을 무시하는 격리된 Settings 서브클래스 생성)
+    class SettingsNoEnvFile(BaseSettings):
+        model_config = SettingsConfigDict(env_file=None, extra="ignore")
+        supabase_url: str
+        supabase_service_role_key: str
+        gemini_api_key: str
+        debug: bool = False
 
     with pytest.raises(ValidationError):
-        Settings()
+        SettingsNoEnvFile()

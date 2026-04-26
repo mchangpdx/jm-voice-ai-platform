@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from app.adapters.loyverse.loyverse_relay import LoyverseRelay
@@ -73,6 +73,28 @@ class LoyverseOrderAck(BaseModel):
         description="Loyverse receipt ID — null until async relay completes (비동기 릴레이 완료 전까지 null)",
     )
     queued_at: str = Field(..., description="ISO 8601 timestamp when job was queued (작업 큐 등록 시각)")
+
+
+class CameraItem(BaseModel):
+    """Single camera item from Solink (Solink 단일 카메라 항목)."""
+
+    id: str = Field(..., description="Unique camera identifier (카메라 고유 식별자)")
+    name: str = Field(..., description="Human-readable camera name (카메라 표시 이름)")
+    status: str = Field(..., description="Camera status: online | offline | unknown (카메라 상태)")
+
+
+class CameraListResponse(BaseModel):
+    """Response for camera list endpoint (카메라 목록 응답 스키마)."""
+
+    cameras: List[CameraItem] = Field(..., description="List of cameras from Solink (Solink 카메라 목록)")
+
+
+class VideoLinkResponse(BaseModel):
+    """Response for video link endpoint (비디오 링크 응답 스키마)."""
+
+    url: Optional[str] = Field(default=None, description="Video URL or null if unavailable (비디오 URL 또는 null)")
+    camera_id: str = Field(..., description="Camera identifier (카메라 식별자)")
+    timestamp: str = Field(..., description="ISO 8601 timestamp requested (요청한 ISO 8601 타임스탬프)")
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -145,3 +167,96 @@ async def relay_loyverse_order(
         loyverse_receipt_id=None,
         queued_at=queued_at,
     )
+
+
+@router.get("/solink/cameras", response_model=CameraListResponse)
+async def get_solink_cameras(
+    tenant_id: str = Depends(get_tenant_id),
+) -> CameraListResponse:
+    """Retrieve list of cameras from Solink CCTV system.
+    Requires JWT auth; tenant_id enforces RLS-scoped access.
+    (Solink CCTV 시스템에서 카메라 목록 조회. JWT 인증 필요; tenant_id로 RLS 접근 제어)
+    """
+    # Instantiate SolinkRelay with configured settings (설정에서 SolinkRelay 인스턴스 생성)
+    relay = SolinkRelay(
+        api_url=settings.solink_api_url,
+        token_url=settings.solink_token_url,
+        audience=settings.solink_audience,
+        client_id=settings.solink_client_id,
+        client_secret=settings.solink_client_secret,
+        api_key=settings.solink_api_key,
+        timeout=settings.relay_timeout_seconds,
+    )
+
+    # Fetch camera list from Solink (Solink에서 카메라 목록 조회)
+    raw_cameras = await relay.get_cameras()
+
+    # Map raw dicts to typed CameraItem models (원시 딕셔너리를 CameraItem 모델로 변환)
+    cameras = [
+        CameraItem(
+            id=cam["id"],
+            name=cam["name"],
+            status=cam.get("status", "unknown"),
+        )
+        for cam in raw_cameras
+    ]
+    return CameraListResponse(cameras=cameras)
+
+
+@router.get("/solink/video-link", response_model=VideoLinkResponse)
+async def get_solink_video_link(
+    camera_id: str,
+    timestamp: str,
+    tenant_id: str = Depends(get_tenant_id),
+) -> VideoLinkResponse:
+    """Retrieve a video playback link for a specific camera and timestamp.
+    Returns url: null if Solink has no footage for that moment — not an error.
+    (특정 카메라와 타임스탬프에 대한 영상 재생 링크 조회. 해당 시각 영상이 없으면 url: null 반환 — 에러 아님)
+    """
+    # Instantiate SolinkRelay with configured settings (설정에서 SolinkRelay 인스턴스 생성)
+    relay = SolinkRelay(
+        api_url=settings.solink_api_url,
+        token_url=settings.solink_token_url,
+        audience=settings.solink_audience,
+        client_id=settings.solink_client_id,
+        client_secret=settings.solink_client_secret,
+        api_key=settings.solink_api_key,
+        timeout=settings.relay_timeout_seconds,
+    )
+
+    # Fetch video link; may return None if no footage exists (영상 링크 조회; 영상 없으면 None 반환 가능)
+    url = await relay.get_video_link(camera_id, timestamp)
+
+    return VideoLinkResponse(url=url, camera_id=camera_id, timestamp=timestamp)
+
+
+@router.get("/solink/snapshot")
+async def get_solink_snapshot(
+    camera_id: str,
+    timestamp: str,
+    tenant_id: str = Depends(get_tenant_id),
+) -> Response:
+    """Retrieve a JPEG snapshot for a specific camera and timestamp.
+    Returns image/jpeg bytes if available, or JSON error if snapshot unavailable.
+    (특정 카메라와 타임스탬프에 대한 JPEG 스냅샷 조회. 가용 시 image/jpeg 반환, 없으면 JSON 에러)
+    """
+    # Instantiate SolinkRelay with configured settings (설정에서 SolinkRelay 인스턴스 생성)
+    relay = SolinkRelay(
+        api_url=settings.solink_api_url,
+        token_url=settings.solink_token_url,
+        audience=settings.solink_audience,
+        client_id=settings.solink_client_id,
+        client_secret=settings.solink_client_secret,
+        api_key=settings.solink_api_key,
+        timeout=settings.relay_timeout_seconds,
+    )
+
+    # Fetch JPEG bytes from Solink; None means snapshot unavailable (Solink에서 JPEG 바이트 조회; None이면 스냅샷 없음)
+    img_bytes = await relay.get_snapshot(camera_id, timestamp)
+
+    if img_bytes is not None:
+        # Return raw JPEG binary with correct media type (올바른 미디어 타입으로 JPEG 바이너리 반환)
+        return Response(content=img_bytes, media_type="image/jpeg")
+
+    # Snapshot unavailable — return 200 with JSON error message (스냅샷 없음 — JSON 에러 메시지로 200 반환)
+    return Response(content='{"error": "snapshot unavailable"}', media_type="application/json")
