@@ -4,11 +4,11 @@ info:
   title: JM Voice AI Platform API
   description: |
     One Stop Total Solution — Voice AI + POS + CCTV.
-    This is the Living API Contract for Phase 1 Foundation.
+    This is the Living API Contract for Phase 1 Foundation + Phase 2 Relay Bridge.
     All endpoints require a Supabase JWT (Bearer token) to resolve tenant_id.
     Phase 2 frontend agents MUST use this document as their sole source of truth.
     (이 문서는 Phase 2 프론트엔드 에이전트의 유일한 작업 지시서입니다.)
-  version: "0.1.0"
+  version: "0.2.0"
   contact:
     email: mchang@jmtechone.com
 
@@ -108,6 +108,110 @@ components:
           type: boolean
           description: True when all required slots are filled
           example: false
+
+    # --- Relay Bridge (Layer 4) ---
+    SolinkEventPayload:
+      type: object
+      required: [event_type, camera_id, location, timestamp]
+      properties:
+        event_type:
+          type: string
+          enum: [motion_detected, door_open, door_close, alarm_triggered]
+          description: Type of Solink security event (보안 이벤트 유형)
+          example: motion_detected
+        camera_id:
+          type: string
+          description: Unique camera identifier (카메라 고유 식별자)
+          example: "cam-001"
+        location:
+          type: string
+          description: Physical location label (물리적 위치 레이블)
+          example: "Front Entrance"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 event timestamp (ISO 8601 이벤트 타임스탬프)
+          example: "2026-04-25T14:30:00Z"
+        metadata:
+          type: object
+          description: Optional additional event metadata (선택적 추가 이벤트 메타데이터)
+          additionalProperties: true
+          nullable: true
+
+    RelayAck:
+      type: object
+      required: [accepted, relay_id, queued_at]
+      properties:
+        accepted:
+          type: boolean
+          description: Whether the relay was accepted (릴레이 수락 여부)
+          example: true
+        relay_id:
+          type: string
+          format: uuid
+          description: Server-generated UUID for this relay job (서버 생성 릴레이 UUID)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        queued_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when job was queued (작업 큐 등록 시각)
+          example: "2026-04-25T14:30:00.123Z"
+
+    LoyverseOrderPayload:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: List of order items (주문 항목 목록)
+          items:
+            type: object
+            required: [variant_id, quantity]
+            properties:
+              variant_id:
+                type: string
+                description: Loyverse variant UUID (Loyverse 상품 변형 UUID)
+                example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+              quantity:
+                type: integer
+                minimum: 1
+                description: Quantity ordered — must be at least 1 (최소 1 이상)
+                example: 2
+        table_number:
+          type: string
+          description: Optional table number (선택적 테이블 번호)
+          nullable: true
+          example: "Table 5"
+        note:
+          type: string
+          description: Optional order note, max 500 characters (선택적 주문 메모, 최대 500자)
+          nullable: true
+          maxLength: 500
+          example: "No onions please"
+
+    LoyverseOrderAck:
+      type: object
+      required: [accepted, relay_id, loyverse_receipt_id, queued_at]
+      properties:
+        accepted:
+          type: boolean
+          description: Whether the order relay was accepted (주문 릴레이 수락 여부)
+          example: true
+        relay_id:
+          type: string
+          format: uuid
+          description: Server-generated UUID for this relay job (서버 생성 릴레이 UUID)
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        loyverse_receipt_id:
+          type: string
+          nullable: true
+          description: Loyverse receipt ID — null until async relay completes (비동기 릴레이 완료 전까지 null)
+          example: null
+        queued_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when job was queued (작업 큐 등록 시각)
+          example: "2026-04-25T14:30:00.456Z"
 
     # --- Errors ---
     ErrorResponse:
@@ -241,6 +345,92 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  # ── Relay Bridge (Layer 4) ──────────────────────────────────────────────
+  /api/relay/solink/event:
+    post:
+      summary: Forward Solink security event (Fire-and-Forget)
+      description: |
+        Accepts a Solink security event and relays it asynchronously. Returns 202
+        immediately; the actual forwarding happens in the background. JWT tenant_id
+        is used for routing.
+        (Solink 보안 이벤트를 비동기적으로 수락하고 릴레이. 즉시 202 반환 — 실제 전달은 백그라운드 처리)
+      operationId: relaySolinkEvent
+      tags: [Relay Bridge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolinkEventPayload'
+            example:
+              event_type: motion_detected
+              camera_id: "cam-001"
+              location: "Front Entrance"
+              timestamp: "2026-04-25T14:30:00Z"
+              metadata:
+                confidence: 0.95
+      responses:
+        "202":
+          description: Relay job accepted — forwarding happens asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayAck'
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          description: Validation error — invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/relay/loyverse/order:
+    post:
+      summary: Submit order to Loyverse POS (Fire-and-Forget)
+      description: |
+        Accepts an order and relays it to Loyverse POS asynchronously. Returns 202
+        immediately. All items must reference valid variant_ids from the tenant's
+        Loyverse catalog.
+        (주문을 받아 Loyverse POS에 비동기적으로 릴레이. 즉시 202 반환 — 모든 항목은 테넌트 카탈로그의 유효한 variant_id 참조 필요)
+      operationId: relayLoyverseOrder
+      tags: [Relay Bridge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoyverseOrderPayload'
+            example:
+              items:
+                - variant_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  quantity: 2
+              table_number: "Table 5"
+              note: "No onions please"
+      responses:
+        "202":
+          description: Order relay accepted — Loyverse forwarding happens asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoyverseOrderAck'
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          description: Validation error — invalid payload or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 tags:
   - name: System
     description: Infrastructure and health endpoints
@@ -248,3 +438,5 @@ tags:
     description: Layer 2 — Live menu retrieval with RLS-enforced tenant isolation
   - name: Slot Filler
     description: Layer 2 — Dialog slot collection and completeness checking
+  - name: Relay Bridge
+    description: Layer 4 — Fire-and-Forget external bridges to Solink CCTV and Loyverse POS

@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     # Debug mode flag, defaults to False (디버그 모드 플래그, 기본값 False)
     debug: bool = False
 
+    # Solink CCTV API (Solink CCTV API 설정)
+    solink_api_url: str = ""  # Solink webhook endpoint URL
+    solink_api_key: str = ""  # Solink API bearer key
+
+    # Loyverse POS API (Loyverse POS API 설정)
+    loyverse_api_url: str = "https://api.loyverse.com/v1.0"
+    loyverse_api_key: str = ""  # Loyverse bearer token
+
+    # Relay timeout (릴레이 타임아웃)
+    relay_timeout_seconds: int = 8
+
 
 # Module-level singleton — loaded once at import time (임포트 시 한 번 로드되는 모듈 수준 싱글톤)
 settings = Settings()
