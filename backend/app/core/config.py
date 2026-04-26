@@ -30,9 +30,13 @@ class Settings(BaseSettings):
     # Debug mode flag, defaults to False (디버그 모드 플래그, 기본값 False)
     debug: bool = False
 
-    # Solink CCTV API (Solink CCTV API 설정)
-    solink_api_url: str = ""  # Solink webhook endpoint URL
-    solink_api_key: str = ""  # Solink API bearer key
+    # Solink CCTV API — OAuth2 client credentials flow (Solink OAuth2 클라이언트 자격증명 플로우)
+    solink_api_url: str = "https://api-prod-us-west-2.solinkcloud.com/v2"
+    solink_token_url: str = "https://api-prod-us-west-2.solinkcloud.com/v2/oauth/token"
+    solink_audience: str = "https://prod.solinkcloud.com/"
+    solink_client_id: str = ""    # OAuth2 client_id
+    solink_client_secret: str = ""  # OAuth2 client_secret
+    solink_api_key: str = ""      # x-api-key header required on all Solink requests (모든 요청에 필요한 x-api-key)
 
     # Loyverse POS API (Loyverse POS API 설정)
     loyverse_api_url: str = "https://api.loyverse.com/v1.0"

@@ -94,6 +94,10 @@ async def relay_solink_event(
 
     relay = SolinkRelay(
         api_url=settings.solink_api_url,
+        token_url=settings.solink_token_url,
+        audience=settings.solink_audience,
+        client_id=settings.solink_client_id,
+        client_secret=settings.solink_client_secret,
         api_key=settings.solink_api_key,
         timeout=settings.relay_timeout_seconds,
     )
