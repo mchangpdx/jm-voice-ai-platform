@@ -8,7 +8,7 @@ import Analytics from '../fsr/store/Analytics'
 import styles from './StoreDetail.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
-type Tab    = 'overview' | 'calls' | 'analytics'
+type Tab    = 'overview' | 'calls' | 'domain' | 'analytics'
 type StatusFilter = 'all' | 'Successful' | 'Unsuccessful'
 
 interface StoreMetrics {
@@ -44,6 +44,15 @@ interface CallLogItem {
 
 interface CallLogsResponse {
   items: CallLogItem[]
+  total: number
+  page: number
+  pages: number
+  limit: number
+}
+
+interface DomainResponse {
+  industry: string
+  items: Record<string, unknown>[]
   total: number
   page: number
   pages: number
@@ -104,7 +113,6 @@ function OverviewTab({ storeId, period }: { storeId: string; period: Period }) {
 
   return (
     <>
-      {/* KPI cards (KPI 카드) */}
       <div className={styles.kpiGrid}>
         <div className={styles.kpiCard}>
           <div className={styles.kpiLabel}>{data.primary_revenue_label}</div>
@@ -134,7 +142,6 @@ function OverviewTab({ storeId, period }: { storeId: string; period: Period }) {
         </div>
       </div>
 
-      {/* Monthly impact banner (월간 임팩트 배너) */}
       <div className={styles.impactBanner}>
         <div>
           <div className={styles.impactTitle}>Monthly Impact</div>
@@ -145,7 +152,6 @@ function OverviewTab({ storeId, period }: { storeId: string; period: Period }) {
         <div className={styles.impactAmount}>{fmt(data.monthly_impact)}</div>
       </div>
 
-      {/* Call volume stats (통화량 통계) */}
       <div className={styles.statsRow}>
         <div className={styles.statItem}>
           <div className={styles.statValue}>{data.total_calls.toLocaleString()}</div>
@@ -177,13 +183,8 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
 
   useEffect(() => {
     setLoading(true)
-    const params = new URLSearchParams({
-      period,
-      page: String(page),
-      limit: String(PAGE_LIMIT),
-    })
+    const params = new URLSearchParams({ period, page: String(page), limit: String(PAGE_LIMIT) })
     if (statusFilter !== 'all') params.set('status', statusFilter)
-
     api
       .get(`/agency/store/${storeId}/call-logs?${params}`)
       .then((r) => setData(r.data))
@@ -211,7 +212,6 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
 
   return (
     <>
-      {/* Filters (필터) */}
       <div className={styles.callFilters}>
         <span className={styles.filterLabel}>Status:</span>
         <div className={styles.filterBtns}>
@@ -227,7 +227,6 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
         </div>
       </div>
 
-      {/* Table (테이블) */}
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -243,93 +242,47 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
           </thead>
           <tbody>
             {loading ? (
-              <tr className={styles.emptyRow}>
-                <td colSpan={7}>Loading call history…</td>
-              </tr>
+              <tr className={styles.emptyRow}><td colSpan={7}>Loading…</td></tr>
             ) : items.length === 0 ? (
-              <tr className={styles.emptyRow}>
-                <td colSpan={7}>No calls found for this period</td>
-              </tr>
-            ) : (
-              items.map((c) => (
-                <Fragment key={c.call_id}>
-                  <tr
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setExpanded((prev) => (prev === c.call_id ? null : c.call_id))}
-                  >
-                    <td>{fmtDate(c.start_time)}</td>
-                    <td style={{ color: '#64748b', fontSize: '12px' }}>{c.customer_phone ?? '—'}</td>
-                    <td>{fmtDuration(c.duration)}</td>
-                    <td>
-                      <span className={`${styles.statusBadge} ${statusClass(c.call_status)}`}>
-                        {c.call_status}
-                      </span>
+              <tr className={styles.emptyRow}><td colSpan={7}>No calls found</td></tr>
+            ) : items.map((c) => (
+              <Fragment key={c.call_id}>
+                <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded((p) => p === c.call_id ? null : c.call_id)}>
+                  <td>{fmtDate(c.start_time)}</td>
+                  <td style={{ color: '#64748b', fontSize: '12px' }}>{c.customer_phone ?? '—'}</td>
+                  <td>{fmtDuration(c.duration)}</td>
+                  <td><span className={`${styles.statusBadge} ${statusClass(c.call_status)}`}>{c.call_status}</span></td>
+                  <td><span className={`${styles.sentimentBadge} ${sentimentClass(c.sentiment)}`}>{c.sentiment ?? '—'}</span></td>
+                  <td>{c.is_store_busy ? <><span className={styles.busyDot} />Peak</> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                  <td style={{ color: '#64748b', fontSize: '12px' }}>${c.cost.toFixed(2)}</td>
+                </tr>
+                {expandedId === c.call_id && (
+                  <tr>
+                    <td colSpan={7} style={{ background: '#f8fafc', padding: '12px 16px' }}>
+                      <div style={{ fontSize: '13px', color: '#374151' }}>
+                        <strong>Summary:</strong> {c.summary ?? 'No summary available.'}
+                      </div>
+                      {c.recording_url && (
+                        <audio controls src={c.recording_url} style={{ marginTop: 8, display: 'block', height: 32 }} preload="none" onClick={(e) => e.stopPropagation()} />
+                      )}
                     </td>
-                    <td>
-                      <span className={`${styles.sentimentBadge} ${sentimentClass(c.sentiment)}`}>
-                        {c.sentiment ?? '—'}
-                      </span>
-                    </td>
-                    <td>
-                      {c.is_store_busy
-                        ? <><span className={styles.busyDot} />Peak</>
-                        : <span style={{ color: '#94a3b8' }}>—</span>
-                      }
-                    </td>
-                    <td style={{ color: '#64748b', fontSize: '12px' }}>${c.cost.toFixed(2)}</td>
                   </tr>
-
-                  {expandedId === c.call_id && (
-                    <tr>
-                      <td colSpan={7} style={{ background: '#f8fafc', padding: '12px 16px' }}>
-                        <div style={{ fontSize: '13px', color: '#374151' }}>
-                          <strong>Summary:</strong>{' '}
-                          {c.summary ?? 'No summary available.'}
-                        </div>
-                        {c.recording_url && (
-                          <audio
-                            controls
-                            src={c.recording_url}
-                            style={{ marginTop: 8, display: 'block', height: 32 }}
-                            onClick={(e) => e.stopPropagation()}
-                            preload="none"
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))
-            )}
+                )}
+              </Fragment>
+            ))}
           </tbody>
         </table>
-
-        {/* Pagination (페이지네이션) */}
         {!loading && total > PAGE_LIMIT && (
           <div className={styles.pagination}>
-            <span>
-              Showing {(page - 1) * PAGE_LIMIT + 1}–{Math.min(page * PAGE_LIMIT, total)} of {total}
-            </span>
+            <span>Showing {(page - 1) * PAGE_LIMIT + 1}–{Math.min(page * PAGE_LIMIT, total)} of {total}</span>
             <div className={styles.paginationBtns}>
-              <button className={styles.pageBtn} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                ← Prev
-              </button>
+              <button className={styles.pageBtn} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
               {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
                 const p = page <= 3 ? i + 1 : page - 2 + i
                 if (p < 1 || p > pages) return null
-                return (
-                  <button
-                    key={p}
-                    className={`${styles.pageBtn} ${p === page ? styles.pageBtnActive : ''}`}
-                    onClick={() => setPage(p)}
-                  >
-                    {p}
-                  </button>
-                )
+                return <button key={p} className={`${styles.pageBtn} ${p === page ? styles.pageBtnActive : ''}`} onClick={() => setPage(p)}>{p}</button>
               })}
-              <button className={styles.pageBtn} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-                Next →
-              </button>
+              <button className={styles.pageBtn} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
             </div>
           </div>
         )}
@@ -338,17 +291,154 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
   )
 }
 
+// ── Domain tab — industry-specific records ─────────────────────────────────────
+
+function domainStatusClass(status: string): string {
+  const s = status.toLowerCase()
+  if (['confirmed', 'completed', 'booked', 'approved', 'in_progress'].includes(s)) return styles.statusSuccess
+  if (['cancelled', 'declined', 'no_show'].includes(s)) return styles.statusFail
+  return styles.statusVoice
+}
+
+function DomainTab({ storeId, period, industry }: { storeId: string; period: Period; industry: string }) {
+  const [page, setPage]           = useState(1)
+  const [data, setData]           = useState<DomainResponse | null>(null)
+  const [loading, setLoading]     = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ period, page: String(page), limit: String(PAGE_LIMIT) })
+    api
+      .get(`/agency/store/${storeId}/domain-data?${params}`)
+      .then((r) => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [storeId, period, page])
+
+  useEffect(() => { setPage(1) }, [period])
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const pages = data?.pages ?? 1
+
+  // Column configs per industry (산업별 컬럼 설정)
+  const colCfg = {
+    restaurant: {
+      cols: ['Date/Time', 'Customer', 'Phone', 'Party', 'Status', 'Notes'],
+      row: (r: Record<string, unknown>) => [
+        fmtDate(String(r.reservation_time ?? '')),
+        String(r.customer_name ?? '—'),
+        String(r.customer_phone ?? '—'),
+        String(r.party_size ?? '—'),
+        r.status,
+        String(r.notes ?? '—'),
+      ],
+    },
+    home_services: {
+      cols: ['Date', 'Job Type', 'Value', 'Status'],
+      row: (r: Record<string, unknown>) => [
+        fmtDate(String(r.created_at ?? '')),
+        String(r.job_type ?? '—'),
+        r.job_value != null ? `$${Number(r.job_value).toFixed(0)}` : '—',
+        r.status,
+      ],
+    },
+    beauty: {
+      cols: ['Date', 'Customer', 'Service', 'Duration', 'Price', 'Status'],
+      row: (r: Record<string, unknown>) => [
+        fmtDate(String(r.scheduled_at ?? '')),
+        String(r.customer_name ?? '—'),
+        String(r.service_type ?? '—'),
+        r.duration_min != null ? `${r.duration_min}min` : '—',
+        r.price != null ? `$${Number(r.price).toFixed(0)}` : '—',
+        r.status,
+      ],
+    },
+    auto_repair: {
+      cols: ['Date', 'Service', 'Estimate', 'Final Price', 'Status'],
+      row: (r: Record<string, unknown>) => [
+        fmtDate(String(r.created_at ?? '')),
+        String(r.service_type ?? '—'),
+        r.estimate != null ? `$${Number(r.estimate).toFixed(0)}` : '—',
+        r.final_price != null ? `$${Number(r.final_price).toFixed(0)}` : '—',
+        r.status,
+      ],
+    },
+  }
+
+  const cfg = colCfg[industry as keyof typeof colCfg] ?? colCfg.restaurant
+  const colSpan = cfg.cols.length
+
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.table}>
+        <thead>
+          <tr>{cfg.cols.map((c) => <th key={c}>{c.toUpperCase()}</th>)}</tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr className={styles.emptyRow}><td colSpan={colSpan}>Loading…</td></tr>
+          ) : items.length === 0 ? (
+            <tr className={styles.emptyRow}><td colSpan={colSpan}>No records found for this period</td></tr>
+          ) : items.map((r, i) => {
+            const cells = cfg.row(r)
+            return (
+              <tr key={i}>
+                {cells.map((cell, ci) => {
+                  const isStatus = cfg.cols[ci].toLowerCase() === 'status'
+                  return (
+                    <td key={ci}>
+                      {isStatus ? (
+                        <span className={`${styles.statusBadge} ${domainStatusClass(String(cell))}`}>
+                          {String(cell)}
+                        </span>
+                      ) : String(cell)}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {!loading && total > PAGE_LIMIT && (
+        <div className={styles.pagination}>
+          <span>Showing {(page - 1) * PAGE_LIMIT + 1}–{Math.min(page * PAGE_LIMIT, total)} of {total}</span>
+          <div className={styles.paginationBtns}>
+            <button className={styles.pageBtn} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+            {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
+              const p = page <= 3 ? i + 1 : page - 2 + i
+              if (p < 1 || p > pages) return null
+              return <button key={p} className={`${styles.pageBtn} ${p === page ? styles.pageBtnActive : ''}`} onClick={() => setPage(p)}>{p}</button>
+            })}
+            <button className={styles.pageBtn} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Domain tab label per industry ─────────────────────────────────────────────
+
+function domainTabLabel(industry: string): string {
+  if (industry === 'restaurant')   return '📅 Reservations'
+  if (industry === 'home_services') return '🔨 Jobs'
+  if (industry === 'beauty')        return '💈 Appointments'
+  if (industry === 'auto_repair')   return '🚗 Service Orders'
+  return '📋 Records'
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AgencyStoreDetail() {
   const { storeId } = useParams<{ storeId: string }>()
-  const [period, setPeriod]   = useState<Period>('month')
-  const [tab, setTab]         = useState<Tab>('overview')
-  const [storeName, setName]  = useState<string>('')
+  const [period, setPeriod]     = useState<Period>('month')
+  const [tab, setTab]           = useState<Tab>('overview')
+  const [storeName, setName]    = useState<string>('')
   const [industry, setIndustry] = useState<string>('')
   const navigate = useNavigate()
 
-  // Fetch store info once to populate header (헤더 표시용 스토어 정보 1회 조회)
   useEffect(() => {
     if (!storeId) return
     api
@@ -365,25 +455,23 @@ export default function AgencyStoreDetail() {
   if (!storeId) return null
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'overview',   label: '📊 Overview'     },
-    { key: 'calls',      label: '📞 Call History'  },
-    { key: 'analytics',  label: '📈 Analytics'     },
+    { key: 'overview',  label: '📊 Overview'           },
+    { key: 'calls',     label: '📞 Call History'        },
+    { key: 'domain',    label: domainTabLabel(industry) },
+    { key: 'analytics', label: '📈 Analytics'           },
   ]
 
   return (
     <div className={styles.page}>
-      {/* Header (헤더 — breadcrumb + title + period tabs) */}
+      {/* Header (헤더) */}
       <div className={styles.header}>
         <div>
           <button className={styles.backBtn} onClick={() => navigate('/agency/overview')}>
             ← All Stores
           </button>
-          <h1 className={styles.title}>
-            {meta?.icon} {storeName || '…'}
-          </h1>
+          <h1 className={styles.title}>{meta?.icon} {storeName || '…'}</h1>
           <p className={styles.subtitle}>{meta?.industryLabel ?? ''}</p>
         </div>
-        {/* Period tabs only for Overview and Call History (Analytics has its own) */}
         {tab !== 'analytics' && (
           <div className={styles.periodTabs}>
             {PERIODS.map(({ key, label }) => (
@@ -413,11 +501,10 @@ export default function AgencyStoreDetail() {
       </nav>
 
       {/* Tab content (탭 콘텐츠) */}
-      {tab === 'overview' && <OverviewTab storeId={storeId} period={period} />}
-      {tab === 'calls'    && <CallHistoryTab storeId={storeId} period={period} />}
-      {tab === 'analytics' && (
-        <Analytics apiEndpoint={`/agency/store/${storeId}/analytics`} />
-      )}
+      {tab === 'overview'  && <OverviewTab storeId={storeId} period={period} />}
+      {tab === 'calls'     && <CallHistoryTab storeId={storeId} period={period} />}
+      {tab === 'domain'    && <DomainTab storeId={storeId} period={period} industry={industry} />}
+      {tab === 'analytics' && <Analytics apiEndpoint={`/agency/store/${storeId}/analytics`} />}
     </div>
   )
 }

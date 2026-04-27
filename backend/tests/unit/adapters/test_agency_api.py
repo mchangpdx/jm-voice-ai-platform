@@ -316,6 +316,94 @@ def test_agency_store_call_logs_basic():
     assert data["items"][0]["is_store_busy"] is True
 
 
+# ── GET /api/agency/store/{store_id}/domain-data ─────────────────────────────
+
+def test_agency_store_domain_data_restaurant():
+    """Returns reservations for a restaurant store.
+    (레스토랑 스토어의 예약 목록 반환)
+    Mock GET: agencies → stores (access check + industry) → reservations
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    reservation_rows = [
+        {
+            "id": 1,
+            "call_log_id": "cl-001",
+            "customer_name": "Alice",
+            "customer_phone": "+15031234567",
+            "party_size": 4,
+            "reservation_time": "2026-05-01T18:00:00Z",
+            "status": "confirmed",
+            "notes": None,
+            "created_at": "2026-04-01T10:00:00Z",
+        }
+    ]
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [_MOCK_STORES[0]]),
+        (200, reservation_rows),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_CAFE_STORE_ID}/domain-data?period=month&page=1&limit=20",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["industry"] == "restaurant"
+    assert data["total"] == 1
+    assert data["items"][0]["status"] == "confirmed"
+
+
+def test_agency_store_domain_data_beauty():
+    """Returns appointments for a beauty store.
+    (뷰티 스토어의 시술 예약 목록 반환)
+    Mock GET: agencies → stores (industry=beauty) → appointments
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    appt_rows = [
+        {
+            "id": 1,
+            "call_log_id": "cl-003",
+            "customer_name": "Emma Smith",
+            "service_type": "haircut",
+            "duration_min": 45,
+            "price": 55.0,
+            "status": "completed",
+            "scheduled_at": "2026-04-25T14:00:00Z",
+        }
+    ]
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [{"id": _BEAUTY_STORE_ID, "name": "JM Beauty Salon", "industry": "beauty"}]),
+        (200, appt_rows),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_BEAUTY_STORE_ID}/domain-data?period=month",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["industry"] == "beauty"
+    assert data["total"] == 1
+    assert data["items"][0]["service_type"] == "haircut"
+
+
+def test_agency_store_domain_data_wrong_agency():
+    """Returns 403 if store not in this agency. (크로스-에이전시 403)"""
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, []),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_OTHER_STORE_ID}/domain-data",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 403
+
+
 def test_agency_store_analytics_basic():
     """Agency can fetch analytics for a store it manages.
     (에이전시가 관리하는 스토어의 분석 데이터 조회 가능)

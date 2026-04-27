@@ -274,6 +274,98 @@ _VALID_STATUSES   = {"Successful", "Unsuccessful"}
 _VALID_ANALYTICS  = {"week", "month", "all"}
 
 
+@router.get("/store/{store_id}/domain-data")
+async def get_agency_store_domain_data(
+    store_id: str,
+    period: str = "all",
+    page: int = 1,
+    limit: int = 20,
+    tenant_id: str = Depends(get_tenant_id),
+) -> dict:
+    """Industry-specific domain records for a single store in agency context.
+    (에이전시 컨텍스트의 산업별 도메인 데이터 — reservations/jobs/appointments/service_orders)
+    Response includes 'industry' so the frontend can render the right columns.
+    """
+    if period not in _VALID_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid period '{period}'. Must be one of: {sorted(_VALID_PERIODS)}",
+        )
+
+    async with httpx.AsyncClient() as client:
+        agency = await _resolve_agency(client, tenant_id)
+
+        check_resp = await client.get(
+            f"{_REST}/stores",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "id":        f"eq.{store_id}",
+                "agency_id": f"eq.{agency['id']}",
+                "select":    "id,name,industry",
+            },
+        )
+        stores = check_resp.json() if isinstance(check_resp.json(), list) else []
+        if not stores:
+            raise HTTPException(status_code=403, detail="Store not accessible by this agency")
+
+        industry = stores[0].get("industry") or "restaurant"
+        since    = _period_start(period)
+
+        # Dispatch to industry-specific table (산업별 테이블 분기)
+        if industry == "restaurant":
+            table    = "reservations"
+            select   = "id,call_log_id,customer_name,customer_phone,party_size,reservation_time,status,notes,created_at"
+            time_col = "reservation_time"
+        elif industry == "home_services":
+            table    = "jobs"
+            select   = "id,call_log_id,job_type,job_value,status,scheduled_at,created_at"
+            time_col = "created_at"
+        elif industry == "beauty":
+            table    = "appointments"
+            select   = "id,call_log_id,customer_name,service_type,duration_min,price,status,scheduled_at"
+            time_col = "scheduled_at"
+        else:  # auto_repair
+            table    = "service_orders"
+            select   = "id,call_log_id,service_type,estimate,final_price,status,created_at"
+            time_col = "created_at"
+
+        params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select":   select,
+            "order":    f"{time_col}.desc",
+        }
+        if since:
+            params[time_col] = f"gte.{since}"
+
+        all_items: list[dict] = []
+        offset = 0
+        while True:
+            resp = await client.get(
+                f"{_REST}/{table}",
+                headers=_SUPABASE_HEADERS,
+                params={**params, "limit": "1000", "offset": str(offset)},
+            )
+            batch = resp.json() if isinstance(resp.json(), list) else []
+            all_items.extend(batch)
+            if len(batch) < 1000:
+                break
+            offset += 1000
+
+    total = len(all_items)
+    pages = math.ceil(total / limit) if total > 0 else 1
+    start = (page - 1) * limit
+    items = all_items[start: start + limit]
+
+    return {
+        "industry": industry,
+        "items":    items,
+        "total":    total,
+        "page":     page,
+        "pages":    pages,
+        "limit":    limit,
+    }
+
+
 @router.get("/store/{store_id}/analytics")
 async def get_agency_store_analytics(
     store_id: str,
