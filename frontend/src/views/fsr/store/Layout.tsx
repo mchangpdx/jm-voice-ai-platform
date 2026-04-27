@@ -1,6 +1,7 @@
 // FSR Store Layout — sidebar navigation matching legacy demo design
 // (레거시 데모 디자인과 일치하는 사이드바 네비게이션 레이아웃)
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../../core/AuthContext'
 import { VERTICAL_META } from '../../../core/verticalLabels'
 import styles from './Layout.module.css'
@@ -33,8 +34,13 @@ const SECURITY_ITEMS = [
 export default function StoreLayout() {
   const { storeName, industry, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const navItems = getNavItems(industry)
   const meta = industry ? VERTICAL_META[industry] : null
+
+  // Close sidebar on route change (모바일에서 라우트 변경 시 사이드바 닫기)
+  useEffect(() => { setSidebarOpen(false) }, [location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -43,8 +49,11 @@ export default function StoreLayout() {
 
   return (
     <div className={styles.shell}>
+      {/* Mobile overlay (모바일 오버레이) */}
+      {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
+
       {/* Left sidebar (좌측 사이드바) */}
-      <aside className={styles.sidebar}>
+      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarVisible : ''}`}>
         {/* Brand header (브랜드 헤더) */}
         <div className={styles.brand}>
           <div className={styles.brandLogo}>
@@ -116,6 +125,7 @@ export default function StoreLayout() {
       <div className={styles.main}>
         {/* Top header bar (상단 헤더 바) */}
         <header className={styles.topBar}>
+          <button className={styles.hamburger} onClick={() => setSidebarOpen(s => !s)} aria-label="Toggle menu">☰</button>
           <span className={styles.topBarBrand}>JM AI Voice Platform</span>
           <span className={styles.liveBadge}>● Live</span>
         </header>

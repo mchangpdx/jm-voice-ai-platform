@@ -159,6 +159,30 @@
   color: #475569;
 }
 
+/* ── Hamburger button (데스크톱에서 숨김) ─────────────────────────────────── */
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #475569;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.hamburger:hover { background: #f1f5f9; }
+
+/* ── Mobile overlay backdrop ──────────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 99;
+}
+
 /* ── Main area ────────────────────────────────────────────────────────────── */
 .main {
   flex: 1;
@@ -176,12 +200,14 @@
   justify-content: space-between;
   padding: 0 24px;
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .topBarBrand {
   font-size: 13px;
   font-weight: 600;
   color: #475569;
+  flex: 1;
 }
 
 .liveBadge {
@@ -194,4 +220,35 @@
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+}
+
+/* ── Responsive: mobile (모바일 반응형) ───────────────────────────────────── */
+@media (max-width: 768px) {
+  .hamburger {
+    display: flex;
+    align-items: center;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .sidebarVisible {
+    transform: translateX(0);
+  }
+
+  .topBar {
+    padding: 0 16px;
+  }
+
+  .content {
+    padding: 16px;
+  }
 }

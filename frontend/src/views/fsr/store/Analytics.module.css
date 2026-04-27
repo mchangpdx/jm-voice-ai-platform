@@ -241,3 +241,15 @@
   border-radius: 6px;
 }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ── Responsive (반응형) ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .insightRow  { grid-template-columns: repeat(2, 1fr); }
+  .chartGrid   { grid-template-columns: 1fr; }
+  .insightValue { font-size: 18px; }
+}
+
+@media (max-width: 480px) {
+  .insightRow { grid-template-columns: repeat(2, 1fr); }
+  .periodRow  { flex-wrap: wrap; gap: 6px; }
+}

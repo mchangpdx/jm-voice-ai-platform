@@ -1,6 +1,6 @@
 // Agency Layout — sidebar with store list + outlet (에이전시 레이아웃 — 스토어 목록 사이드바 + 아웃렛)
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../core/AuthContext'
 import { getVerticalMeta } from '../../core/verticalLabels'
 import api from '../../core/api'
@@ -15,13 +15,18 @@ interface StoreEntry {
 export default function AgencyLayout() {
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [agencyName, setAgencyName] = useState<string>('JM Agency')
   const [stores, setStores] = useState<StoreEntry[]>([])
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     api.get('/agency/me').then((r) => setAgencyName(r.data.name)).catch(() => {})
     api.get('/agency/stores').then((r) => setStores(r.data)).catch(() => {})
   }, [])
+
+  // Close sidebar on route change (모바일에서 라우트 변경 시 사이드바 닫기)
+  useEffect(() => { setSidebarOpen(false) }, [location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -30,7 +35,10 @@ export default function AgencyLayout() {
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
+      {/* Mobile overlay (모바일 오버레이) */}
+      {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarVisible : ''}`}>
         {/* Brand (브랜드) */}
         <div className={styles.brand}>
           <div className={styles.brandLogo}>
@@ -90,6 +98,7 @@ export default function AgencyLayout() {
 
       <div className={styles.main}>
         <header className={styles.topBar}>
+          <button className={styles.hamburger} onClick={() => setSidebarOpen(s => !s)} aria-label="Toggle menu">☰</button>
           <span className={styles.topBarBrand}>JM AI Voice Platform</span>
           <span className={styles.liveBadge}>● Live</span>
         </header>
