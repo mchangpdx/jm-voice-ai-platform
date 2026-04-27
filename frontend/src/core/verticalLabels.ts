@@ -21,6 +21,20 @@ export const VERTICAL_META: Record<string, VerticalMeta> = {
     avgValueLabel: "Avg Job Value",
     industryLabel: "Home Services",
   },
+  beauty: {
+    icon: "💈",
+    primaryRevenueLabel: "Booking Capture Revenue",
+    conversionLabel: "Appointment Fill Rate",
+    avgValueLabel: "Avg Service Value",
+    industryLabel: "Beauty & Nail",
+  },
+  auto_repair: {
+    icon: "🚗",
+    primaryRevenueLabel: "Service Appointment Revenue",
+    conversionLabel: "Estimate Conversion Rate",
+    avgValueLabel: "Avg Repair Ticket",
+    industryLabel: "Auto Repair",
+  },
 };
 
 export function getVerticalMeta(industry: string): VerticalMeta {

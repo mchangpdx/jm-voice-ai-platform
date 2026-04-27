@@ -28,6 +28,20 @@ _MOCK_CALLS_H = [{"call_id": "cl-002", "call_status": "Successful", "duration": 
 _MOCK_ORDERS  = [{"total_amount": 25.00, "status": "paid"}]
 _MOCK_JOBS    = [{"call_log_id": "cl-002", "job_value": 400.00, "status": "booked"}]
 
+_BEAUTY_STORE_ID = "e36aa768-c7dd-4df0-cff7-39e5f598ee7e"
+_AUTO_STORE_ID   = "f47bb879-d8ee-4ea1-daa8-40f6a609ff8f"
+
+_MOCK_STORES_4 = [
+    {"id": _CAFE_STORE_ID,   "name": "JM Cafe",          "industry": "restaurant"},
+    {"id": _HOME_STORE_ID,   "name": "JM Home Services",  "industry": "home_services"},
+    {"id": _BEAUTY_STORE_ID, "name": "JM Beauty Salon",   "industry": "beauty"},
+    {"id": _AUTO_STORE_ID,   "name": "JM Auto Repair",    "industry": "auto_repair"},
+]
+_MOCK_CALLS_B = [{"call_id": "cl-003", "call_status": "Successful", "duration": 200, "is_store_busy": True}]
+_MOCK_CALLS_A = [{"call_id": "cl-004", "call_status": "Successful", "duration": 300, "is_store_busy": True}]
+_MOCK_APPOINTMENTS   = [{"call_log_id": "cl-003", "price": 120.0, "status": "completed"}]
+_MOCK_SERVICE_ORDERS = [{"call_log_id": "cl-004", "final_price": 450.0, "status": "completed"}]
+
 
 def _make_jwt(sub: str) -> str:
     return jwt.encode({"sub": sub}, settings.supabase_service_role_key, algorithm="HS256")
@@ -203,3 +217,93 @@ def test_agency_store_metrics_cross_agency_forbidden():
             headers={"Authorization": f"Bearer {token}"},
         )
     assert resp.status_code == 403
+
+
+def test_agency_store_metrics_beauty():
+    """
+    Mock GET call order:
+    1. agencies  2. stores (access check)
+    3. store_configs  4. call_logs  5. appointments
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [{"id": _BEAUTY_STORE_ID, "name": "JM Beauty Salon", "industry": "beauty"}]),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_B),
+        (200, _MOCK_APPOINTMENTS),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_BEAUTY_STORE_ID}/metrics?period=month",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["industry"] == "beauty"
+    assert data["primary_revenue_label"] == "Booking Capture Revenue"
+    assert data["conversion_label"] == "Appointment Fill Rate"
+    assert data["avg_value_label"] == "Avg Service Value"
+
+
+def test_agency_store_metrics_auto_repair():
+    """
+    Mock GET call order:
+    1. agencies  2. stores (access check)
+    3. store_configs  4. call_logs  5. service_orders
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [{"id": _AUTO_STORE_ID, "name": "JM Auto Repair", "industry": "auto_repair"}]),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_A),
+        (200, _MOCK_SERVICE_ORDERS),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_AUTO_STORE_ID}/metrics?period=month",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["industry"] == "auto_repair"
+    assert data["primary_revenue_label"] == "Service Appointment Revenue"
+    assert data["conversion_label"] == "Estimate Conversion Rate"
+    assert data["avg_value_label"] == "Avg Repair Ticket"
+
+
+def test_agency_overview_4_stores():
+    """
+    Mock GET call order (4 stores, each needs cfg+calls+domain data):
+    1. agencies  2. stores (all 4)
+    3. cfg(cafe)  4. calls(cafe)  5. orders(cafe)
+    6. cfg(home)  7. calls(home)  8. jobs(home)
+    9. cfg(beauty)  10. calls(beauty)  11. appointments(beauty)
+    12. cfg(auto)  13. calls(auto)  14. service_orders(auto)
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, _MOCK_STORES_4),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_R),
+        (200, _MOCK_ORDERS),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_H),
+        (200, _MOCK_JOBS),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_B),
+        (200, _MOCK_APPOINTMENTS),
+        (200, _MOCK_CFG),
+        (200, _MOCK_CALLS_A),
+        (200, _MOCK_SERVICE_ORDERS),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get("/api/agency/overview?period=month", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["totals"]["store_count"] == 4
+    assert {s["industry"] for s in data["stores"]} == {
+        "restaurant", "home_services", "beauty", "auto_repair"
+    }

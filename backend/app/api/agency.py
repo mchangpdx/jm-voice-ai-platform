@@ -9,6 +9,8 @@ Authorization flow:
 Layer 3 dispatch:
   store.industry == 'restaurant'   → knowledge.restaurant.calculate()
   store.industry == 'home_services'→ knowledge.home_services.calculate()
+  store.industry == 'beauty'        → knowledge.beauty.calculate()
+  store.industry == 'auto_repair'   → knowledge.auto_repair.calculate()
 """
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -21,6 +23,8 @@ from app.core.auth import get_tenant_id
 from app.core.config import settings
 import app.knowledge.home_services as hs_knowledge
 import app.knowledge.restaurant as rest_knowledge
+import app.knowledge.beauty as beauty_knowledge
+import app.knowledge.auto_repair as auto_knowledge
 
 router = APIRouter(prefix="/api/agency", tags=["Agency"])
 
@@ -146,6 +150,34 @@ async def _compute_store_metrics(
         )
         jobs = job_resp.json() if isinstance(job_resp.json(), list) else []
         metrics = hs_knowledge.calculate(store_id, store_name, call_logs, jobs, hourly_wage)
+    elif industry == "beauty":
+        appt_params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select": "call_log_id,price,status",
+        }
+        if since:
+            appt_params["scheduled_at"] = f"gte.{since}"
+        appt_resp = await client.get(
+            f"{_REST}/appointments",
+            headers=_SUPABASE_HEADERS,
+            params=appt_params,
+        )
+        appointments = appt_resp.json() if isinstance(appt_resp.json(), list) else []
+        metrics = beauty_knowledge.calculate(store_id, store_name, call_logs, appointments, hourly_wage)
+    elif industry == "auto_repair":
+        so_params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select": "call_log_id,estimate,final_price,status",
+        }
+        if since:
+            so_params["created_at"] = f"gte.{since}"
+        so_resp = await client.get(
+            f"{_REST}/service_orders",
+            headers=_SUPABASE_HEADERS,
+            params=so_params,
+        )
+        service_orders = so_resp.json() if isinstance(so_resp.json(), list) else []
+        metrics = auto_knowledge.calculate(store_id, store_name, call_logs, service_orders, hourly_wage)
     else:
         order_params: dict[str, Any] = {
             "store_id": f"eq.{store_id}",
