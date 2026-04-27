@@ -1,0 +1,240 @@
+/* Agency Overview styles (에이전시 개요 페이지 스타일) */
+.page {
+  max-width: 1100px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.periodTabs {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.periodBtn {
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.periodBtn:hover {
+  background: #e2e8f0;
+}
+
+.periodBtnActive {
+  background: white;
+  color: #4f46e5;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.loading {
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+/* ── Summary badges (집계 배지) ─────────────────────────────────────────── */
+.summaryRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.badge {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.badgeValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.badgeLabel {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* ── Store card grid (스토어 카드 그리드) ────────────────────────────────── */
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin: 0 0 12px;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.storeCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cardIcon {
+  font-size: 24px;
+}
+
+.cardStoreName {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cardIndustry {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.cardKpis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 12px;
+}
+
+.kpiRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kpiLabel {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.kpiValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.kpiWarn {
+  color: #dc2626;
+}
+
+.cardImpact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.impactLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.impactValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: #4f46e5;
+}
+
+.viewBtn {
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: center;
+}
+
+.viewBtn:hover {
+  background: #4f46e5;
+}
+
+/* ── Needs attention (주의 필요 스토어) ──────────────────────────────────── */
+.attentionBox {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.attentionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #c2410c;
+  margin-bottom: 4px;
+}
+
+.attentionSub {
+  font-size: 12px;
+  color: #9a3412;
+  margin-bottom: 12px;
+}
+
+.attentionRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #431407;
+  padding: 4px 0;
+}
+
+@media (max-width: 700px) {
+  .summaryRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
