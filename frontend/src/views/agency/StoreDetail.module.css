@@ -1,0 +1,385 @@
+/* Agency Store Detail styles (에이전시 스토어 상세 페이지 스타일) */
+.page {
+  max-width: 900px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  color: #6366f1;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.backBtn:hover {
+  text-decoration: underline;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.periodTabs {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px;
+  align-self: flex-start;
+}
+
+.periodBtn {
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.periodBtn:hover {
+  background: #e2e8f0;
+}
+
+.periodBtnActive {
+  background: white;
+  color: #4f46e5;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.loading {
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+/* ── KPI cards (KPI 카드) ───────────────────────────────────────────────── */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.kpiCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.kpiLabel {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.kpiValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.warn {
+  color: #dc2626;
+}
+
+.kpiSub {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ── Monthly impact banner (월간 임팩트 배너) ───────────────────────────── */
+.impactBanner {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  color: white;
+}
+
+.impactTitle {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.impactSub {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 3px;
+}
+
+.impactAmount {
+  font-size: 32px;
+  font-weight: 800;
+}
+
+/* ── Stats row (통계 행) ───────────────────────────────────────────────── */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.statItem {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 20px;
+  text-align: center;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 700px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Tab navigation (탭 내비게이션) ────────────────────────────────────────── */
+.tabNav {
+  display: flex;
+  gap: 2px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 24px;
+}
+
+.tabBtn {
+  padding: 8px 20px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.tabBtn:hover {
+  color: #4f46e5;
+}
+
+.tabBtnActive {
+  color: #4f46e5;
+  font-weight: 600;
+  border-bottom-color: #4f46e5;
+}
+
+/* ── Call history table (통화 내역 테이블) ─────────────────────────────────── */
+.callFilters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filterLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.filterBtns {
+  display: flex;
+  gap: 4px;
+}
+
+.filterBtn {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.filterBtn:hover {
+  border-color: #4f46e5;
+  color: #4f46e5;
+}
+
+.filterBtnActive {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: white;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.statusSuccess { background: #dcfce7; color: #15803d; }
+.statusFail    { background: #fee2e2; color: #dc2626; }
+.statusVoice   { background: #f3f4f6; color: #6b7280; }
+
+.sentimentBadge {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sentimentPos { color: #16a34a; }
+.sentimentNeg { color: #dc2626; }
+.sentimentNeu { color: #64748b; }
+
+.busyDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  margin-right: 4px;
+}
+
+.emptyRow td {
+  text-align: center;
+  color: #94a3b8;
+  padding: 32px 0;
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.paginationBtns {
+  display: flex;
+  gap: 4px;
+}
+
+.pageBtn {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pageBtnActive {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: white;
+}
+
+/* ── Coming Soon placeholder (준비 중 플레이스홀더) ─────────────────────────── */
+.comingSoon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 0;
+  color: #94a3b8;
+}
+
+.comingSoonIcon {
+  font-size: 40px;
+}
+
+.comingSoonText {
+  font-size: 14px;
+  font-weight: 500;
+}
