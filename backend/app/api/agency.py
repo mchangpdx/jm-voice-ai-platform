@@ -12,6 +12,7 @@ Layer 3 dispatch:
   store.industry == 'beauty'        → knowledge.beauty.calculate()
   store.industry == 'auto_repair'   → knowledge.auto_repair.calculate()
 """
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -265,6 +266,97 @@ async def get_agency_overview(
             "store_count":        len(stores),
         },
         "stores": store_metrics,
+    }
+
+
+_VALID_STATUSES = {"Successful", "Unsuccessful"}
+
+
+@router.get("/store/{store_id}/call-logs")
+async def get_agency_store_call_logs(
+    store_id: str,
+    period: str = "all",
+    page: int = 1,
+    limit: int = 20,
+    status: str | None = None,
+    tenant_id: str = Depends(get_tenant_id),
+) -> dict:
+    """Paginated call logs for a single store in agency context.
+    (에이전시 컨텍스트의 단일 스토어 통화 내역 — 페이징 + 기간 필터 지원)
+    """
+    if period not in _VALID_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid period '{period}'. Must be one of: {sorted(_VALID_PERIODS)}",
+        )
+
+    async with httpx.AsyncClient() as client:
+        agency = await _resolve_agency(client, tenant_id)
+
+        check_resp = await client.get(
+            f"{_REST}/stores",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "id":        f"eq.{store_id}",
+                "agency_id": f"eq.{agency['id']}",
+                "select":    "id,name,industry",
+            },
+        )
+        stores = check_resp.json() if isinstance(check_resp.json(), list) else []
+        if not stores:
+            raise HTTPException(status_code=403, detail="Store not accessible by this agency")
+
+        since = _period_start(period)
+
+        params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select":   "call_id,start_time,customer_phone,duration,sentiment,call_status,cost,recording_url,summary,is_store_busy",
+            "order":    "start_time.desc",
+        }
+        if since:
+            params["start_time"] = f"gte.{since}"
+        if status and status in _VALID_STATUSES:
+            params["call_status"] = f"eq.{status}"
+
+        all_logs: list[dict] = []
+        offset = 0
+        while True:
+            resp = await client.get(
+                f"{_REST}/call_logs",
+                headers=_SUPABASE_HEADERS,
+                params={**params, "limit": "1000", "offset": str(offset)},
+            )
+            batch = resp.json() if isinstance(resp.json(), list) else []
+            all_logs.extend(batch)
+            if len(batch) < 1000:
+                break
+            offset += 1000
+
+    total  = len(all_logs)
+    pages  = math.ceil(total / limit) if total > 0 else 1
+    start  = (page - 1) * limit
+    items  = all_logs[start: start + limit]
+
+    return {
+        "items": [
+            {
+                "call_id":        c["call_id"],
+                "start_time":     c.get("start_time", ""),
+                "customer_phone": c.get("customer_phone"),
+                "duration":       int(c.get("duration") or 0),
+                "sentiment":      c.get("sentiment"),
+                "call_status":    c.get("call_status", ""),
+                "cost":           float(c.get("cost") or 0),
+                "recording_url":  c.get("recording_url"),
+                "summary":        c.get("summary"),
+                "is_store_busy":  bool(c.get("is_store_busy")),
+            }
+            for c in items
+        ],
+        "total": total,
+        "page":  page,
+        "pages": pages,
+        "limit": limit,
     }
 
 

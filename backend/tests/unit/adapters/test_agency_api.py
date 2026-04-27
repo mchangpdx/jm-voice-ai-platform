@@ -273,6 +273,66 @@ def test_agency_store_metrics_auto_repair():
     assert data["avg_value_label"] == "Avg Repair Ticket"
 
 
+# ── GET /api/agency/store/{store_id}/call-logs ────────────────────────────────
+
+def test_agency_store_call_logs_basic():
+    """Agency can fetch paginated call logs for a store it manages.
+    (에이전시가 관리하는 스토어의 통화 내역 페이징 조회 가능)
+    Mock GET order: agencies → stores (access check) → call_logs
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    call_log_rows = [
+        {
+            "call_id": "cl-001",
+            "start_time": "2026-01-01T10:00:00Z",
+            "customer_phone": "+15031234567",
+            "duration": 120,
+            "sentiment": "Positive",
+            "call_status": "Successful",
+            "cost": 0.16,
+            "recording_url": None,
+            "summary": "Customer asked about hours.",
+            "is_store_busy": True,
+        }
+    ]
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [_MOCK_STORES[0]]),
+        (200, call_log_rows),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_CAFE_STORE_ID}/call-logs?period=month&page=1&limit=20",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["page"] == 1
+    assert data["pages"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["call_id"] == "cl-001"
+    assert data["items"][0]["call_status"] == "Successful"
+    assert data["items"][0]["is_store_busy"] is True
+
+
+def test_agency_store_call_logs_wrong_agency():
+    """Returns 403 if store does not belong to this agency.
+    (다른 에이전시 스토어 접근 시 403 반환)
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, []),  # store not found under this agency
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_OTHER_STORE_ID}/call-logs",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 403
+
+
 def test_agency_overview_4_stores():
     """
     Mock GET call order (4 stores, each needs cfg+calls+domain data):
