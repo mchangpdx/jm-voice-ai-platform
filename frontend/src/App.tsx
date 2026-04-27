@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './core/AuthContext'
+import { AuthProvider, useAuth } from './core/AuthContext'
 
 const Login         = lazy(() => import('./views/Login'))
 const StoreLayout   = lazy(() => import('./views/fsr/store/Layout'))
@@ -91,8 +91,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AppRoutes />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

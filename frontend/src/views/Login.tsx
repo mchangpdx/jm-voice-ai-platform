@@ -18,7 +18,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/fsr/store/overview')
+      navigate('/')
     } catch {
       setError('Invalid email or password')
     } finally {
