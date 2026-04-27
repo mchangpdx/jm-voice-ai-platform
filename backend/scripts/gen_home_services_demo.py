@@ -28,7 +28,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # JM Home Services store_id (confirmed from DB insert)
-STORE_ID = "d25ff657-b6cc-5ce9-bee6-28d4e487dd6c"
+STORE_ID = "98ea891e-b2f7-4141-a89a-ab0f64e838dc"
 
 HEADERS = {
     "apikey":        SUPABASE_KEY,
