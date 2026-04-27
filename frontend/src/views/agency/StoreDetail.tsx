@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import api from '../../core/api'
 import { getVerticalMeta } from '../../core/verticalLabels'
+import Analytics from '../fsr/store/Analytics'
 import styles from './StoreDetail.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -382,17 +383,20 @@ export default function AgencyStoreDetail() {
           </h1>
           <p className={styles.subtitle}>{meta?.industryLabel ?? ''}</p>
         </div>
-        <div className={styles.periodTabs}>
-          {PERIODS.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`${styles.periodBtn} ${period === key ? styles.periodBtnActive : ''}`}
-              onClick={() => setPeriod(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Period tabs only for Overview and Call History (Analytics has its own) */}
+        {tab !== 'analytics' && (
+          <div className={styles.periodTabs}>
+            {PERIODS.map(({ key, label }) => (
+              <button
+                key={key}
+                className={`${styles.periodBtn} ${period === key ? styles.periodBtnActive : ''}`}
+                onClick={() => setPeriod(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tab navigation (탭 내비게이션) */}
@@ -412,10 +416,7 @@ export default function AgencyStoreDetail() {
       {tab === 'overview' && <OverviewTab storeId={storeId} period={period} />}
       {tab === 'calls'    && <CallHistoryTab storeId={storeId} period={period} />}
       {tab === 'analytics' && (
-        <div className={styles.comingSoon}>
-          <div className={styles.comingSoonIcon}>📈</div>
-          <div className={styles.comingSoonText}>Analytics — Coming Soon</div>
-        </div>
+        <Analytics apiEndpoint={`/agency/store/${storeId}/analytics`} />
       )}
     </div>
   )

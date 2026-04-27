@@ -26,6 +26,7 @@ import app.knowledge.home_services as hs_knowledge
 import app.knowledge.restaurant as rest_knowledge
 import app.knowledge.beauty as beauty_knowledge
 import app.knowledge.auto_repair as auto_knowledge
+from app.api.analytics import build_analytics_response
 
 router = APIRouter(prefix="/api/agency", tags=["Agency"])
 
@@ -269,7 +270,96 @@ async def get_agency_overview(
     }
 
 
-_VALID_STATUSES = {"Successful", "Unsuccessful"}
+_VALID_STATUSES   = {"Successful", "Unsuccessful"}
+_VALID_ANALYTICS  = {"week", "month", "all"}
+
+
+@router.get("/store/{store_id}/analytics")
+async def get_agency_store_analytics(
+    store_id: str,
+    period: str = "month",
+    tenant_id: str = Depends(get_tenant_id),
+) -> dict:
+    """Analytics charts data for a single store in agency context.
+    (에이전시 컨텍스트의 단일 스토어 분석 차트 데이터 반환)
+    period: week | month | all
+    """
+    if period not in _VALID_ANALYTICS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid period '{period}'. Must be one of: {sorted(_VALID_ANALYTICS)}",
+        )
+
+    async with httpx.AsyncClient() as client:
+        agency = await _resolve_agency(client, tenant_id)
+
+        check_resp = await client.get(
+            f"{_REST}/stores",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "id":        f"eq.{store_id}",
+                "agency_id": f"eq.{agency['id']}",
+                "select":    "id,name,industry",
+            },
+        )
+        stores = check_resp.json() if isinstance(check_resp.json(), list) else []
+        if not stores:
+            raise HTTPException(status_code=403, detail="Store not accessible by this agency")
+
+        cfg_resp = await client.get(
+            f"{_REST}/store_configs",
+            headers=_SUPABASE_HEADERS,
+            params={"store_id": f"eq.{store_id}", "select": "timezone"},
+        )
+        cfg_list = cfg_resp.json() if isinstance(cfg_resp.json(), list) else []
+        store_tz = (cfg_list[0].get("timezone") if cfg_list else None) or _DEFAULT_TIMEZONE
+        since    = _period_start(period, store_tz)
+
+        call_params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select":   "call_status,duration,sentiment,start_time",
+        }
+        if since:
+            call_params["start_time"] = f"gte.{since}"
+
+        call_logs: list[dict] = []
+        offset = 0
+        while True:
+            resp = await client.get(
+                f"{_REST}/call_logs",
+                headers=_SUPABASE_HEADERS,
+                params={**call_params, "limit": "1000", "offset": str(offset)},
+            )
+            batch = resp.json() if isinstance(resp.json(), list) else []
+            call_logs.extend(batch)
+            if len(batch) < 1000:
+                break
+            offset += 1000
+
+        order_params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select":   "total_amount,status,created_at",
+            "status":   "eq.paid",
+        }
+        if since:
+            order_params["created_at"] = f"gte.{since}"
+
+        orders: list[dict] = []
+        offset = 0
+        while True:
+            resp = await client.get(
+                f"{_REST}/orders",
+                headers=_SUPABASE_HEADERS,
+                params={**order_params, "limit": "1000", "offset": str(offset)},
+            )
+            batch = resp.json() if isinstance(resp.json(), list) else []
+            orders.extend(batch)
+            if len(batch) < 1000:
+                break
+            offset += 1000
+
+    result = build_analytics_response(call_logs, orders, store_tz)
+    return result.model_dump()
 
 
 @router.get("/store/{store_id}/call-logs")

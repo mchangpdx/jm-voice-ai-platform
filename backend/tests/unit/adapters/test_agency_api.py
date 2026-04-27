@@ -316,6 +316,56 @@ def test_agency_store_call_logs_basic():
     assert data["items"][0]["is_store_busy"] is True
 
 
+def test_agency_store_analytics_basic():
+    """Agency can fetch analytics for a store it manages.
+    (에이전시가 관리하는 스토어의 분석 데이터 조회 가능)
+    Mock GET order: agencies → stores (access check) → store_configs → call_logs → orders
+    """
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    call_rows = [
+        {
+            "call_status": "Successful",
+            "duration": 300,
+            "sentiment": "Positive",
+            "start_time": "2026-04-01T10:00:00Z",
+        }
+    ]
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, [_MOCK_STORES[0]]),
+        (200, _MOCK_CFG),
+        (200, call_rows),
+        (200, []),          # orders — no revenue data
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_CAFE_STORE_ID}/analytics?period=month",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "daily_calls" in data
+    assert "hourly_distribution" in data
+    assert "sentiment_breakdown" in data
+    assert "summary" in data
+    assert data["summary"]["total_call_minutes"] == 5.0   # 300s ÷ 60
+
+
+def test_agency_store_analytics_wrong_agency():
+    """Returns 403 if store does not belong to this agency. (크로스-에이전시 403)"""
+    token = _make_jwt(_AGENCY_OWNER_ID)
+    mock = _mock_get([
+        (200, _MOCK_AGENCY),
+        (200, []),
+    ])
+    with patch("app.api.agency.httpx.AsyncClient", return_value=mock):
+        resp = client.get(
+            f"/api/agency/store/{_OTHER_STORE_ID}/analytics",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert resp.status_code == 403
+
+
 def test_agency_store_call_logs_wrong_agency():
     """Returns 403 if store does not belong to this agency.
     (다른 에이전시 스토어 접근 시 403 반환)
