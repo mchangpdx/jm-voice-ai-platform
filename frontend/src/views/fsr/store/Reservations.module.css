@@ -1,0 +1,186 @@
+/* Reservations page styles (예약 관리 페이지 스타일) */
+.page { max-width: 1280px; }
+
+.pageHeader { margin-bottom: 20px; }
+.pageTitle  { font-size: 26px; font-weight: 700; color: #0f172a; margin: 0 0 4px; }
+.pageDesc   { font-size: 13.5px; color: #64748b; margin: 0; }
+
+/* ── Summary cards ───────────────────────────────────────────────────────── */
+.summaryRow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summaryCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.summaryLabel { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
+.summaryValue { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 4px; }
+.summaryValue.confirmed { color: #16a34a; }
+.summaryValue.pending   { color: #d97706; }
+.summaryValue.seated    { color: #6366f1; }
+.summaryValue.cancelled { color: #94a3b8; }
+
+/* ── Filters ─────────────────────────────────────────────────────────────── */
+.filtersRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filterGroup { display: flex; align-items: center; gap: 6px; }
+.filterLabel { font-size: 13px; color: #64748b; }
+
+.filterBtn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all .12s;
+}
+.filterBtn:hover       { background: #f8fafc; }
+.filterBtnActive       { background: #6366f1; border-color: #6366f1; color: white; font-weight: 600; }
+
+/* ── Status filter tabs ──────────────────────────────────────────────────── */
+.statusTabs { display: flex; gap: 4px; }
+
+.statusTab {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all .12s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.statusTab:hover { background: #f8fafc; }
+.statusTabActive { font-weight: 600; }
+.statusTabActive.all       { background: #0f172a; border-color: #0f172a; color: white; }
+.statusTabActive.confirmed { background: #dcfce7; border-color: #16a34a; color: #15803d; }
+.statusTabActive.pending   { background: #fef3c7; border-color: #d97706; color: #b45309; }
+.statusTabActive.seated    { background: #ede9fe; border-color: #6366f1; color: #4f46e5; }
+.statusTabActive.cancelled { background: #f1f5f9; border-color: #94a3b8; color: #64748b; }
+
+.tabCount {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(0,0,0,.08);
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.tableWrap {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+
+.table thead th {
+  background: #f8fafc;
+  padding: 11px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+.table tbody tr:last-child { border-bottom: none; }
+.table tbody tr:hover { background: #f8fafc; }
+.table tbody td { padding: 11px 14px; color: #334155; vertical-align: middle; }
+
+.cellName    { font-weight: 500; color: #0f172a; }
+.cellPhone   { font-family: monospace; font-size: 13px; color: #475569; }
+.cellTime    { white-space: nowrap; color: #475569; }
+.cellParty   { font-weight: 600; color: #334155; }
+.cellNotes   { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: #64748b; }
+
+/* ── Status badge ────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badgeConfirmed { background: #dcfce7; color: #15803d; }
+.badgePending   { background: #fef3c7; color: #b45309; }
+.badgeSeated    { background: #ede9fe; color: #4f46e5; }
+.badgeCancelled { background: #f1f5f9; color: #64748b; }
+.badgeNoShow    { background: #fee2e2; color: #b91c1c; }
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.actions { display: flex; gap: 5px; }
+
+.actionBtn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 12px;
+  color: #475569;
+  cursor: pointer;
+  transition: all .1s;
+  white-space: nowrap;
+}
+.actionBtn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.actionBtn:disabled { opacity: .4; cursor: default; }
+
+.actionBtnConfirm { border-color: #16a34a; color: #15803d; }
+.actionBtnConfirm:hover { background: #dcfce7; }
+.actionBtnSeated  { border-color: #6366f1; color: #4f46e5; }
+.actionBtnSeated:hover  { background: #ede9fe; }
+.actionBtnCancel  { border-color: #ef4444; color: #b91c1c; }
+.actionBtnCancel:hover  { background: #fee2e2; }
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid #e2e8f0;
+}
+.paginationInfo { font-size: 13px; color: #64748b; }
+.paginationBtns { display: flex; gap: 6px; }
+
+.pageBtn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all .12s;
+}
+.pageBtn:disabled           { opacity: .4; cursor: default; }
+.pageBtn:not(:disabled):hover { background: #f8fafc; }
+.pageBtnActive              { background: #6366f1; border-color: #6366f1; color: white; font-weight: 600; }
+
+/* ── Empty / Loading ─────────────────────────────────────────────────────── */
+.emptyRow td { text-align: center; padding: 48px !important; color: #94a3b8; font-size: 14px; }

@@ -1,0 +1,409 @@
+/* Store Overview page styles (스토어 개요 페이지 스타일) */
+.page {
+  max-width: 1280px;
+}
+
+.pageHeader {
+  margin-bottom: 20px;
+}
+
+.storeName {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.pageDesc {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* ── Period filter ──────────────────────────────────────────────────────── */
+.periodRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.periodLabel {
+  font-size: 13px;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+.periodBtn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.periodBtn:hover {
+  background: #f8fafc;
+}
+
+.periodBtnActive {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: white;
+  font-weight: 600;
+}
+
+/* ── KPI cards ──────────────────────────────────────────────────────────── */
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.kpiCard {
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  padding: 18px 20px;
+}
+
+/* KPI color variants */
+.kpiGreen {
+  border-left: 4px solid #16a34a;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 60%);
+}
+
+.kpiBlue {
+  border-left: 4px solid #0369a1;
+  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 60%);
+}
+
+.kpiImpact {
+  border-left: 4px solid #6366f1;
+  background: linear-gradient(135deg, #eef2ff 0%, #ffffff 60%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.10);
+}
+
+.kpiTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.kpiLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpiBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+}
+
+.kpiIcon {
+  font-size: 18px;
+}
+
+.kpiValue {
+  font-size: 30px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.kpiValueLarge {
+  font-size: 36px;
+  color: #4338ca;
+}
+
+.kpiSub {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ── Supporting KPI row (smaller cards) ─────────────────────────────────── */
+.kpiRowSm {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.kpiCardSm {
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  padding: 14px 16px;
+}
+
+.kpiSmLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.kpiSmValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+  line-height: 1.1;
+}
+
+.kpiSmSub {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* ── Main panels ─────────────────────────────────────────────────────────── */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.personaPanel,
+.ordersPanel {
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  padding: 20px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.panelIcon {
+  font-size: 18px;
+  margin-top: 2px;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.panelDesc {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── AI Persona ──────────────────────────────────────────────────────────── */
+.personaSection {
+  margin-bottom: 8px;
+}
+
+.personaLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.personaLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.essentialBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+}
+
+.tempBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #d97706;
+  background: #fef3c7;
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+
+.personaNote {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.personaTextarea {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #334155;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.55;
+  background: #fafafa;
+  box-sizing: border-box;
+}
+
+.personaTextarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: white;
+}
+
+.personaTextarea[readonly] {
+  background: #f8fafc;
+  color: #64748b;
+  cursor: default;
+}
+
+.charCount {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: right;
+  margin-top: 4px;
+}
+
+.divider {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+  margin: 14px 0 12px;
+  position: relative;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 36%;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.divider::before { left: 0; }
+.divider::after  { right: 0; }
+
+.personaBtns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.saveBtn {
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.saveBtn:hover:not(:disabled) { background: #4f46e5; }
+.saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.revertBtn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.revertBtn:hover { background: #f8fafc; }
+
+/* ── Orders table ────────────────────────────────────────────────────────── */
+.refreshBtn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.refreshBtn:hover { background: #f8fafc; }
+
+.loading, .empty {
+  padding: 32px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.ordersTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ordersTable th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ordersTable td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #f8fafc;
+  color: #334155;
+}
+
+.ordersTable tr:last-child td { border-bottom: none; }
+
+.orderId { font-weight: 600; color: #64748b; }
+.orderAmount { font-weight: 600; color: #0f172a; }
+.orderAmountPaid { color: #15803d; }
+.orderDate { color: #94a3b8; font-size: 12px; }
+
+.statusBadge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.statusPaid { background: #dcfce7; color: #15803d; }
+.statusPending { background: #fef9c3; color: #a16207; }

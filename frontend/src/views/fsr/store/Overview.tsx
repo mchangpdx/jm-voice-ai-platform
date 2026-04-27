@@ -1,0 +1,308 @@
+// Store Overview — Harness-methodology Business KPIs (Harness 방법론 비즈니스 KPI 대시보드)
+// MCRR | LCS | LCR | UV | Monthly Impact + AI Persona + Live Orders
+import { useEffect, useState } from 'react'
+import { useAuth } from '../../../core/AuthContext'
+import api from '../../../core/api'
+import styles from './Overview.module.css'
+
+type Period = 'today' | 'week' | 'month' | 'all'
+
+interface Metrics {
+  mcrr: number
+  lcs: number
+  lcr: number
+  upselling_value: number
+  monthly_impact: number
+  total_calls: number
+  successful_calls: number
+  total_ai_revenue: number
+  avg_ticket: number
+  success_rate: number
+  using_real_busy_data: boolean
+}
+
+interface Order {
+  id: number
+  customer_phone: string | null
+  customer_email: string | null
+  total_amount: number
+  status: string
+  created_at: string
+  items: Array<{ name?: string; quantity?: number }>
+}
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'week',  label: 'Week'  },
+  { key: 'month', label: 'Month' },
+  { key: 'all',   label: 'All'   },
+]
+
+export default function Overview() {
+  const { storeName } = useAuth()
+  const [period, setPeriod] = useState<Period>('all')
+  const [metrics, setMetrics] = useState<Metrics | null>(null)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [dailyInstructions, setDailyInstructions] = useState(
+    "Today's specials, sold-out items, or event notes — highest priority during live calls."
+  )
+  const [savedInstructions, setSavedInstructions] = useState(dailyInstructions)
+  const [saving, setSaving] = useState(false)
+  const [loadingMetrics, setLoadingMetrics] = useState(true)
+  const [loadingOrders, setLoadingOrders] = useState(true)
+
+  useEffect(() => {
+    if (!period) return
+    setLoadingMetrics(true)
+    api.get(`/store/metrics?period=${period}`)
+      .then((r) => setMetrics(r.data))
+      .finally(() => setLoadingMetrics(false))
+  }, [period])
+
+  useEffect(() => {
+    setLoadingOrders(true)
+    api.get('/store/orders?limit=10')
+      .then((r) => setOrders(r.data))
+      .finally(() => setLoadingOrders(false))
+  }, [])
+
+  const handleSave = () => {
+    setSaving(true)
+    setTimeout(() => { setSavedInstructions(dailyInstructions); setSaving(false) }, 600)
+  }
+
+  const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmtDate = (iso: string) => {
+    try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
+    catch { return iso }
+  }
+
+  const m = metrics
+
+  return (
+    <div className={styles.page}>
+      {/* Header (헤더) */}
+      <div className={styles.pageHeader}>
+        <h1 className={styles.storeName}>{storeName ?? 'Store'}</h1>
+        <p className={styles.pageDesc}>AI ROI analytics, persona control, and live call orders — all in one place.</p>
+      </div>
+
+      {/* Period filter (기간 필터) */}
+      <div className={styles.periodRow}>
+        <span className={styles.periodLabel}>Period:</span>
+        {PERIODS.map(({ key, label }) => (
+          <button
+            key={key}
+            className={`${styles.periodBtn} ${period === key ? styles.periodBtnActive : ''}`}
+            onClick={() => setPeriod(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Row 1: Primary Business KPIs (1행: 핵심 비즈니스 KPI) ── */}
+      <div className={styles.kpiRow}>
+        {/* MCRR — Peak Hour Revenue Capture */}
+        <div className={`${styles.kpiCard} ${styles.kpiGreen}`}>
+          <div className={styles.kpiTop}>
+            <span className={styles.kpiLabel}>Peak Hour Revenue Capture</span>
+            <span className={styles.kpiBadge}>MCRR</span>
+          </div>
+          <div className={styles.kpiValue}>{loadingMetrics ? '—' : fmt(m?.mcrr ?? 0)}</div>
+          <div className={styles.kpiSub}>
+            {m?.using_real_busy_data
+              ? 'Busy-hour calls answered by AI × success rate × avg ticket'
+              : 'Est. missed calls × AI success rate × avg ticket'}
+          </div>
+        </div>
+
+        {/* LCS — Labor Cost Savings */}
+        <div className={`${styles.kpiCard} ${styles.kpiBlue}`}>
+          <div className={styles.kpiTop}>
+            <span className={styles.kpiLabel}>Labor Cost Savings</span>
+            <span className={styles.kpiBadge}>LCS</span>
+          </div>
+          <div className={styles.kpiValue}>{loadingMetrics ? '—' : fmt(m?.lcs ?? 0)}</div>
+          <div className={styles.kpiSub}>
+            AI call hours × $20/hr — staff freed for floor service
+          </div>
+        </div>
+
+        {/* Monthly Impact — Total Economic Value */}
+        <div className={`${styles.kpiCard} ${styles.kpiImpact}`}>
+          <div className={styles.kpiTop}>
+            <span className={styles.kpiLabel}>Total Monthly Impact</span>
+            <span className={styles.kpiBadge}>PHRC + LCS + UV</span>
+          </div>
+          <div className={`${styles.kpiValue} ${styles.kpiValueLarge}`}>
+            {loadingMetrics ? '—' : fmt(m?.monthly_impact ?? 0)}
+          </div>
+          <div className={styles.kpiSub}>
+            {m && m.total_ai_revenue > 0
+              ? `${((m.monthly_impact / m.total_ai_revenue) * 100).toFixed(1)}% of AI-processed revenue`
+              : 'Total economic value generated by AI'}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Row 2: Supporting KPIs (2행: 보조 KPI) ── */}
+      <div className={styles.kpiRowSm}>
+        <div className={styles.kpiCardSm}>
+          <div className={styles.kpiSmLabel}>AI Answer Rate (LCR)</div>
+          <div className={styles.kpiSmValue} style={{ color: '#6366f1' }}>
+            {loadingMetrics ? '—' : `${m?.lcr.toFixed(1) ?? 0}%`}
+          </div>
+          <div className={styles.kpiSmSub}>
+            {loadingMetrics ? '' : `${m?.successful_calls ?? 0} orders / ${m?.total_calls ?? 0} calls`}
+          </div>
+        </div>
+
+        <div className={styles.kpiCardSm}>
+          <div className={styles.kpiSmLabel}>Upselling Value (UV)</div>
+          <div className={styles.kpiSmValue} style={{ color: '#f59e0b' }}>
+            {loadingMetrics ? '—' : fmt(m?.upselling_value ?? 0)}
+          </div>
+          <div className={styles.kpiSmSub}>15% upsell rate × $5/success</div>
+        </div>
+
+        <div className={styles.kpiCardSm}>
+          <div className={styles.kpiSmLabel}>Total AI Revenue</div>
+          <div className={styles.kpiSmValue} style={{ color: '#16a34a' }}>
+            {loadingMetrics ? '—' : fmt(m?.total_ai_revenue ?? 0)}
+          </div>
+          <div className={styles.kpiSmSub}>Paid orders processed by AI</div>
+        </div>
+
+        <div className={styles.kpiCardSm}>
+          <div className={styles.kpiSmLabel}>Avg Ticket Size</div>
+          <div className={styles.kpiSmValue} style={{ color: '#0369a1' }}>
+            {loadingMetrics ? '—' : fmt(m?.avg_ticket ?? 0)}
+          </div>
+          <div className={styles.kpiSmSub}>Per paid order value</div>
+        </div>
+
+        <div className={styles.kpiCardSm}>
+          <div className={styles.kpiSmLabel}>Total Calls Handled</div>
+          <div className={styles.kpiSmValue} style={{ color: '#334155' }}>
+            {loadingMetrics ? '—' : (m?.total_calls ?? 0).toLocaleString()}
+          </div>
+          <div className={styles.kpiSmSub}>AI-answered this period</div>
+        </div>
+      </div>
+
+      {/* ── Panels: AI Persona + Live Orders (AI 페르소나 + 실시간 주문) ── */}
+      <div className={styles.panels}>
+        {/* Left: AI Persona Editor (좌측: AI 페르소나 편집기) */}
+        <div className={styles.personaPanel}>
+          <div className={styles.panelHeader}>
+            <span className={styles.panelIcon}>🤖</span>
+            <div>
+              <div className={styles.panelTitle}>AI Persona Editor</div>
+              <div className={styles.panelDesc}>Manage your AI voice assistant's core identity and today's daily instructions.</div>
+            </div>
+          </div>
+
+          <div className={styles.personaSection}>
+            <div className={styles.personaLabelRow}>
+              <span className={styles.personaLabel}>Core AI Persona</span>
+              <span className={styles.essentialBadge}>Essential</span>
+            </div>
+            <p className={styles.personaNote}>Set by your agency. Defines the AI's core identity and cannot be changed from this view.</p>
+            <textarea
+              className={styles.personaTextarea}
+              readOnly
+              rows={5}
+              value={`You are Sophia, the AI receptionist for "${storeName ?? 'your store'}".
+Your primary goal is to assist customers with food/drink orders and table reservations politely and efficiently.
+Always speak in a highly cheerful, upbeat, energetic, and welcoming tone. Smile with your voice!`}
+            />
+          </div>
+
+          <div className={styles.divider}>DAILY OVERRIDE</div>
+
+          <div className={styles.personaSection}>
+            <div className={styles.personaLabelRow}>
+              <span className={styles.personaLabel}>Daily Instructions</span>
+              <span className={styles.tempBadge}>Temporary</span>
+            </div>
+            <p className={styles.personaNote}>
+              Today's specials, sold-out items, or event notes. Highest priority during live calls.
+            </p>
+            <textarea
+              className={styles.personaTextarea}
+              rows={3}
+              value={dailyInstructions}
+              onChange={(e) => setDailyInstructions(e.target.value)}
+              placeholder="e.g. Early summer Special 30% off cold drinks!"
+            />
+            <div className={styles.charCount}>{dailyInstructions.length} characters</div>
+            <div className={styles.personaBtns}>
+              <button className={styles.saveBtn} onClick={handleSave} disabled={saving}>
+                💾 {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button className={styles.revertBtn} onClick={() => setDailyInstructions(savedInstructions)}>
+                ↺ Revert
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Live Call Orders (우측: 실시간 통화 주문) */}
+        <div className={styles.ordersPanel}>
+          <div className={styles.panelHeader}>
+            <span className={styles.panelIcon}>🛒</span>
+            <div>
+              <div className={styles.panelTitle}>Live Call Orders</div>
+              <div className={styles.panelDesc}>Latest 10 orders placed via the AI voice assistant.</div>
+            </div>
+            <button
+              className={styles.refreshBtn}
+              onClick={() => {
+                setLoadingOrders(true)
+                api.get('/store/orders?limit=10').then((r) => setOrders(r.data)).finally(() => setLoadingOrders(false))
+              }}
+            >
+              ↺ Refresh
+            </button>
+          </div>
+
+          {loadingOrders ? (
+            <div className={styles.loading}>Loading orders...</div>
+          ) : orders.length === 0 ? (
+            <div className={styles.empty}>No orders yet</div>
+          ) : (
+            <table className={styles.ordersTable}>
+              <thead>
+                <tr>
+                  <th>ORDER ID</th>
+                  <th>CUSTOMER NAME</th>
+                  <th>TOTAL AMOUNT</th>
+                  <th>STATUS</th>
+                  <th>DATE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id}>
+                    <td className={styles.orderId}>#{o.id}</td>
+                    <td>{o.customer_email?.split('@')[0] ?? o.customer_phone ?? '—'}</td>
+                    <td className={`${styles.orderAmount} ${o.status === 'paid' ? styles.orderAmountPaid : ''}`}>
+                      {fmt(o.total_amount)}
+                    </td>
+                    <td>
+                      <span className={`${styles.statusBadge} ${o.status === 'paid' ? styles.statusPaid : styles.statusPending}`}>
+                        {o.status}
+                      </span>
+                    </td>
+                    <td className={styles.orderDate}>{fmtDate(o.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
