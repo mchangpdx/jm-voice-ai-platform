@@ -22,8 +22,15 @@ from typing import AsyncGenerator, Optional
 import httpx
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 
+from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
-from app.skills.scheduler.reservation import RESERVATION_TOOL_DEF, insert_reservation
+from app.skills.scheduler.reservation import (
+    RESERVATION_TOOL_DEF,
+    format_date_human,
+    format_time_12h,
+    insert_reservation,
+    normalize_phone_us,
+)
 
 log = logging.getLogger(__name__)
 
@@ -250,6 +257,7 @@ async def _stream_gemini_response(
     conversation: str,
     store_id: Optional[str] = None,
     call_log_id: Optional[str] = None,
+    store_name: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Stream Gemini text chunks. Handles make_reservation tool calls transparently.
     (Gemini 텍스트 스트리밍 + make_reservation 도구 호출 처리)
@@ -312,6 +320,24 @@ async def _stream_gemini_response(
 
     if tool_name == "make_reservation":
         result = await insert_reservation(tool_args, store_id, call_log_id)
+
+        # Fire-and-forget SMS confirmation on success (CLAUDE.md async flow rule)
+        # (성공 시 fire-and-forget SMS 확인 — CLAUDE.md 비동기 흐름 규칙)
+        if result.get("success") and not result.get("idempotent"):
+            try:
+                phone_e164 = normalize_phone_us(tool_args.get("customer_phone", ""))
+                asyncio.create_task(send_reservation_confirmation(
+                    to            = phone_e164,
+                    store_name    = store_name or "the restaurant",
+                    customer_name = tool_args.get("customer_name", ""),
+                    date_human    = format_date_human(tool_args["reservation_date"]),
+                    time_12h      = format_time_12h(tool_args["reservation_time"]),
+                    party_size    = int(tool_args.get("party_size", 0)),
+                ))
+                log.info("SMS confirmation queued (fire-and-forget) to=%s", phone_e164)
+            except Exception as exc:
+                # SMS failure must NEVER affect the in-call experience
+                log.warning("SMS dispatch error (ignored): %s", exc)
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
@@ -462,12 +488,14 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         full_txt = ""
         error    = False
 
-        store_id_for_tools = s["store"]["id"] if s.get("store") else None
+        store_id_for_tools   = s["store"]["id"]   if s.get("store") else None
+        store_name_for_tools = s["store"]["name"] if s.get("store") else None
 
         try:
             async for chunk in _stream_gemini_response(
                 s["system_prompt"], conversation,
                 store_id=store_id_for_tools, call_log_id=cid,
+                store_name=store_name_for_tools,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000

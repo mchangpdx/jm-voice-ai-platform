@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     retell_api_key: str = ""     # Bearer token for Retell REST API (Retell REST API용 Bearer 토큰)
     retell_api_url: str = "https://api.retellai.com"  # No /v2 prefix for agent endpoints (/v2 없음)
 
+    # Twilio SMS — post-event customer notifications (Twilio SMS — 이벤트 후 고객 알림)
+    twilio_account_sid: str = ""   # Twilio Account SID (AC...)
+    twilio_auth_token:  str = ""   # Twilio Auth Token
+    twilio_from_number: str = ""   # E.164 sender number (e.g. +15555550100)
+
     # Relay timeout (릴레이 타임아웃)
     relay_timeout_seconds: int = 8
 
