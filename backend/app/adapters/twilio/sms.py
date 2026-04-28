@@ -24,9 +24,10 @@ from app.core.config import settings
 log = logging.getLogger(__name__)
 
 # Module-level so tests can patch.object cleanly
-_TWILIO_SID   = settings.twilio_account_sid
-_TWILIO_TOKEN = settings.twilio_auth_token
-_TWILIO_FROM  = settings.twilio_from_number
+_TWILIO_SID         = settings.twilio_account_sid
+_TWILIO_TOKEN       = settings.twilio_auth_token
+_TWILIO_FROM        = settings.twilio_from_number
+_TWILIO_MG_SID      = settings.twilio_messaging_service_sid  # preferred for US A2P 10DLC
 
 
 def compose_reservation_message(
@@ -50,13 +51,26 @@ def compose_reservation_message(
 async def send_sms(to: str, body: str) -> dict[str, Any]:
     """Low-level: POST to Twilio Messages.json. Returns {sent, sid|error, reason}.
     (저수준: Twilio Messages.json POST. {sent, sid|error, reason} 반환)
+
+    Sender resolution:
+      - Prefer MessagingServiceSid (10DLC-routed, sticky sender, failover)
+      - Fall back to raw From= if no service configured (non-US, dev, debug)
     """
-    if not (_TWILIO_SID and _TWILIO_TOKEN and _TWILIO_FROM):
+    if not (_TWILIO_SID and _TWILIO_TOKEN):
         log.info("SMS skipped (Twilio not configured) to=%s body=%r", to, body[:60])
         return {"sent": False, "reason": "twilio_not_configured"}
 
+    if not (_TWILIO_MG_SID or _TWILIO_FROM):
+        log.info("SMS skipped (no sender configured) to=%s", to)
+        return {"sent": False, "reason": "no_sender_configured"}
+
     url = f"https://api.twilio.com/2010-04-01/Accounts/{_TWILIO_SID}/Messages.json"
-    data = {"From": _TWILIO_FROM, "To": to, "Body": body}
+    data: dict[str, str] = {"To": to, "Body": body}
+    if _TWILIO_MG_SID:
+        # Messaging Service routes via approved A2P 10DLC campaign
+        data["MessagingServiceSid"] = _TWILIO_MG_SID
+    else:
+        data["From"] = _TWILIO_FROM
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:

@@ -47,6 +47,7 @@ async def test_send_sms_skips_silently_when_no_credentials():
     with patch.object(sms, "_TWILIO_SID", ""), \
          patch.object(sms, "_TWILIO_TOKEN", ""), \
          patch.object(sms, "_TWILIO_FROM", ""), \
+         patch.object(sms, "_TWILIO_MG_SID", ""), \
          patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
 
         result = await sms.send_sms(to="+15037079566", body="hi")
@@ -64,9 +65,10 @@ async def test_send_sms_posts_to_twilio_with_correct_payload():
     fake_resp.status_code = 201
     fake_resp.json = lambda: {"sid": "SMabc123", "status": "queued"}
 
-    with patch.object(sms, "_TWILIO_SID",   "ACtest123"), \
-         patch.object(sms, "_TWILIO_TOKEN", "tok_test"), \
-         patch.object(sms, "_TWILIO_FROM",  "+15555550100"), \
+    with patch.object(sms, "_TWILIO_SID",    "ACtest123"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok_test"), \
+         patch.object(sms, "_TWILIO_FROM",   "+15555550100"), \
+         patch.object(sms, "_TWILIO_MG_SID", ""), \
          patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
 
         instance = MockClient.return_value.__aenter__.return_value
@@ -94,9 +96,10 @@ async def test_send_sms_returns_failure_on_twilio_error():
     fake_resp.status_code = 400
     fake_resp.text = '{"code":21211,"message":"Invalid To phone"}'
 
-    with patch.object(sms, "_TWILIO_SID",   "ACtest"), \
-         patch.object(sms, "_TWILIO_TOKEN", "tok"), \
-         patch.object(sms, "_TWILIO_FROM",  "+15555550100"), \
+    with patch.object(sms, "_TWILIO_SID",    "ACtest"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok"), \
+         patch.object(sms, "_TWILIO_FROM",   "+15555550100"), \
+         patch.object(sms, "_TWILIO_MG_SID", ""), \
          patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
 
         instance = MockClient.return_value.__aenter__.return_value
@@ -109,6 +112,72 @@ async def test_send_sms_returns_failure_on_twilio_error():
 
 
 @pytest.mark.asyncio
+async def test_send_sms_prefers_messaging_service_over_from_number():
+    """When both MG_SID and FROM are set, MessagingServiceSid wins (US A2P 10DLC routing)."""
+    from app.adapters.twilio import sms
+
+    fake_resp = AsyncMock()
+    fake_resp.status_code = 201
+    fake_resp.json = lambda: {"sid": "SM1", "status": "queued"}
+
+    with patch.object(sms, "_TWILIO_SID",    "ACtest"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok"), \
+         patch.object(sms, "_TWILIO_FROM",   "+15039941265"), \
+         patch.object(sms, "_TWILIO_MG_SID", "MGtest123"), \
+         patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
+
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.post = AsyncMock(return_value=fake_resp)
+
+        await sms.send_sms(to="+15037079566", body="x")
+
+        data = instance.post.call_args.kwargs["data"]
+        assert data["MessagingServiceSid"] == "MGtest123"
+        assert "From" not in data
+
+
+@pytest.mark.asyncio
+async def test_send_sms_falls_back_to_from_when_no_messaging_service():
+    """Without MG_SID, plain From= is used (non-US / dev fallback)."""
+    from app.adapters.twilio import sms
+
+    fake_resp = AsyncMock()
+    fake_resp.status_code = 201
+    fake_resp.json = lambda: {"sid": "SM1"}
+
+    with patch.object(sms, "_TWILIO_SID",    "ACtest"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok"), \
+         patch.object(sms, "_TWILIO_FROM",   "+15039941265"), \
+         patch.object(sms, "_TWILIO_MG_SID", ""), \
+         patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
+
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.post = AsyncMock(return_value=fake_resp)
+
+        await sms.send_sms(to="+15037079566", body="x")
+
+        data = instance.post.call_args.kwargs["data"]
+        assert data["From"] == "+15039941265"
+        assert "MessagingServiceSid" not in data
+
+
+@pytest.mark.asyncio
+async def test_send_sms_skips_when_no_sender_configured():
+    """SID/TOKEN set but neither FROM nor MG_SID → graceful skip."""
+    from app.adapters.twilio import sms
+
+    with patch.object(sms, "_TWILIO_SID",    "ACtest"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok"), \
+         patch.object(sms, "_TWILIO_FROM",   ""), \
+         patch.object(sms, "_TWILIO_MG_SID", ""):
+
+        result = await sms.send_sms(to="+15037079566", body="x")
+
+    assert result["sent"] is False
+    assert result["reason"] == "no_sender_configured"
+
+
+@pytest.mark.asyncio
 async def test_send_sms_uses_basic_auth_with_sid_and_token():
     from app.adapters.twilio import sms
 
@@ -116,9 +185,10 @@ async def test_send_sms_uses_basic_auth_with_sid_and_token():
     fake_resp.status_code = 201
     fake_resp.json = lambda: {"sid": "SM1", "status": "queued"}
 
-    with patch.object(sms, "_TWILIO_SID",   "ACtest"), \
-         patch.object(sms, "_TWILIO_TOKEN", "tok_secret"), \
-         patch.object(sms, "_TWILIO_FROM",  "+15555550100"), \
+    with patch.object(sms, "_TWILIO_SID",    "ACtest"), \
+         patch.object(sms, "_TWILIO_TOKEN",  "tok_secret"), \
+         patch.object(sms, "_TWILIO_FROM",   "+15555550100"), \
+         patch.object(sms, "_TWILIO_MG_SID", ""), \
          patch("app.adapters.twilio.sms.httpx.AsyncClient") as MockClient:
 
         instance = MockClient.return_value.__aenter__.return_value
