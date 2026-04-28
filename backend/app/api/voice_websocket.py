@@ -104,6 +104,22 @@ def build_system_prompt(store: dict) -> str:
             f"TODAY'S IMPORTANT NOTES (highest priority):\n{store['temporary_prompt']}"
         )
 
+    # Inject current date/time so 'tomorrow', 'tonight', 'next Friday' resolve correctly.
+    # (현재 날짜/시간 주입 — 'tomorrow', 'tonight', 'next Friday' 등의 정확한 해석)
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime as _dt
+        _now = _dt.now(ZoneInfo("America/Los_Angeles"))
+        parts.append(
+            f"CURRENT DATE/TIME (America/Los_Angeles): "
+            f"{_now.strftime('%A, %B %d, %Y at %-I:%M %p')} "
+            f"(ISO: {_now.strftime('%Y-%m-%d %H:%M %Z')}). "
+            f"Use this as the anchor for relative phrases like 'today', 'tomorrow', 'tonight', "
+            f"'next Friday'. Never guess the date — always derive from this anchor."
+        )
+    except Exception:
+        pass
+
     # Global rules — voice quality + language + safety guardrails
     # Short prompt = lower TTFT. Every rule pulls its weight.
     parts.append(
@@ -133,15 +149,18 @@ def build_system_prompt(store: dict) -> str:
         "customer's current language and offer one of the three.\n"
         "7. RESERVATIONS — TOOL USAGE: When a customer asks to make a reservation:\n"
         "   (a) Politely collect ALL six fields one at a time, briefly: name, phone, "
-        "       date (e.g. 'tomorrow' = compute YYYY-MM-DD), time (24-hour HH:MM), party size.\n"
+        "       date (resolve 'tomorrow' / 'tonight' from the CURRENT DATE/TIME anchor above to "
+        "       a strict YYYY-MM-DD value), time (24-hour HH:MM), party size.\n"
         "   (b) Recite the full summary back: 'Confirming a reservation for [name], "
-        "       party of [N], on [date] at [time] — is that right?'\n"
+        "       party of [N], on [day-of-week, Month D] at [time] — is that right?'\n"
         "   (c) ONLY after the customer says 'yes' verbally, call make_reservation "
         "       with user_explicit_confirmation=true.\n"
-        "   (d) If the tool returns success, tell the customer the reservation is confirmed and read back "
-        "       the reservation_id if provided. If it returns an error, apologize and offer to try again.\n"
-        "   (e) If the store does NOT take reservations (no business_hours fits or knowledge says walk-ins only), "
-        "       tell the customer 'walk-ins are always welcome' and DO NOT call the tool.\n"
+        "   (d) If the tool returns success: tell the customer the reservation is confirmed in 1 sentence, "
+        "       briefly say goodbye. Done.\n"
+        "   (e) If the tool returns an error ONCE: apologize once, briefly say 'I'll have our manager "
+        "       call you back to finalize' and STOP. Do NOT retry the tool, do NOT loop. Move on if "
+        "       the customer asks anything else.\n"
+        "   (f) If the store does NOT take reservations, say 'walk-ins are always welcome' and DO NOT call the tool.\n"
         "8. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless the "
         "make_reservation tool actually returned success. Never invent confirmation numbers.\n"
         "9. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"

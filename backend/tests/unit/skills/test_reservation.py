@@ -243,4 +243,24 @@ async def test_insert_reservation_sets_status_confirmed():
         assert sent_payload["customer_name"]  == "Michael Chang"
         assert sent_payload["customer_phone"] == "+15037079566"
         assert sent_payload["party_size"]     == 4
-        assert sent_payload["call_log_id"]    == CALL_LOG_ID
+
+
+@pytest.mark.asyncio
+async def test_insert_reservation_skips_call_log_id_for_fk_safety():
+    """FK constraint reservations.call_log_id → call_logs.call_id fails mid-call,
+    because call_logs row is only created by post-call webhook. Backfill happens later.
+    """
+    from app.skills.scheduler import reservation as r
+
+    fake_resp = AsyncMock()
+    fake_resp.status_code = 201
+    fake_resp.json = lambda: [{"id": 1}]
+
+    with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.post = AsyncMock(return_value=fake_resp)
+
+        await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
+
+        sent_payload = instance.post.call_args.kwargs["json"]
+        assert "call_log_id" not in sent_payload

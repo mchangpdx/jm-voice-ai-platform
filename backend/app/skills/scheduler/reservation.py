@@ -177,9 +177,13 @@ async def insert_reservation(
     except Exception as exc:  # malformed date/time despite regex
         return {"success": False, "error": f"could not parse date/time: {exc}"}
 
+    # NOTE: call_log_id is intentionally NOT inserted here. The reservations.call_log_id
+    # column has a FK to call_logs.call_id, but the call_logs row is only created by the
+    # post-call webhook AFTER the call ends. Linking happens via a separate backfill step.
+    # (call_log_id는 의도적으로 INSERT 제외 — call_logs 행은 통화 종료 webhook에서 생성됨.
+    #  통화 종료 후 customer_phone + reservation_time으로 매칭하여 별도 백필 처리)
     row = {
         "store_id":         store_id,                 # always server-resolved
-        "call_log_id":      call_log_id,
         "customer_name":    args["customer_name"],
         "customer_phone":   args["customer_phone"],
         "party_size":       int(args["party_size"]),
