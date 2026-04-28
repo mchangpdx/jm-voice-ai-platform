@@ -18,6 +18,15 @@ class POSAdapter:
     (POS 어댑터 추상 인터페이스 — 모든 메서드 override 필수)
     """
 
+    # ── Capability flags (Phase 2-B.1.5) ────────────────────────────────────
+    # Concrete adapters override only the flags they actually support. Orchestration
+    # code (flows.py, vertical adapters) reads these BEFORE calling optional methods
+    # so a missing capability fails gracefully instead of with NotImplementedError.
+    # (어댑터별로 지원 여부 명시 — 호출 전 flag 확인하여 우아한 fallback 보장)
+    SUPPORTS_MENU_SYNC:    bool = False
+    SUPPORTS_INVENTORY:    bool = False
+    SUPPORTS_PAYMENT_SYNC: bool = False
+
     async def create_pending(
         self,
         *,
