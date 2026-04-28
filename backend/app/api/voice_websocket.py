@@ -24,6 +24,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
+from app.services.bridge import flows as bridge_flows
 from app.skills.scheduler.reservation import (
     RESERVATION_TOOL_DEF,
     format_date_human,
@@ -319,11 +320,32 @@ async def _stream_gemini_response(
     log.info("Gemini tool call: %s args=%s", tool_name, tool_args)
 
     if tool_name == "make_reservation":
-        result = await insert_reservation(tool_args, store_id, call_log_id)
+        # Phase 2-B: route through Bridge Server. Bridge owns:
+        # - bridge_transactions row + audit trail (bridge_events)
+        # - state machine (pending → payment_sent → paid → fulfilled)
+        # - POS adapter (Supabase today, Quantic later)
+        # - payment adapter (NoOp today, Maverick later)
+        # POS write to reservations table happens inside the bridge via SupabasePOSAdapter.
+        # (Bridge Server 통과 — 트랜잭션/감사/상태기계/어댑터 모두 Bridge가 관리)
+        bridge_result = await bridge_flows.create_reservation(
+            store_id    = store_id,
+            args        = tool_args,
+            call_log_id = call_log_id,
+            deposit_cents = 0,        # free reservation today; deposits later via Maverick
+        )
 
-        # Fire-and-forget SMS confirmation on success (CLAUDE.md async flow rule)
-        # (성공 시 fire-and-forget SMS 확인 — CLAUDE.md 비동기 흐름 규칙)
-        if result.get("success") and not result.get("idempotent"):
+        # Adapt bridge result to the existing tool_response shape Gemini expects
+        # (Gemini가 기대하는 기존 tool_response 형식으로 변환)
+        if bridge_result.get("success"):
+            result = {
+                "success":        True,
+                "reservation_id": bridge_result.get("pos_object_id"),
+                "transaction_id": bridge_result.get("transaction_id"),
+                "message":        bridge_result.get("message", ""),
+                "idempotent":     False,
+            }
+
+            # Fire-and-forget SMS confirmation
             try:
                 phone_e164 = normalize_phone_us(tool_args.get("customer_phone", ""))
                 asyncio.create_task(send_reservation_confirmation(
@@ -336,8 +358,12 @@ async def _stream_gemini_response(
                 ))
                 log.info("SMS confirmation queued (fire-and-forget) to=%s", phone_e164)
             except Exception as exc:
-                # SMS failure must NEVER affect the in-call experience
                 log.warning("SMS dispatch error (ignored): %s", exc)
+        else:
+            result = {
+                "success": False,
+                "error":   bridge_result.get("error", "reservation failed"),
+            }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 

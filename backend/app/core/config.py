@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     twilio_from_number:           str = ""   # E.164 sender number (fallback for non-US)
     twilio_messaging_service_sid: str = ""   # MG... — preferred for US A2P 10DLC routing
 
+    # Maverick payment gateway — disabled until spec + keys arrive
+    # (Maverick 결제 게이트웨이 — 스펙/키 도착 전까지 비활성)
+    maverick_enabled:        bool = False
+    maverick_api_key:        str = ""
+    maverick_api_url:        str = "https://api.maverickpayments.com"  # placeholder
+    maverick_webhook_secret: str = ""
+
     # Relay timeout (릴레이 타임아웃)
     relay_timeout_seconds: int = 8
 
