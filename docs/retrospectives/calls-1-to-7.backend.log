@@ -1,0 +1,256 @@
+INFO:     Started server process [35348]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:65432 - "GET /health HTTP/1.1" 200 OK
+INFO:     ('100.20.5.228', 0) - "WebSocket /llm-websocket/call_ff0f3edcb871dd671d9aab23561" [accepted]
+21:09:15 [MONITOR] CONNECTED call=call_ff0f3edcb871dd671d9aab23561
+INFO:     connection open
+21:09:16 [MONITOR] INIT OK call=call_ff0f3edcb871dd671d9aab23561 store=JM Cafe
+INFO:     100.20.5.228:0 - "POST /api/retell/webhook HTTP/1.1" 200 OK
+21:09:17 [MONITOR] GREETING call=call_ff0f3edcb871dd671d9aab23561: 'Hi, this is Aria from JM Cafe, how can I help you today?'
+21:09:18 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:18 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:19 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:19 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:20 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:20 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:20 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:21 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:21 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:21 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:21 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:23 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:23 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:23 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:25 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:25 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:25 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:26 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:26 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:26 [MONITOR] TURN 1 resp_id=1 user="Yeah. Actually, I'd like to make a reservation for tomorrow."
+21:09:27 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=1 resp_id=1 TTFT=958ms total=1015ms chunks=3 chars=85 OK
+21:09:27 [MONITOR]   response="I'd be happy to help you with that. Could I please get your name for the reservation?"
+21:09:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:27 [MONITOR] TURN 2 resp_id=2 user="Yeah. Actually, I'd like to make a reservation for tomorrow,"
+21:09:28 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=2 resp_id=2 TTFT=916ms total=968ms chunks=3 chars=78 OK
+21:09:28 [MONITOR]   response="I'd be happy to help with that. May I have your name and phone number, please?"
+21:09:28 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:28 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:28 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:28 [MONITOR] TURN 3 resp_id=3 user="Yeah. Actually, I'd like to make a reservation for tomorrow,"
+21:09:29 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=3 resp_id=3 TTFT=844ms total=891ms chunks=3 chars=96 OK
+21:09:29 [MONITOR]   response='I can certainly help you with that. Could you please provide your full name for the reservation?'
+21:09:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:30 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:30 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:30 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:32 [MONITOR] TURN 4 resp_id=4 user="Yeah. Actually, I'd like to make a reservation for tomorrow,"
+21:09:33 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=4 resp_id=4 TTFT=839ms total=887ms chunks=3 chars=104 OK
+21:09:33 [MONITOR]   response='Confirming a reservation for Michael Chang, party of five, on Tuesday, April 28 at 7 PM — is that ri'
+21:09:33 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:33 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:33 [MONITOR] TURN 5 resp_id=5 user="Yeah. Actually, I'd like to make a reservation for tomorrow,"
+21:09:34 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=5 resp_id=5 TTFT=793ms total=875ms chunks=3 chars=114 OK
+21:09:34 [MONITOR]   response="Got it, so that's a reservation for Michael Chain, a party of five, tomorrow, April 28th, at 7 PM — "
+21:09:34 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:34 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:34 [MONITOR] TURN 6 resp_id=6 user="Yeah. Actually, I'd like to make a reservation for tomorrow,"
+21:09:35 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=6 resp_id=6 TTFT=1096ms total=1116ms chunks=2 chars=99 OK
+21:09:35 [MONITOR]   response='I can certainly help with that. Could you please let me know how many people will be in your party?'
+21:09:35 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:36 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:36 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:36 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:37 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:37 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:38 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:38 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:38 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:39 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:39 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:40 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:40 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:40 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:41 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:41 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:41 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:42 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:42 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:43 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:43 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:43 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:43 [MONITOR] TURN 7 resp_id=7 user='Oh, four. '
+21:09:44 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=7 resp_id=7 TTFT=996ms total=1049ms chunks=3 chars=107 OK
+21:09:44 [MONITOR]   response='Thank you, Michael. Confirming a reservation for four people on Tuesday, April 28, at 7 PM — is that'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:44 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:44 [MONITOR] TURN 8 resp_id=8 user='Oh, four four people. '
+21:09:45 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=8 resp_id=8 TTFT=943ms total=1000ms chunks=3 chars=101 OK
+21:09:45 [MONITOR]   response='Confirming a reservation for Michael Chang, party of 4, on Tuesday, April 28 at 7 PM — is that right'
+21:09:45 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:45 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:45 [MONITOR] TURN 9 resp_id=9 user='Oh, four. Four people. '
+21:09:46 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=9 resp_id=9 TTFT=762ms total=808ms chunks=3 chars=109 OK
+21:09:46 [MONITOR]   response="Thanks, Michael. Just to confirm, that's a reservation for four people on April 28th at 7 PM — is th"
+21:09:46 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:47 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:47 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:48 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:48 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:49 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:49 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:49 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:50 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:50 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:51 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:51 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:51 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:52 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:52 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:53 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:53 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:54 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:54 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:54 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:55 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:55 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:56 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:56 [MONITOR] TURN 10 resp_id=10 user='Yes. '
+21:09:58 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=10 resp_id=10 TTFT=1930ms total=1979ms chunks=3 chars=96 OK
+21:09:58 [MONITOR]   response="Great, that's all set! Your reservation for four is confirmed for tomorrow, April 28th, at 7 PM."
+21:09:58 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:58 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:09:58 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:09:58 [MONITOR] TURN 11 resp_id=11 user="Yeah. That's right. "
+21:10:00 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=11 resp_id=11 TTFT=1884ms total=1886ms chunks=3 chars=96 OK
+21:10:00 [MONITOR]   response='Great, your reservation is confirmed for April 28th at 7 PM. We look forward to seeing you then!'
+21:10:00 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:00 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:01 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:01 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:02 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:02 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:03 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:03 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:03 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:04 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:04 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:04 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:06 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:06 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:06 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:07 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:07 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:07 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:10 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:10 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:10 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:10 [MONITOR] TURN 12 resp_id=12 user='Okay. '
+21:10:11 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=12 resp_id=12 TTFT=978ms total=996ms chunks=2 chars=22 OK
+21:10:11 [MONITOR]   response='See you then, Michael!'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:11 [MONITOR] ECHO SKIP call=call_ff0f3edcb871dd671d9aab23561 resp_id=13 user='Okay. '
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:11 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:12 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:12 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:12 [MONITOR] TURN 13 resp_id=14 user='Okay. Did it go through? '
+21:10:13 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=13 resp_id=14 TTFT=810ms total=841ms chunks=3 chars=81 OK
+21:10:13 [MONITOR]   response='Yes, your reservation for Michael Chang on April 28th at 7 PM is fully confirmed.'
+21:10:13 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:13 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:14 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:14 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:15 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:15 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:15 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:16 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:16 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:17 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:17 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:17 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:18 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:18 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:19 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:19 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:22 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:22 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:22 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:22 [MONITOR] TURN 14 resp_id=15 user='Okay. '
+21:10:23 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=14 resp_id=15 TTFT=788ms total=807ms chunks=2 chars=81 OK
+21:10:23 [MONITOR]   response='Great, we look forward to seeing you then! Let me know if you need anything else.'
+21:10:23 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:23 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:23 [MONITOR] TURN 15 resp_id=16 user='Okay. Thank you. '
+21:10:24 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=15 resp_id=16 TTFT=993ms total=1011ms chunks=2 chars=77 OK
+21:10:24 [MONITOR]   response="You're very welcome, Michael. We look forward to seeing you tomorrow at 7 PM."
+21:10:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:24 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:24 [MONITOR] TURN 16 resp_id=17 user='Okay. Thank you. Thank you so much. '
+21:10:25 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=16 resp_id=17 TTFT=855ms total=856ms chunks=2 chars=52 OK
+21:10:25 [MONITOR]   response="You're very welcome! We'll see you tomorrow at 7 PM."
+21:10:25 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:25 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:25 [MONITOR] TURN 17 resp_id=18 user='Okay. Thank you. Thank you so much. Bye. '
+21:10:27 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=17 resp_id=18 TTFT=1870ms total=1892ms chunks=2 chars=40 OK
+21:10:27 [MONITOR]   response="You're very welcome, have a great night!"
+21:10:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:27 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:27 [MONITOR] TURN 18 resp_id=19 user='Okay. Thank you. Thank you so much. Bye bye. '
+21:10:28 [MONITOR] call=call_ff0f3edcb871dd671d9aab23561 turn=18 resp_id=19 TTFT=1240ms total=1259ms chunks=2 chars=40 OK
+21:10:28 [MONITOR]   response="You're very welcome, have a great night!"
+21:10:28 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:29 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:30 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:30 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:31 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='update_only'
+21:10:32 [MONITOR] MSG call=call_ff0f3edcb871dd671d9aab23561 type='response_required'
+21:10:32 [MONITOR] TURN 19 resp_id=20 user='Yeah. '
+INFO:     connection closed
+21:10:33 [MONITOR] GEMINI ERROR call=call_ff0f3edcb871dd671d9aab23561 turn=19: 
+21:10:33 [MONITOR] ERROR call=call_ff0f3edcb871dd671d9aab23561: Cannot call "send" once a close message has been sent.
+INFO:     100.20.5.228:0 - "POST /api/retell/webhook HTTP/1.1" 200 OK
+INFO:     100.20.5.228:0 - "POST /api/retell/webhook HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58022 - "GET /api/store/reservations?period=month&page=1&limit=20 HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58026 - "GET /api/store/reservations?period=month&page=1&limit=20 HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58081 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58089 - "GET /api/store/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58096 - "GET /api/store/orders?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58102 - "GET /api/store/orders?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58095 - "GET /api/store/metrics?period=all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58106 - "GET /api/store/metrics?period=all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58124 - "GET /api/store/reservations?period=month&page=1&limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58128 - "GET /api/store/reservations?period=month&page=1&limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58259 - "GET /api/store/reservations?period=today&page=1&limit=20 HTTP/1.1" 200 OK
