@@ -117,6 +117,9 @@ async def create_reservation(
         )
         return {"success": False, "error": f"POS create failed: {exc}"}
 
+    # 4b. Backfill bridge_transaction.pos_object_id (Bridge ↔ POS link)
+    await transactions.set_pos_object_id(txn_id, pos_object_id)
+
     # 5. Payment session (NoOp today; Maverick later)
     payments = get_payment_adapter()
     session = await payments.create_session(

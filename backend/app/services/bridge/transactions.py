@@ -201,6 +201,24 @@ async def advance_state(
     return patched_row
 
 
+async def set_pos_object_id(transaction_id: str, pos_object_id: str) -> None:
+    """Backfill pos_object_id on a bridge_transaction after POS create_pending.
+    (POS 객체 생성 직후 bridge_transaction.pos_object_id 백필)
+
+    Pure data link — no state change, no audit event (covered by adjacent
+    state_transition events that already record the POS write).
+    """
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.patch(
+            f"{_REST}/bridge_transactions",
+            headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params={"id": f"eq.{transaction_id}"},
+            json={"pos_object_id": str(pos_object_id)},
+        )
+    if resp.status_code not in (200, 204):
+        log.warning("set_pos_object_id failed %s: %s", resp.status_code, resp.text[:200])
+
+
 async def get_transaction(transaction_id: str) -> Optional[dict[str, Any]]:
     """Read a transaction by id. Returns None if not found.
     (id로 트랜잭션 조회 — 없으면 None)
