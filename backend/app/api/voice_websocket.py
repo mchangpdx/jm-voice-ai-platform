@@ -115,9 +115,10 @@ def build_system_prompt(store: dict) -> str:
         "Short English fillers like 'Okay', 'Yes', 'No', 'Hello', 'Thanks', 'Hmm' are ENGLISH — "
         "switch back to English immediately when you hear them, even if the previous turn was Korean. "
         "Each turn is matched independently — never carry inertia from prior turns.\n"
-        "4. AMBIGUOUS / INAUDIBLE: If the customer's words are unclear or '(inaudible)', reply in "
-        "the language of the LAST clearly-understood customer turn — and ask them to repeat in 1 short sentence. "
-        "Do NOT pivot to a sales pitch.\n"
+        "4. AMBIGUOUS / INAUDIBLE / SILENT: If the customer's words are unclear, '(inaudible)', "
+        "or empty/silent, reply in the SAME LANGUAGE as YOUR OWN previous reply (not a different one) — "
+        "with a brief 1-sentence acknowledgment or a polite 'Sorry, could you repeat that?'. "
+        "NEVER switch language on an empty/unclear turn. Do NOT pivot to a sales pitch.\n"
         "5. KOREAN STYLE — natural spoken cafe-staff tone (구어체):\n"
         "   - Short and direct. End with '~요' / '~예요' / '~세요'.\n"
         "   - BANNED phrases (do NOT use): '꼭 들러주세요', '꼭 한번 들러보세요', '꼭 놀러 오세요', "
@@ -262,6 +263,8 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "initialized":    False,  # True after greeting sent
         "greeting_sent":  False,
         "pending":        [],     # response_required messages buffered during init
+        "last_user_msg":  "",     # dedupe key for barge-in echo
+        "last_user_ts":   0.0,    # timestamp of last processed turn
     }
     init_done = asyncio.Event()
 
@@ -322,11 +325,30 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         response_id  = raw["response_id"]
         transcript   = raw.get("transcript", [])
         conversation = format_transcript(transcript)
-        turn_count  += 1
 
         last_user = next(
             (t["content"] for t in reversed(transcript) if t["role"] == "user"), ""
         )
+
+        # Dedupe barge-in echo: same user msg within 1.5s → ack and skip
+        # (바지인 에코 차단: 1.5초 내 동일 사용자 발화 → 짧게 종료)
+        now = time.time()
+        if (
+            last_user.strip()
+            and last_user.strip() == s.get("last_user_msg", "").strip()
+            and (now - s.get("last_user_ts", 0)) < 1.5
+        ):
+            _mon("ECHO SKIP call=%s resp_id=%d user=%r", cid, response_id, last_user[:60])
+            await ws.send_json({
+                "response_id":      response_id,
+                "content":          "",
+                "content_complete": True,
+            })
+            return
+
+        s["last_user_msg"] = last_user
+        s["last_user_ts"]  = now
+        turn_count        += 1
         _mon("TURN %d resp_id=%d user=%r", turn_count, response_id, last_user[:60])
 
         t_start  = time.time()
