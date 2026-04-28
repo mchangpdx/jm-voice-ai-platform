@@ -133,12 +133,17 @@ def test_combine_handles_utc():
 async def test_insert_reservation_success_returns_id_and_message():
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 201
     fake_resp.json = lambda: [{"id": 999}]
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         result = await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
@@ -170,6 +175,10 @@ async def test_insert_reservation_uses_server_side_store_id():
     """Even if args contain a different store_id, server uses its own."""
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 201
     fake_resp.json = lambda: [{"id": 1}]
@@ -178,6 +187,7 @@ async def test_insert_reservation_uses_server_side_store_id():
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         await r.insert_reservation(args_with_fake, STORE_ID, CALL_LOG_ID)
@@ -190,12 +200,17 @@ async def test_insert_reservation_uses_server_side_store_id():
 async def test_insert_reservation_combines_date_and_time_into_reservation_time():
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 201
     fake_resp.json = lambda: [{"id": 1}]
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
@@ -210,12 +225,17 @@ async def test_insert_reservation_combines_date_and_time_into_reservation_time()
 async def test_insert_reservation_handles_db_failure_gracefully():
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 500
     fake_resp.text = "internal server error"
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         result = await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
@@ -228,12 +248,17 @@ async def test_insert_reservation_handles_db_failure_gracefully():
 async def test_insert_reservation_sets_status_confirmed():
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 201
     fake_resp.json = lambda: [{"id": 1}]
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
@@ -245,6 +270,104 @@ async def test_insert_reservation_sets_status_confirmed():
         assert sent_payload["party_size"]     == 4
 
 
+# ── Time format helpers ──────────────────────────────────────────────────────
+
+def test_format_time_12h_pm():
+    from app.skills.scheduler.reservation import format_time_12h
+    assert format_time_12h("19:00") == "7:00 PM"
+    assert format_time_12h("13:30") == "1:30 PM"
+    assert format_time_12h("12:00") == "12:00 PM"
+
+
+def test_format_time_12h_am():
+    from app.skills.scheduler.reservation import format_time_12h
+    assert format_time_12h("08:30") == "8:30 AM"
+    assert format_time_12h("00:00") == "12:00 AM"
+    assert format_time_12h("00:15") == "12:15 AM"
+
+
+def test_format_date_human():
+    from app.skills.scheduler.reservation import format_date_human
+    # 2026-04-28 was a Tuesday in Gregorian — verify weekday format
+    s = format_date_human("2026-04-28")
+    assert "April" in s
+    assert "28" in s
+
+
+# ── Idempotency + 12-hour message ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_insert_reservation_message_uses_12_hour_time():
+    """Spoken response back to customer must use 7:00 PM, not 19:00."""
+    from app.skills.scheduler import reservation as r
+
+    fake_resp = AsyncMock()
+    fake_resp.status_code = 201
+    fake_resp.json = lambda: [{"id": 1}]
+
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
+    with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
+        instance.post = AsyncMock(return_value=fake_resp)
+
+        result = await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
+
+    assert "7:00 PM" in result["message"]
+    assert "19:00" not in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_insert_reservation_idempotent_returns_existing_id():
+    """Second call within 5 min for same store+phone+time returns same id, no duplicate INSERT."""
+    from app.skills.scheduler import reservation as r
+
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: [{"id": 999}]
+
+    with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
+        instance.post = AsyncMock()  # should never be called
+
+        result = await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
+
+    assert result["success"] is True
+    assert result["reservation_id"] == 999
+    assert result["idempotent"] is True
+    instance.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_insert_reservation_inserts_when_no_idempotent_match():
+    """Probe returns empty → POST runs normally."""
+    from app.skills.scheduler import reservation as r
+
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
+    fake_post = AsyncMock()
+    fake_post.status_code = 201
+    fake_post.json = lambda: [{"id": 42}]
+
+    with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
+        instance.post = AsyncMock(return_value=fake_post)
+
+        result = await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)
+
+    assert result["success"] is True
+    assert result["reservation_id"] == 42
+    assert result["idempotent"] is False
+    instance.post.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_insert_reservation_skips_call_log_id_for_fk_safety():
     """FK constraint reservations.call_log_id → call_logs.call_id fails mid-call,
@@ -252,12 +375,17 @@ async def test_insert_reservation_skips_call_log_id_for_fk_safety():
     """
     from app.skills.scheduler import reservation as r
 
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
     fake_resp = AsyncMock()
     fake_resp.status_code = 201
     fake_resp.json = lambda: [{"id": 1}]
 
     with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
         instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
         instance.post = AsyncMock(return_value=fake_resp)
 
         await r.insert_reservation(VALID_ARGS, STORE_ID, CALL_LOG_ID)

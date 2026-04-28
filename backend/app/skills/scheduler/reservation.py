@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -150,6 +150,25 @@ def combine_date_time(date_str: str, time_str: str, tz: str = "America/Los_Angel
     return aware.isoformat()
 
 
+def format_time_12h(time_str: str) -> str:
+    """Convert HH:MM 24-hour string to '7:00 PM' style (12-hour with AM/PM).
+    (24시간제 HH:MM → '7:00 PM' 형식 12시간제 변환)
+    """
+    h, m = time_str.split(":")
+    h_int = int(h)
+    suffix = "AM" if h_int < 12 else "PM"
+    h12 = h_int % 12 or 12
+    return f"{h12}:{m} {suffix}"
+
+
+def format_date_human(date_str: str) -> str:
+    """Convert YYYY-MM-DD to 'Tuesday, April 28' (no year for short voice).
+    (YYYY-MM-DD → 'Tuesday, April 28' 음성용 짧은 형식)
+    """
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    return d.strftime("%A, %B %-d")
+
+
 # ── Async DB insert ──────────────────────────────────────────────────────────
 
 async def insert_reservation(
@@ -161,8 +180,12 @@ async def insert_reservation(
     """Insert a reservation row in Supabase. Pure server-side; ignores any store_id in args.
     (Supabase에 예약 행 삽입. 서버 측 처리 — args의 store_id는 무시)
 
+    Idempotency: if a row already exists for the same store + phone + reservation_time
+    within the last 5 minutes, return that row's id instead of creating a duplicate.
+    (중복 차단: 동일 store + phone + reservation_time이 5분 내 존재하면 기존 row 반환)
+
     Returns:
-        {"success": True,  "reservation_id": int, "message": str}
+        {"success": True,  "reservation_id": int, "message": str, "idempotent": bool}
         {"success": False, "error": str}
     """
     ok, err = validate_reservation_args(args)
@@ -176,6 +199,13 @@ async def insert_reservation(
         )
     except Exception as exc:  # malformed date/time despite regex
         return {"success": False, "error": f"could not parse date/time: {exc}"}
+
+    time_12h     = format_time_12h(args["reservation_time"])
+    date_human   = format_date_human(args["reservation_date"])
+    success_msg  = (
+        f"Reservation confirmed for {args['customer_name']}, "
+        f"party of {int(args['party_size'])}, on {date_human} at {time_12h}."
+    )
 
     # NOTE: call_log_id is intentionally NOT inserted here. The reservations.call_log_id
     # column has a FK to call_logs.call_id, but the call_logs row is only created by the
@@ -195,6 +225,31 @@ async def insert_reservation(
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
+            # Idempotency probe: same store + phone + time exists in last 5 min?
+            # (중복 검사: 같은 store + phone + time이 5분 내 있는지)
+            since_iso = (datetime.now(ZoneInfo("UTC")) - timedelta(minutes=5)).isoformat()
+            probe = await client.get(
+                f"{_REST}/reservations",
+                headers=_SUPABASE_HEADERS,
+                params={
+                    "store_id":         f"eq.{store_id}",
+                    "customer_phone":   f"eq.{args['customer_phone']}",
+                    "reservation_time": f"eq.{reservation_time_iso}",
+                    "created_at":       f"gte.{since_iso}",
+                    "select":           "id",
+                    "limit":            "1",
+                },
+            )
+            if probe.status_code == 200 and probe.json():
+                existing_id = probe.json()[0]["id"]
+                log.info("Reservation idempotent hit: id=%s for phone=%s", existing_id, args["customer_phone"])
+                return {
+                    "success":        True,
+                    "reservation_id": existing_id,
+                    "message":        success_msg,
+                    "idempotent":     True,
+                }
+
             resp = await client.post(
                 f"{_REST}/reservations",
                 headers={**_SUPABASE_HEADERS, "Prefer": "return=representation"},
@@ -214,8 +269,6 @@ async def insert_reservation(
     return {
         "success":        True,
         "reservation_id": new_id,
-        "message": (
-            f"Reservation confirmed for {row['customer_name']}, "
-            f"party of {row['party_size']} on {args['reservation_date']} at {args['reservation_time']}."
-        ),
+        "message":        success_msg,
+        "idempotent":     False,
     }
