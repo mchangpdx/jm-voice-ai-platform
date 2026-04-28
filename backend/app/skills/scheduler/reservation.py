@@ -125,6 +125,16 @@ def validate_reservation_args(args: dict[str, Any]) -> tuple[bool, str]:
         if field not in args or args[field] in (None, ""):
             return False, f"missing required field: {field}"
 
+    # Phone must be 10-digit US OR 11-digit (1-prefix) OR already +E.164 with ≥10 digits.
+    # 9th call exposed: STT cut user off after 7 digits, '97150337727' (11 chars, no +)
+    # passed our normalize_phone_us but is invalid. Reject incomplete numbers up-front.
+    # (전화번호 자릿수 부족 차단 — 9차 통화에서 7자리만 입력된 채 통과한 회귀 방지)
+    phone_digits_only = re.sub(r"\D", "", str(args["customer_phone"]))
+    if len(phone_digits_only) not in (10, 11):
+        return False, "customer_phone must be 10 or 11 digits (US format)"
+    if len(phone_digits_only) == 11 and not phone_digits_only.startswith("1"):
+        return False, "11-digit phone must start with country code 1 (US)"
+
     if not _DATE_RE.match(str(args["reservation_date"])):
         return False, "reservation_date must be YYYY-MM-DD format"
 

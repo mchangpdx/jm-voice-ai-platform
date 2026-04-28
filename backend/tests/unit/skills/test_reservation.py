@@ -111,6 +111,36 @@ def test_validate_rejects_bad_time_format():
     assert "time" in err.lower()
 
 
+def test_validate_rejects_phone_with_too_few_digits():
+    """9th call regression: STT cut off after 7 digits, '97150337727' (no +) was
+    accepted by normalize_phone_us as as-is. Validator MUST reject incomplete."""
+    from app.skills.scheduler.reservation import validate_reservation_args
+    for bad_phone in ["971503", "9715033", "97150337", "971503377"]:  # 6, 7, 8, 9 digits
+        args = {**VALID_ARGS, "customer_phone": bad_phone}
+        ok, err = validate_reservation_args(args)
+        assert ok is False, f"expected reject for {bad_phone!r}"
+        assert "phone" in err.lower()
+
+
+def test_validate_accepts_10_or_11_digit_phone_in_various_formats():
+    from app.skills.scheduler.reservation import validate_reservation_args
+    for good_phone in ["5037079566", "503-707-9566", "(503) 707-9566",
+                       "+15037079566", "1-503-707-9566", "15037079566"]:
+        args = {**VALID_ARGS, "customer_phone": good_phone}
+        ok, err = validate_reservation_args(args)
+        assert ok is True, f"expected accept for {good_phone!r}, got {err}"
+
+
+def test_validate_rejects_11_digit_with_wrong_country_code():
+    """11-digit phone where first digit is NOT 1 (e.g. our 9th-call '97150337727'
+    that came from STT misread — looks like 11 chars but wrong shape)."""
+    from app.skills.scheduler.reservation import validate_reservation_args
+    args = {**VALID_ARGS, "customer_phone": "97150337727"}  # the actual 9th-call value
+    ok, err = validate_reservation_args(args)
+    assert ok is False
+    assert "phone" in err.lower() or "country" in err.lower()
+
+
 # ── combine_date_time ─────────────────────────────────────────────────────────
 
 def test_combine_produces_iso_8601_with_tz():
