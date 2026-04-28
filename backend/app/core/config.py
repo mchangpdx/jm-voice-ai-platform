@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     loyverse_api_url: str = "https://api.loyverse.com/v1.0"
     loyverse_api_key: str = ""  # Loyverse bearer token
 
+    # Retell AI — STT/TTS/VAT engine (Retell AI — 음성 엔진)
+    retell_api_key: str = ""     # Bearer token for Retell REST API (Retell REST API용 Bearer 토큰)
+    retell_api_url: str = "https://api.retellai.com"  # No /v2 prefix for agent endpoints (/v2 없음)
+
     # Relay timeout (릴레이 타임아웃)
     relay_timeout_seconds: int = 8
 

@@ -1,0 +1,494 @@
+# Retell Custom LLM WebSocket endpoint — bridges Retell ↔ Gemini
+# (Retell Custom LLM WebSocket 엔드포인트 — Retell ↔ Gemini 브리지)
+#
+# Architecture (ported from jm-saas-platform pattern):
+#   1. WS connects  → eager _init_session() fires as asyncio task immediately
+#   2. _init_session: REST /v2/get-call → agent_id → Supabase store → greeting → response_id=0
+#   3. Any response_required arriving during init is buffered, drained after greeting
+#   4. call_details event: fallback for web_call / Retell Simulation flows
+#   5. ping → ping_response  |  update_only → ignored  |  reminder_required → nudge
+#
+# Language: English default — natural switch to Spanish / Korean on customer cue.
+# Retell docs: https://docs.retellai.com/api-references/llm-websocket
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import AsyncGenerator, Optional
+
+import httpx
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+
+from app.core.config import settings
+
+log = logging.getLogger(__name__)
+
+# ── Call monitor — dedicated FileHandler bypasses uvicorn log filtering ────────
+# (uvicorn 로거 필터 우회 — 전용 파일에 직접 기록)
+
+_monitor_log = logging.getLogger("jm.monitor")
+_monitor_log.setLevel(logging.DEBUG)
+_monitor_log.propagate = False
+_mh = logging.FileHandler("/tmp/jm-monitor.log")
+_mh.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+_monitor_log.addHandler(_mh)
+_sh = logging.StreamHandler()
+_sh.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+_monitor_log.addHandler(_sh)
+
+
+def _mon(msg: str, *args) -> None:
+    _monitor_log.info("[MONITOR] " + msg, *args)
+
+
+def _log_turn(
+    call_id: str,
+    turn: int,
+    response_id: int,
+    ttft_ms: float,
+    total_ms: float,
+    chunks: int,
+    chars: int,
+    error: bool = False,
+) -> None:
+    status = "ERROR" if error else "OK"
+    _mon("call=%s turn=%d resp_id=%d TTFT=%dms total=%dms chunks=%d chars=%d %s",
+         call_id, turn, response_id, ttft_ms, total_ms, chunks, chars, status)
+
+router = APIRouter(tags=["Voice WebSocket"])
+
+_SUPABASE_HEADERS = {
+    "apikey":        settings.supabase_service_role_key,
+    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+    "Content-Type":  "application/json",
+}
+_REST = f"{settings.supabase_url}/rest/v1"
+
+# ── Greeting prompt — mirrors GREETING_PROMPT in jm-saas-platform llmServer.js ─
+# Sent as a synthetic turn to Gemini immediately after store context is loaded.
+# Uses response_id=0 (no response_required from Retell yet).
+# (Retell이 response_required를 보내기 전에 response_id=0으로 선제적 인사말 전송)
+_GREETING_PROMPT = (
+    "The call just connected. Greet the customer warmly in 1 sentence — "
+    "say you're the AI assistant for this store and ask how you can help. "
+    "Be natural and friendly, not robotic. English by default. "
+    "Do NOT use bullet points, numbers, or any markdown."
+)
+
+
+# ── Pure helper functions (unit-testable, no I/O) ─────────────────────────────
+
+def build_system_prompt(store: dict) -> str:
+    """Compose Gemini system prompt from store persona fields.
+    (스토어 페르소나 필드로 Gemini 시스템 프롬프트 조합)
+    """
+    parts: list[str] = []
+
+    if store.get("system_prompt"):
+        parts.append(store["system_prompt"])
+
+    if store.get("business_hours"):
+        parts.append(f"Business hours: {store['business_hours']}")
+
+    if store.get("custom_knowledge"):
+        parts.append(f"Store knowledge:\n{store['custom_knowledge']}")
+
+    if store.get("temporary_prompt"):
+        parts.append(
+            f"TODAY'S IMPORTANT NOTES (highest priority):\n{store['temporary_prompt']}"
+        )
+
+    # Global rules — voice quality + language + safety guardrails
+    # Short prompt = lower TTFT. Every rule pulls its weight.
+    parts.append(
+        "STRICT RULES (non-negotiable):\n"
+        "1. BREVITY: Max 2 sentences per response. Voice-only — zero markdown, zero lists.\n"
+        "2. LANGUAGE: Default English. Switch naturally to the language the customer uses "
+        "   (English, Spanish, or Korean). If asked for any other language, politely decline "
+        "   in the customer's current language and continue in the supported languages.\n"
+        "3. NO PHANTOM BOOKINGS: Never say you booked, reserved, or confirmed anything "
+        "   unless a booking system has actually confirmed it. Say 'walk-ins welcome' "
+        "   if the store does not take reservations.\n"
+        "4. UNCERTAINTY: If you don't know, say 'I'm not sure — please ask us directly.' "
+        "   Never fabricate facts.\n"
+        "5. ESCALATION: If the caller is upset or asks for a manager, say "
+        "   'Let me connect you with our manager right away.'"
+    )
+
+    return "\n\n".join(parts)
+
+
+def format_transcript(transcript: list[dict]) -> str:
+    """Convert Retell transcript array to conversation string for Gemini.
+    (Retell transcript 배열을 Gemini용 대화 문자열로 변환)
+    """
+    lines = []
+    for turn in transcript:
+        role = "Customer" if turn["role"] == "user" else "Assistant"
+        lines.append(f"{role}: {turn['content']}")
+    return "\n".join(lines)
+
+
+# ── Async I/O helpers (mockable in tests) ─────────────────────────────────────
+
+async def _load_store_by_agent(agent_id: str) -> Optional[dict]:
+    """Fetch store row from Supabase by retell_agent_id.
+    (Supabase에서 retell_agent_id로 스토어 행 조회)
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{_REST}/stores",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "retell_agent_id": f"eq.{agent_id}",
+                "select": "id,name,retell_agent_id,system_prompt,temporary_prompt,"
+                          "business_hours,custom_knowledge,is_active",
+                "limit": "1",
+            },
+        )
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+async def _get_agent_id_from_call(call_id: str) -> Optional[str]:
+    """Fetch agent_id from Retell REST API using call_id.
+    (Retell REST API에서 call_id로 agent_id 조회)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{settings.retell_api_url}/v2/get-call/{call_id}",
+                headers={
+                    "Authorization": f"Bearer {settings.retell_api_key}",
+                    "Content-Type":  "application/json",
+                },
+            )
+        if resp.status_code == 200:
+            return resp.json().get("agent_id")
+    except Exception as exc:
+        log.warning("_get_agent_id_from_call failed: %s", exc)
+    return None
+
+
+async def _generate_greeting(system_prompt: str) -> str:
+    """Generate a short proactive greeting from Gemini (non-streaming, fast).
+    (Gemini로 짧은 선제적 인사말 생성 — 논스트리밍, 빠른 단일 응답)
+    """
+    import google.generativeai as genai
+
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        "models/gemini-3.1-flash-lite-preview",
+        system_instruction=system_prompt,
+    )
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: model.generate_content(_GREETING_PROMPT),
+    )
+    return response.text.strip()
+
+
+async def _stream_gemini_response(
+    system_prompt: str,
+    conversation: str,
+) -> AsyncGenerator[str, None]:
+    """Stream Gemini text chunks for a given conversation turn.
+    (대화 턴에 대한 Gemini 텍스트 청크 스트리밍)
+    """
+    import google.generativeai as genai
+
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        "models/gemini-3.1-flash-lite-preview",
+        system_instruction=system_prompt,
+    )
+
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: model.generate_content(conversation, stream=True),
+    )
+
+    for chunk in response:
+        text = chunk.text if hasattr(chunk, "text") and chunk.text else ""
+        if text:
+            yield text
+
+
+# ── WebSocket endpoint ────────────────────────────────────────────────────────
+
+@router.websocket("/llm-websocket/{call_id}")
+async def websocket_llm(websocket: WebSocket, call_id: str):
+    """Retell Custom LLM WebSocket — eager init pattern from jm-saas-platform.
+    (jm-saas-platform의 즉시 초기화 패턴 — Retell call_details 이벤트 의존성 제거)
+
+    Init sequence (mirrors llmServer.js _initSession):
+      1. Accept WS → immediately start _init_session() as asyncio task
+      2. _init_session: REST → agent_id → Supabase store → greeting (response_id=0)
+      3. response_required arriving during init is queued → drained after greeting
+      4. call_details arrival → fallback/override if store not yet loaded
+    """
+    await websocket.accept()
+    call_started  = time.time()
+    turn_count    = 0
+    _mon("CONNECTED call=%s", call_id)
+
+    # Session state — mutated by _init_session task and WS message loop
+    sess = {
+        "store":          None,   # dict once loaded
+        "system_prompt":  "",
+        "initialized":    False,  # True after greeting sent
+        "greeting_sent":  False,
+        "pending":        [],     # response_required messages buffered during init
+    }
+    init_done = asyncio.Event()
+
+    # ── Inner: proactive init (fires immediately on connect) ──────────────────
+    async def _init_session():
+        """Load store via REST, generate greeting, mark initialized."""
+        try:
+            agent_id = await _get_agent_id_from_call(call_id)
+            if not agent_id:
+                _mon("INIT: no agent_id from REST for call=%s (web/test call)", call_id)
+                return  # will fall back to call_details event
+
+            store = await _load_store_by_agent(agent_id)
+            if not store:
+                _mon("INIT: no store for agent_id=%s call=%s", agent_id, call_id)
+                return
+
+            sess["store"]         = store
+            sess["system_prompt"] = build_system_prompt(store)
+            _mon("INIT OK call=%s store=%s", call_id, store["name"])
+
+            # Generate and send proactive greeting (response_id=0, no prior request)
+            try:
+                greeting = await _generate_greeting(sess["system_prompt"])
+                if websocket.client_state.value == 1:  # CONNECTED
+                    await websocket.send_json({
+                        "response_id":      0,
+                        "content":          greeting,
+                        "content_complete": True,
+                    })
+                    sess["greeting_sent"] = True
+                    _mon("GREETING call=%s: %r", call_id, greeting[:80])
+            except Exception as exc:
+                _mon("GREETING ERROR call=%s: %s", call_id, exc)
+                # Send static fallback so TTS pipeline is not left hanging
+                if websocket.client_state.value == 1:
+                    await websocket.send_json({
+                        "response_id":      0,
+                        "content":          "Hello! Thanks for calling. How can I help you today?",
+                        "content_complete": True,
+                    })
+                    sess["greeting_sent"] = True
+
+        except Exception as exc:
+            _mon("INIT ERROR call=%s: %s", call_id, exc)
+        finally:
+            sess["initialized"] = True
+            init_done.set()
+
+            # Drain any response_required messages that arrived during init
+            for queued in sess["pending"]:
+                await _handle_response_required(websocket, call_id, queued, sess)
+            sess["pending"].clear()
+
+    # ── Inner: streaming response handler ────────────────────────────────────
+    async def _handle_response_required(ws, cid, raw, s):
+        nonlocal turn_count
+        response_id  = raw["response_id"]
+        transcript   = raw.get("transcript", [])
+        conversation = format_transcript(transcript)
+        turn_count  += 1
+
+        last_user = next(
+            (t["content"] for t in reversed(transcript) if t["role"] == "user"), ""
+        )
+        _mon("TURN %d resp_id=%d user=%r", turn_count, response_id, last_user[:60])
+
+        t_start  = time.time()
+        ttft_ms  = 0.0
+        chunk_n  = 0
+        full_txt = ""
+        error    = False
+
+        try:
+            async for chunk in _stream_gemini_response(s["system_prompt"], conversation):
+                if chunk_n == 0:
+                    ttft_ms = (time.time() - t_start) * 1000
+                chunk_n  += 1
+                full_txt += chunk
+                await ws.send_json({
+                    "response_id":      response_id,
+                    "content":          chunk,
+                    "content_complete": False,
+                })
+            await ws.send_json({
+                "response_id":      response_id,
+                "content":          "",
+                "content_complete": True,
+            })
+        except Exception as exc:
+            error = True
+            _mon("GEMINI ERROR call=%s turn=%d: %s", cid, turn_count, exc)
+            await ws.send_json({
+                "response_id":      response_id,
+                "content":          "I'm sorry, I had a connection issue. Could you repeat that?",
+                "content_complete": True,
+            })
+
+        total_ms = (time.time() - t_start) * 1000
+        _log_turn(cid, turn_count, response_id, ttft_ms, total_ms, chunk_n, len(full_txt), error)
+        _mon("  response=%r", full_txt[:100])
+
+    # ── Launch eager init immediately ─────────────────────────────────────────
+    asyncio.create_task(_init_session())
+
+    try:
+        async for raw in websocket.iter_json():
+            interaction = raw.get("interaction_type")
+            _mon("MSG call=%s type=%r", call_id, interaction)
+
+            # ── call_details: fallback / web_call / Retell Simulation ─────────
+            if interaction == "call_details":
+                if not sess["store"]:
+                    # Eager init hasn't loaded store yet (or failed) — load now
+                    call_info = raw.get("call", {})
+                    agent_id  = call_info.get("agent_id", "")
+                    from_num  = call_info.get("from_number", "unknown")
+                    store = await _load_store_by_agent(agent_id)
+                    if not store:
+                        _mon("NO STORE agent_id=%s — closing", agent_id)
+                        await websocket.send_json({"error": f"No store found for agent {agent_id}"})
+                        await websocket.close(code=1008)
+                        return
+                    sess["store"]         = store
+                    sess["system_prompt"] = build_system_prompt(store)
+                    _mon("CALL START (call_details) call=%s store=%s agent=%s from=%s",
+                         call_id, store["name"], agent_id[:24], from_num)
+                else:
+                    # Eager init already loaded — just log from_number
+                    from_num = raw.get("call", {}).get("from_number", "unknown")
+                    _mon("CALL START (already init) call=%s store=%s from=%s",
+                         call_id, sess["store"]["name"], from_num)
+
+            # ── ping: keepalive ───────────────────────────────────────────────
+            elif interaction == "ping":
+                await websocket.send_json({"interaction_type": "ping_response"})
+
+            # ── response_required: buffer during init, process after ───────────
+            elif interaction == "response_required":
+                if not sess["store"]:
+                    # Still waiting for init — buffer this message
+                    _mon("BUFFERING resp_id=%d (init in progress)", raw.get("response_id"))
+                    sess["pending"].append(raw)
+                    # Wait for init to complete (with safety timeout)
+                    try:
+                        await asyncio.wait_for(init_done.wait(), timeout=4.0)
+                    except asyncio.TimeoutError:
+                        _mon("INIT TIMEOUT call=%s — sending hold message", call_id)
+                        await websocket.send_json({
+                            "response_id":      raw["response_id"],
+                            "content":          "Thank you for calling! One moment please.",
+                            "content_complete": True,
+                        })
+                    # Remove from pending (already drained by _init_session or we gave a hold)
+                    if raw in sess["pending"]:
+                        sess["pending"].remove(raw)
+                else:
+                    await _handle_response_required(websocket, call_id, raw, sess)
+
+            # ── update_only: transcript push, no reply needed ─────────────────
+            elif interaction == "update_only":
+                pass
+
+            # ── reminder_required: customer went silent — send nudge ───────────
+            elif interaction == "reminder_required":
+                response_id = raw.get("response_id", 0)
+                _mon("REMINDER call=%s resp_id=%d", call_id, response_id)
+                await websocket.send_json({
+                    "response_id":      response_id,
+                    "content":          "I'm still here — is there anything else I can help you with?",
+                    "content_complete": True,
+                })
+
+    except WebSocketDisconnect:
+        elapsed = time.time() - call_started
+        store_name = sess["store"]["name"] if sess["store"] else "unknown"
+        _mon("CALL END call=%s turns=%d duration=%.1fs store=%s",
+             call_id, turn_count, elapsed, store_name)
+    except Exception as exc:
+        _mon("ERROR call=%s: %s", call_id, exc)
+
+
+# ── Retell Webhook — POST /api/retell/webhook ─────────────────────────────────
+# Retell calls this after each call ends (call_ended / call_analyzed events).
+# (Retell이 통화 종료 후 call_ended / call_analyzed 이벤트로 호출)
+
+@router.post("/api/retell/webhook")
+async def retell_webhook(request: Request):
+    """Receive Retell post-call event and upsert to call_logs.
+    (Retell 통화 후 이벤트 수신 → call_logs 업서트)
+    """
+    body = await request.json()
+    event = body.get("event", "")
+    call  = body.get("call",  {})
+
+    if event not in ("call_ended", "call_analyzed"):
+        return {"status": "ignored", "event": event}
+
+    call_id       = call.get("call_id")
+    agent_id      = call.get("agent_id", "")
+    start_time    = call.get("start_timestamp")
+    end_time      = call.get("end_timestamp")
+    duration_ms   = (end_time - start_time) if (start_time and end_time) else None
+    duration_sec  = round(duration_ms / 1000) if duration_ms else None
+
+    disconnect    = call.get("disconnection_reason", "")
+    call_status   = "Successful" if disconnect in ("user_hangup", "agent_hangup") else "Unsuccessful"
+
+    analysis      = call.get("call_analysis", {})
+    summary       = analysis.get("call_summary", "")
+    sentiment     = analysis.get("user_sentiment", "")
+    recording_url = call.get("recording_url", "")
+    transcript    = call.get("transcript", "")
+
+    store = await _load_store_by_agent(agent_id)
+    store_id = store["id"] if store else None
+
+    if not store_id:
+        log.warning("Webhook: no store for agent_id=%s call=%s", agent_id, call_id)
+        return {"status": "ok", "warning": "store not found"}
+
+    row = {
+        "call_id":        call_id,
+        "store_id":       store_id,
+        "agent_id":       agent_id,
+        "start_time":     call.get("start_timestamp"),
+        "customer_phone": call.get("from_number", ""),
+        "duration":       duration_sec,
+        "sentiment":      sentiment,
+        "call_status":    call_status,
+        "recording_url":  recording_url,
+        "summary":        summary,
+        "transcript":     transcript,
+    }
+    row = {k: v for k, v in row.items() if v is not None and v != ""}
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{_REST}/call_logs",
+            headers={**_SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
+            json=row,
+        )
+
+    if resp.status_code not in (200, 201):
+        log.error("Webhook upsert failed: %s %s", resp.status_code, resp.text[:200])
+        return {"status": "error", "detail": resp.text[:200]}
+
+    log.info("Webhook saved: call=%s store=%s status=%s", call_id, store_id, call_status)
+    return {"status": "ok"}

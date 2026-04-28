@@ -10,6 +10,7 @@ const Reservations  = lazy(() => import('./views/fsr/store/Reservations'))
 const Analytics     = lazy(() => import('./views/fsr/store/Analytics'))
 const Settings      = lazy(() => import('./views/fsr/store/Settings'))
 const CctvOverlay   = lazy(() => import('./views/fsr/store/CctvOverlay'))
+const AiVoiceBot    = lazy(() => import('./views/fsr/store/AiVoiceBot'))
 
 // Agency dashboard (에이전시 대시보드)
 const AgencyLayout      = lazy(() => import('./views/agency/Layout'))
@@ -72,7 +73,7 @@ function AppRoutes() {
         >
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview"           element={<Overview />} />
-          <Route path="ai-voice-bot"       element={<ComingSoon title="AI Voice Bot" />} />
+          <Route path="ai-voice-bot"       element={<AiVoiceBot />} />
           <Route path="call-history"       element={<CallHistory />} />
           <Route path="reservations"       element={<Reservations />} />
           <Route path="analytics"          element={<Analytics />} />
