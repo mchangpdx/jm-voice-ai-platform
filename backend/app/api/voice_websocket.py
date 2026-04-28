@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -71,10 +72,12 @@ _REST = f"{settings.supabase_url}/rest/v1"
 # Uses response_id=0 (no response_required from Retell yet).
 # (Retell이 response_required를 보내기 전에 response_id=0으로 선제적 인사말 전송)
 _GREETING_PROMPT = (
-    "The call just connected. Greet the customer warmly in 1 sentence — "
-    "say you're the AI assistant for this store and ask how you can help. "
-    "Be natural and friendly, not robotic. English by default. "
-    "Do NOT use bullet points, numbers, or any markdown."
+    "The call just connected. The customer hasn't spoken yet. "
+    "Greet warmly in 1 short sentence in ENGLISH (default for the first hello) — "
+    "say the store name, briefly introduce yourself as the AI assistant, "
+    "and invite the customer to ask anything. "
+    "Sound like a friendly real human, not a script. "
+    "No markdown, no bullets, no emojis."
 )
 
 
@@ -104,17 +107,33 @@ def build_system_prompt(store: dict) -> str:
     # Short prompt = lower TTFT. Every rule pulls its weight.
     parts.append(
         "STRICT RULES (non-negotiable):\n"
-        "1. BREVITY: Max 2 sentences per response. Voice-only — zero markdown, zero lists.\n"
-        "2. LANGUAGE: Default English. Switch naturally to the language the customer uses "
-        "   (English, Spanish, or Korean). If asked for any other language, politely decline "
-        "   in the customer's current language and continue in the supported languages.\n"
-        "3. NO PHANTOM BOOKINGS: Never say you booked, reserved, or confirmed anything "
-        "   unless a booking system has actually confirmed it. Say 'walk-ins welcome' "
-        "   if the store does not take reservations.\n"
-        "4. UNCERTAINTY: If you don't know, say 'I'm not sure — please ask us directly.' "
-        "   Never fabricate facts.\n"
-        "5. ESCALATION: If the caller is upset or asks for a manager, say "
-        "   'Let me connect you with our manager right away.'"
+        "1. BREVITY: Max 1-2 short sentences per reply. Voice-only — zero markdown, zero lists. "
+        "Do NOT tack on extra recommendations or upsells unless the customer asked.\n"
+        "2. LANGUAGES SUPPORTED: English, Spanish (Español), Korean (한국어). "
+        "All three are fully supported — never claim you can't speak any of them.\n"
+        "3. LANGUAGE MATCHING (CRITICAL): Reply in the language of the customer's CURRENT message. "
+        "Short English fillers like 'Okay', 'Yes', 'No', 'Hello', 'Thanks', 'Hmm' are ENGLISH — "
+        "switch back to English immediately when you hear them, even if the previous turn was Korean. "
+        "Each turn is matched independently — never carry inertia from prior turns.\n"
+        "4. AMBIGUOUS / INAUDIBLE: If the customer's words are unclear or '(inaudible)', reply in "
+        "the language of the LAST clearly-understood customer turn — and ask them to repeat in 1 short sentence. "
+        "Do NOT pivot to a sales pitch.\n"
+        "5. KOREAN STYLE — natural spoken cafe-staff tone (구어체):\n"
+        "   - Short and direct. End with '~요' / '~예요' / '~세요'.\n"
+        "   - BANNED phrases (do NOT use): '꼭 들러주세요', '꼭 한번 들러보세요', '꼭 놀러 오세요', "
+        "'맛보러 오세요', '편하신 시간에 언제든', '편하게 ~ 주세요', '꼭 맛보고 가세요'.\n"
+        "   - BANNED behavior: weather small-talk ('날씨가 좋으니'), repeating menu unsolicited, "
+        "self-serving 들러주세요 endings.\n"
+        "   - Good examples: '네, 가능해요.' / '오늘은 오후 9시까지 해요.' / "
+        "'죄송한데 그건 매니저한테 확인해 볼게요.' / '아보카도 BLT 샌드위치는 12달러예요.'\n"
+        "   - Bad examples: '아보카도 BLT 샌드위치 세트가 준비되어 있으니 꼭 들러주세요.' (clichéd, pushy)\n"
+        "6. OTHER LANGUAGES: For languages outside English/Spanish/Korean, briefly apologize in the "
+        "customer's current language and offer one of the three.\n"
+        "7. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless a "
+        "system has actually confirmed it. Say 'walk-ins welcome' if reservations are not taken.\n"
+        "8. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
+        "9. ESCALATION: If the caller is upset or asks for a manager: "
+        "'Let me connect you with our manager right away.'"
     )
 
     return "\n\n".join(parts)
@@ -464,11 +483,18 @@ async def retell_webhook(request: Request):
         log.warning("Webhook: no store for agent_id=%s call=%s", agent_id, call_id)
         return {"status": "ok", "warning": "store not found"}
 
+    # Retell sends timestamps as ms-epoch ints — Postgres timestamp column needs ISO 8601
+    # (Retell의 ms 단위 epoch 정수 → Postgres timestamp 컬럼은 ISO 8601 필요)
+    start_iso = (
+        datetime.fromtimestamp(start_time / 1000, tz=timezone.utc).isoformat()
+        if start_time else None
+    )
+
     row = {
         "call_id":        call_id,
         "store_id":       store_id,
         "agent_id":       agent_id,
-        "start_time":     call.get("start_timestamp"),
+        "start_time":     start_iso,
         "customer_phone": call.get("from_number", ""),
         "duration":       duration_sec,
         "sentiment":      sentiment,
