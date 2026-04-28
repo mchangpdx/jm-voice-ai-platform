@@ -294,6 +294,56 @@ def test_format_date_human():
     assert "28" in s
 
 
+# ── Phone normalization ──────────────────────────────────────────────────────
+
+def test_normalize_phone_10_digits_to_e164():
+    from app.skills.scheduler.reservation import normalize_phone_us
+    assert normalize_phone_us("5037079566")    == "+15037079566"
+    assert normalize_phone_us("503-707-9566")  == "+15037079566"
+    assert normalize_phone_us("(503) 707-9566") == "+15037079566"
+
+
+def test_normalize_phone_already_e164_unchanged():
+    from app.skills.scheduler.reservation import normalize_phone_us
+    assert normalize_phone_us("+15037079566") == "+15037079566"
+
+
+def test_normalize_phone_11_digit_us_prefix():
+    from app.skills.scheduler.reservation import normalize_phone_us
+    assert normalize_phone_us("15037079566") == "+15037079566"
+
+
+def test_normalize_phone_passes_unknown_format():
+    from app.skills.scheduler.reservation import normalize_phone_us
+    # Non-US, non-standard — return as-is
+    assert normalize_phone_us("") == ""
+
+
+@pytest.mark.asyncio
+async def test_insert_reservation_normalizes_phone_in_db_payload():
+    from app.skills.scheduler import reservation as r
+
+    fake_probe = AsyncMock()
+    fake_probe.status_code = 200
+    fake_probe.json = lambda: []
+
+    fake_resp = AsyncMock()
+    fake_resp.status_code = 201
+    fake_resp.json = lambda: [{"id": 1}]
+
+    args = {**VALID_ARGS, "customer_phone": "503-707-9566"}
+
+    with patch("app.skills.scheduler.reservation.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(return_value=fake_probe)
+        instance.post = AsyncMock(return_value=fake_resp)
+
+        await r.insert_reservation(args, STORE_ID, CALL_LOG_ID)
+
+        sent_payload = instance.post.call_args.kwargs["json"]
+        assert sent_payload["customer_phone"] == "+15037079566"
+
+
 # ── Idempotency + 12-hour message ────────────────────────────────────────────
 
 @pytest.mark.asyncio

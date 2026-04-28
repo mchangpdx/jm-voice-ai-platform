@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -649,4 +649,70 @@ async def retell_webhook(request: Request):
         return {"status": "error", "detail": resp.text[:200]}
 
     log.info("Webhook saved: call=%s store=%s status=%s", call_id, store_id, call_status)
-    return {"status": "ok"}
+
+    # ── Backfill: link reservations created during this call to call_log_id ─────
+    # (백필: 이 통화 중 생성된 예약을 call_log_id로 연결)
+    # FK to call_logs(call_id) is now satisfied. Match by store_id + customer_phone +
+    # NULL call_log_id within the call's time window.
+    backfill_count = await _backfill_reservation_call_log_id(
+        store_id, call_id, call.get("from_number", ""), start_iso,
+    )
+    if backfill_count:
+        log.info("Backfilled call_log_id on %d reservations for call=%s", backfill_count, call_id)
+
+    return {"status": "ok", "backfilled_reservations": backfill_count}
+
+
+async def _backfill_reservation_call_log_id(
+    store_id: str,
+    call_id: str,
+    from_number: str,
+    start_iso: Optional[str],
+) -> int:
+    """After call ends, link reservations created during the call to call_log_id.
+    (통화 종료 후, 통화 중 생성된 예약을 call_log_id로 연결)
+
+    Strategy: store_id + customer_phone + NULL call_log_id + created_at within 1 hour
+    of call start. Returns count of rows updated.
+    """
+    from app.skills.scheduler.reservation import normalize_phone_us
+
+    if not from_number or not start_iso:
+        return 0
+
+    phone_e164 = normalize_phone_us(from_number)
+    # Backfill window: 1 hour before call start to allow for clock skew / long calls
+    try:
+        start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+        window_start = (start_dt - timedelta(hours=1)).isoformat()
+    except Exception:
+        return 0
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Find candidates
+        probe = await client.get(
+            f"{_REST}/reservations",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "store_id":       f"eq.{store_id}",
+                "customer_phone": f"eq.{phone_e164}",
+                "call_log_id":    "is.null",
+                "created_at":     f"gte.{window_start}",
+                "select":         "id",
+            },
+        )
+        if probe.status_code != 200 or not probe.json():
+            return 0
+
+        ids = [str(r["id"]) for r in probe.json()]
+        # PATCH each (PostgREST allows id=in.(...) filter)
+        patch_resp = await client.patch(
+            f"{_REST}/reservations",
+            headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params={"id": f"in.({','.join(ids)})"},
+            json={"call_log_id": call_id},
+        )
+        if patch_resp.status_code in (200, 204):
+            return len(ids)
+        log.warning("Backfill PATCH failed %s: %s", patch_resp.status_code, patch_resp.text[:120])
+        return 0

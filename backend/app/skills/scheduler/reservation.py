@@ -169,6 +169,25 @@ def format_date_human(date_str: str) -> str:
     return d.strftime("%A, %B %-d")
 
 
+def normalize_phone_us(phone: str) -> str:
+    """Normalize US phone to E.164 (+1XXXXXXXXXX). Idempotent on already-formatted strings.
+    (미국 전화번호 E.164 정규화 — 이미 정규화된 문자열에는 영향 없음)
+
+    Handles: '503-707-9566' / '(503) 707-9566' / '5037079566' / '15037079566'
+             / '+15037079566' / '+1 503 707 9566'
+    """
+    if not phone:
+        return phone
+    cleaned = re.sub(r"\D", "", phone)
+    if len(cleaned) == 10:
+        return f"+1{cleaned}"
+    if len(cleaned) == 11 and cleaned.startswith("1"):
+        return f"+{cleaned}"
+    if phone.startswith("+"):
+        return f"+{cleaned}"
+    return phone  # leave as-is for unknown formats
+
+
 # ── Async DB insert ──────────────────────────────────────────────────────────
 
 async def insert_reservation(
@@ -200,6 +219,10 @@ async def insert_reservation(
     except Exception as exc:  # malformed date/time despite regex
         return {"success": False, "error": f"could not parse date/time: {exc}"}
 
+    # Normalize phone to E.164 so idempotency probe + analytics see consistent format
+    # (E.164로 정규화 — idempotency 검사 + 분석에서 일관된 형식 보장)
+    customer_phone_e164 = normalize_phone_us(args["customer_phone"])
+
     time_12h     = format_time_12h(args["reservation_time"])
     date_human   = format_date_human(args["reservation_date"])
     success_msg  = (
@@ -215,7 +238,7 @@ async def insert_reservation(
     row = {
         "store_id":         store_id,                 # always server-resolved
         "customer_name":    args["customer_name"],
-        "customer_phone":   args["customer_phone"],
+        "customer_phone":   customer_phone_e164,
         "party_size":       int(args["party_size"]),
         "reservation_time": reservation_time_iso,
         "status":           "confirmed",
@@ -233,7 +256,7 @@ async def insert_reservation(
                 headers=_SUPABASE_HEADERS,
                 params={
                     "store_id":         f"eq.{store_id}",
-                    "customer_phone":   f"eq.{args['customer_phone']}",
+                    "customer_phone":   f"eq.{customer_phone_e164}",
                     "reservation_time": f"eq.{reservation_time_iso}",
                     "created_at":       f"gte.{since_iso}",
                     "select":           "id",
