@@ -23,6 +23,7 @@ import httpx
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 
 from app.core.config import settings
+from app.skills.scheduler.reservation import RESERVATION_TOOL_DEF, insert_reservation
 
 log = logging.getLogger(__name__)
 
@@ -130,10 +131,21 @@ def build_system_prompt(store: dict) -> str:
         "   - Bad examples: '아보카도 BLT 샌드위치 세트가 준비되어 있으니 꼭 들러주세요.' (clichéd, pushy)\n"
         "6. OTHER LANGUAGES: For languages outside English/Spanish/Korean, briefly apologize in the "
         "customer's current language and offer one of the three.\n"
-        "7. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless a "
-        "system has actually confirmed it. Say 'walk-ins welcome' if reservations are not taken.\n"
-        "8. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
-        "9. ESCALATION: If the caller is upset or asks for a manager: "
+        "7. RESERVATIONS — TOOL USAGE: When a customer asks to make a reservation:\n"
+        "   (a) Politely collect ALL six fields one at a time, briefly: name, phone, "
+        "       date (e.g. 'tomorrow' = compute YYYY-MM-DD), time (24-hour HH:MM), party size.\n"
+        "   (b) Recite the full summary back: 'Confirming a reservation for [name], "
+        "       party of [N], on [date] at [time] — is that right?'\n"
+        "   (c) ONLY after the customer says 'yes' verbally, call make_reservation "
+        "       with user_explicit_confirmation=true.\n"
+        "   (d) If the tool returns success, tell the customer the reservation is confirmed and read back "
+        "       the reservation_id if provided. If it returns an error, apologize and offer to try again.\n"
+        "   (e) If the store does NOT take reservations (no business_hours fits or knowledge says walk-ins only), "
+        "       tell the customer 'walk-ins are always welcome' and DO NOT call the tool.\n"
+        "8. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless the "
+        "make_reservation tool actually returned success. Never invent confirmation numbers.\n"
+        "9. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
+        "10. ESCALATION: If the caller is upset or asks for a manager: "
         "'Let me connect you with our manager right away.'"
     )
 
@@ -214,28 +226,99 @@ async def _generate_greeting(system_prompt: str) -> str:
 async def _stream_gemini_response(
     system_prompt: str,
     conversation: str,
+    store_id: Optional[str] = None,
+    call_log_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
-    """Stream Gemini text chunks for a given conversation turn.
-    (대화 턴에 대한 Gemini 텍스트 청크 스트리밍)
+    """Stream Gemini text chunks. Handles make_reservation tool calls transparently.
+    (Gemini 텍스트 스트리밍 + make_reservation 도구 호출 처리)
+
+    Function-calling flow:
+      1. Send conversation with tools enabled
+      2. If chunk contains function_call → execute server-side, send result back
+      3. Stream the follow-up text response after tool result
+
+    store_id and call_log_id are server-resolved — never trusted from Gemini args.
     """
     import google.generativeai as genai
+    from google.generativeai import protos
 
     genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(
-        "models/gemini-3.1-flash-lite-preview",
-        system_instruction=system_prompt,
-    )
+
+    # Enable function calling only when we have a store context (real calls).
+    # Synthetic test calls (no store_id) keep the legacy text-only path for stability.
+    # (스토어 컨텍스트가 있을 때만 도구 활성화 — 합성 테스트 호출은 기존 텍스트 전용 경로 유지)
+    kwargs: dict = {"system_instruction": system_prompt}
+    tools_enabled = bool(store_id)
+    if tools_enabled:
+        kwargs["tools"] = [RESERVATION_TOOL_DEF]
+
+    model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview", **kwargs)
+    chat = model.start_chat()
 
     loop = asyncio.get_event_loop()
+
     response = await loop.run_in_executor(
         None,
-        lambda: model.generate_content(conversation, stream=True),
+        lambda: chat.send_message(conversation, stream=True),
     )
 
+    function_call = None
     for chunk in response:
-        text = chunk.text if hasattr(chunk, "text") and chunk.text else ""
-        if text:
-            yield text
+        try:
+            for cand in chunk.candidates:
+                for part in cand.content.parts:
+                    fc = getattr(part, "function_call", None)
+                    if fc and getattr(fc, "name", ""):
+                        function_call = fc
+                        continue
+                    txt = getattr(part, "text", "")
+                    if txt:
+                        yield txt
+        except Exception:
+            # Fallback: SDK shape variation across versions (SDK 버전 호환 폴백)
+            txt = getattr(chunk, "text", "") or ""
+            if txt:
+                yield txt
+
+    if not function_call or not tools_enabled:
+        return
+
+    # ── Tool roundtrip ────────────────────────────────────────────────────
+    tool_name = function_call.name
+    tool_args = dict(function_call.args) if function_call.args else {}
+    log.info("Gemini tool call: %s args=%s", tool_name, tool_args)
+
+    if tool_name == "make_reservation":
+        result = await insert_reservation(tool_args, store_id, call_log_id)
+    else:
+        result = {"success": False, "error": f"unsupported tool: {tool_name}"}
+
+    log.info("Tool %s result: %s", tool_name, result)
+
+    followup = await loop.run_in_executor(
+        None,
+        lambda: chat.send_message(
+            protos.Content(parts=[
+                protos.Part(function_response=protos.FunctionResponse(
+                    name=tool_name,
+                    response={"result": result},
+                ))
+            ]),
+            stream=True,
+        ),
+    )
+
+    for chunk in followup:
+        try:
+            for cand in chunk.candidates:
+                for part in cand.content.parts:
+                    txt = getattr(part, "text", "")
+                    if txt:
+                        yield txt
+        except Exception:
+            txt = getattr(chunk, "text", "") or ""
+            if txt:
+                yield txt
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────
@@ -357,8 +440,13 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         full_txt = ""
         error    = False
 
+        store_id_for_tools = s["store"]["id"] if s.get("store") else None
+
         try:
-            async for chunk in _stream_gemini_response(s["system_prompt"], conversation):
+            async for chunk in _stream_gemini_response(
+                s["system_prompt"], conversation,
+                store_id=store_id_for_tools, call_log_id=cid,
+            ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000
                 chunk_n  += 1
