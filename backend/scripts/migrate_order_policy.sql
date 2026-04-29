@@ -3,9 +3,13 @@
 --
 -- A-axis only in this version: ticket threshold.
 -- B-axis (trusted tier) and C-axis (daily uncollected cap) are deferred.
+--
+-- Idempotent: every change is gated by IF NOT EXISTS or guarded with a
+-- DO-block + information_schema lookup so re-running is a no-op.
 
--- store_configs.order_policy: per-store policy JSON. NULL = policy off (pay_first
--- for every order — safe default that matches current behaviour).
+-- ── store_configs.order_policy ────────────────────────────────────────────
+-- Per-store policy JSON. NULL = policy off (pay_first for every order — the
+-- safe default that matches current behaviour).
 alter table store_configs
     add column if not exists order_policy jsonb;
 
@@ -14,21 +18,42 @@ comment on column store_configs.order_policy is
   'Total < threshold ⇒ kitchen now, pay link later. '
   '>= threshold or NULL ⇒ pay_first (current default).';
 
--- bridge_transactions.payment_lane records the lane chosen at order time —
--- fire_immediate or pay_first. Used by reconciliation + analytics.
+-- ── bridge_transactions.payment_lane ──────────────────────────────────────
+-- Records the lane chosen at order time — fire_immediate | pay_first.
+-- NULL means the row predates the policy engine (legacy reservation flow).
 alter table bridge_transactions
-    add column if not exists payment_lane text
-        check (payment_lane in ('fire_immediate', 'pay_first', null));
+    add column if not exists payment_lane text;
 
--- bridge_transactions.fired_at: timestamp the kitchen received the order
--- (for fire_immediate lane). pay_first lane writes this when fulfillment runs.
+-- Add the CHECK constraint only if it doesn't exist yet. Postgres has no
+-- "ADD CONSTRAINT IF NOT EXISTS", so we look it up first.
+-- Note: NULL is allowed alongside the two enum values — `payment_lane IS
+-- NULL OR payment_lane IN (...)` is the correct shape; a bare IN list
+-- silently rejects NULL because NULL-comparisons return NULL (not TRUE).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.table_constraints
+     where table_name      = 'bridge_transactions'
+       and constraint_name = 'bridge_transactions_payment_lane_check'
+  ) then
+    alter table bridge_transactions
+      add constraint bridge_transactions_payment_lane_check
+      check (payment_lane is null
+             or payment_lane in ('fire_immediate', 'pay_first'));
+  end if;
+end $$;
+
+-- ── Timestamp columns for fire_immediate lane ─────────────────────────────
+-- fired_at:     when the kitchen received the order. Set on
+--               PENDING → FIRED_UNPAID (fire_immediate) and on
+--               PAID    → FULFILLED   (pay_first).
+-- no_show_at:   terminal write-off moment when reconciliation marks an
+--               unpaid fire_immediate order NO_SHOW (T+30min default).
 alter table bridge_transactions
-    add column if not exists fired_at timestamptz;
-
--- bridge_transactions.no_show_at: terminal timestamp when reconciliation
--- writes off an unpaid fired_immediate order (T+30min default).
+    add column if not exists fired_at   timestamptz;
 alter table bridge_transactions
     add column if not exists no_show_at timestamptz;
 
--- New state values are enforced in Python (state_machine.py) — no DB-level
--- enum migration needed since bridge_transactions.state is text.
+-- New state values (FIRED_UNPAID, NO_SHOW) are enforced in Python
+-- (state_machine.py); bridge_transactions.state is text, so no DB enum
+-- migration is needed.

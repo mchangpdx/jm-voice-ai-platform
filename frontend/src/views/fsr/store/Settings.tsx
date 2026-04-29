@@ -19,6 +19,7 @@ interface StoreSettings {
   is_override_busy: boolean
   override_until: string | null
   busy_schedules: BusySchedule[]
+  fire_immediate_threshold_cents: number   // Phase 2-B.1.7b — 0 = policy off
 }
 
 const US_TIMEZONES = [
@@ -47,6 +48,11 @@ export default function Settings() {
   const [hourlyWage, setHourlyWage] = useState('')
   const [timezone, setTimezone]     = useState('')
 
+  // Phase 2-B.1.7b — Order Policy state. UI takes dollars; API takes cents.
+  // (UI는 달러, API는 센트 단위)
+  const [fireThresholdDollars, setFireThresholdDollars] = useState('0')
+  const [policySaving, setPolicySaving]                 = useState(false)
+
   // New schedule form state (per day)
   const [addingDay, setAddingDay]   = useState<number | null>(null)
   const [newStart, setNewStart]     = useState('12:00')
@@ -62,6 +68,9 @@ export default function Settings() {
       setStoreSettings(s)
       setHourlyWage(String(s.hourly_wage))
       setTimezone(s.timezone)
+      // Cents → dollars for the input field. Empty input is rendered as "0".
+      // (센트 → 달러 변환, 입력이 비면 "0")
+      setFireThresholdDollars(((s.fire_immediate_threshold_cents ?? 0) / 100).toFixed(2))
     }).finally(() => setLoading(false))
   }, [])
 
@@ -80,6 +89,29 @@ export default function Settings() {
       flash('Saved!')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Save the fire_immediate threshold. UI input is in dollars; API expects
+  // cents. Backend caps at 10000 cents ($100); 0 disables the policy.
+  // (정책 임계값 저장 — UI=달러, API=센트, 0이면 비활성)
+  const savePolicySettings = async () => {
+    const dollars = parseFloat(fireThresholdDollars)
+    if (isNaN(dollars) || dollars < 0) return
+    const cents = Math.round(dollars * 100)
+    if (cents > 10000) return
+    setPolicySaving(true)
+    try {
+      const r = await api.patch('/store/settings', {
+        fire_immediate_threshold_cents: cents,
+      })
+      setStoreSettings((s) => s ? {
+        ...s,
+        fire_immediate_threshold_cents: r.data.fire_immediate_threshold_cents,
+      } : s)
+      flash('Order policy saved!')
+    } finally {
+      setPolicySaving(false)
     }
   }
 
@@ -181,6 +213,48 @@ export default function Settings() {
 
         <button className={styles.saveBtn} onClick={saveKpiSettings} disabled={saving}>
           💾 {saving ? 'Saving…' : 'Save KPI Settings'}
+        </button>
+      </div>
+
+      {/* ── Section 1.5: Order Policy — fire_immediate threshold (주문 정책) ── */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionIcon}>🍳</span>
+          <div>
+            <div className={styles.sectionTitle}>Order Policy — Fire-Immediate Threshold</div>
+            <div className={styles.sectionDesc}>
+              Tickets <strong>under</strong> this amount go straight to the kitchen and the customer
+              gets a payment link by SMS. Tickets <strong>at or above</strong> require payment before
+              the kitchen sees them. Set <strong>$0</strong> to require payment first for every order.
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.fieldRow}>
+          <div className={styles.fieldGroup}>
+            <label className={styles.fieldLabel}>Threshold (USD)</label>
+            <div className={styles.inputPrefix}>
+              <span className={styles.prefix}>$</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={fireThresholdDollars}
+                onChange={(e) => setFireThresholdDollars(e.target.value)}
+              />
+            </div>
+            <p className={styles.fieldHint}>
+              {Number(fireThresholdDollars) > 0
+                ? `Orders under $${Number(fireThresholdDollars).toFixed(2)} fire to the kitchen immediately. Larger orders wait for payment.`
+                : 'Policy is OFF — every order waits for payment before reaching the kitchen.'}
+            </p>
+          </div>
+        </div>
+
+        <button className={styles.saveBtn} onClick={savePolicySettings} disabled={policySaving}>
+          💾 {policySaving ? 'Saving…' : 'Save Order Policy'}
         </button>
       </div>
 
