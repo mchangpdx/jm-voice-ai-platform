@@ -22,9 +22,15 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+
+
+def _now_iso() -> str:
+    # ISO-8601 UTC, used as Loyverse receipt_date (영수증 생성 시각)
+    return datetime.now(timezone.utc).isoformat()
 
 from app.core.config import settings
 from app.services.bridge.pos.base import POSAdapter
@@ -51,8 +57,17 @@ class LoyversePOSAdapter(POSAdapter):
     def __init__(self, api_key: Optional[str] = None) -> None:
         # Per-store key takes precedence; fall back to global env setting
         # (매장별 키 우선; 글로벌 환경 설정 fallback)
-        self.api_key  = api_key or settings.loyverse_api_key
-        self.api_url  = settings.loyverse_api_url.rstrip("/")
+        raw_key = api_key if api_key is not None else settings.loyverse_api_key
+        # Strip embedded control chars (\n \r \t) AND surrounding whitespace —
+        # Supabase-stored keys frequently arrive with stray control characters
+        # that survive plain .strip() because they sit in the middle of the value.
+        # Without this, httpx raises "Invalid character in header content".
+        # (DB 저장 키에 흔한 제어 문자 제거 — 헤더 오류 방지)
+        cleaned = "".join(
+            ch for ch in str(raw_key) if ch not in ("\n", "\r", "\t")
+        ).strip()
+        self.api_key = cleaned
+        self.api_url = settings.loyverse_api_url.rstrip("/")
         if not self.api_key:
             raise ValueError(
                 "LoyversePOSAdapter requires api_key (per-store or via "
@@ -68,6 +83,38 @@ class LoyversePOSAdapter(POSAdapter):
         }
 
     # ── POSAdapter implementation ───────────────────────────────────────────
+
+    async def fetch_payment_type_id(self) -> Optional[str]:
+        """GET /payment_types — return the first active payment_type id, used to
+        populate receipt.payments[].payment_type_id (required by Loyverse).
+        (영수증 필수 필드 payment_type_id 조회 — 첫 활성 항목 반환)
+        """
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{self.api_url}/payment_types",
+                headers=self._headers(),
+            )
+        if resp.status_code != 200:
+            log.error("Loyverse fetch_payment_type_id %s", resp.status_code)
+            return None
+        items = resp.json().get("payment_types") or []
+        return str(items[0]["id"]) if items else None
+
+    async def fetch_loyverse_store_id(self) -> Optional[str]:
+        """GET /stores — return the Loyverse internal store id (NOT our Supabase
+        UUID). Required on every receipt. Multi-store accounts return [0] today.
+        (Loyverse 내부 매장 ID 조회 — 영수증 필수, Supabase UUID와 다름)
+        """
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{self.api_url}/stores",
+                headers=self._headers(),
+            )
+        if resp.status_code != 200:
+            log.error("Loyverse fetch_loyverse_store_id %s", resp.status_code)
+            return None
+        items = resp.json().get("stores") or []
+        return str(items[0]["id"]) if items else None
 
     async def create_pending(
         self,
@@ -85,24 +132,58 @@ class LoyversePOSAdapter(POSAdapter):
                 "Route reservation creation through SupabasePOSAdapter."
             )
 
-        # Build a minimal Loyverse /receipts payload. The full Loyverse schema
-        # is rich (taxes, tips, store_id, customer_id) — kept lean here to
-        # validate the adapter contract; richer mapping arrives with Phase 2-B
-        # (create_order tool) once we have the full menu sync online.
-        # (최소 페이로드로 어댑터 계약 검증 — 풍부한 매핑은 Phase 2-B에서 추가)
+        # ── Pre-fetch required Loyverse references ──────────────────────────
+        # Both calls hit Loyverse but are cheap (small payloads, can be cached
+        # later in stores.pos_meta column). Done sequentially today; can be
+        # gathered concurrently with asyncio.gather once we add a result cache.
+        # (영수증 필수 참조 정보 사전 조회 — 추후 캐시 가능)
+        payment_type_id  = await self.fetch_payment_type_id()
+        loyverse_store_id = await self.fetch_loyverse_store_id()
+
+        # ── Build line_items + canonical total from items[] ────────────────
+        # line_items is the truth source for total_money. orderData.total_cents
+        # is intentionally ignored — caller-supplied totals were the source of
+        # MISMATCHED_PAYMENT errors in the legacy Node demo.
+        # (line_items가 truth source — 호출자 total은 무시)
+        line_items: list[dict[str, Any]] = []
+        running_total: float = 0.0
+        for item in payload.get("items", []) or []:
+            qty   = int(item.get("quantity", 1))
+            price = float(item.get("price", 0))
+            li: dict[str, Any] = {
+                "item_name":         item.get("name", ""),
+                "quantity":          qty,
+                "price":             round(price, 2),
+                "gross_total_money": round(price * qty, 2),
+                "total_money":       round(price * qty, 2),
+            }
+            if item.get("variant_id"): li["variant_id"] = item["variant_id"]
+            if item.get("item_id"):    li["item_id"]    = item["item_id"]
+            line_items.append(li)
+            running_total += price * qty
+
+        total_money = round(running_total, 2)
+
+        # ── Build full receipt body ─────────────────────────────────────────
         receipt_payload: dict[str, Any] = {
-            "source": "JM Voice AI",
-            "note":   f"customer={payload.get('customer_name', '')} "
-                      f"phone={payload.get('customer_phone', '')}",
-            "line_items": [
+            "store_id":     loyverse_store_id,
+            "receipt_type": "SALE",
+            "source":       "JM Voice AI",
+            "receipt_date": _now_iso(),
+            "note":         f"customer={payload.get('customer_name', '')} "
+                            f"phone={payload.get('customer_phone', '')}",
+            "line_items":   line_items,
+            "total_money":  total_money,
+            "payments": [
                 {
-                    "variant_id": item.get("variant_id"),
-                    "quantity":   item.get("quantity", 1),
-                    "price":      item.get("price"),
+                    "payment_type_id": payment_type_id,
+                    "money_amount":    total_money,
                 }
-                for item in payload.get("items", [])
             ],
         }
+        # Optional external order reference for traceability back to bridge_transactions
+        if payload.get("bridge_tx_id"):
+            receipt_payload["order"] = str(payload["bridge_tx_id"])
 
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
