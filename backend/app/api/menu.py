@@ -13,14 +13,44 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 
+from app.core.config import settings
 from app.services.menu.inventory import apply_inventory_levels
 from app.services.menu.sync import sync_menu_from_pos
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Menu"])
+
+_SUPABASE_HEADERS = {
+    "apikey":        settings.supabase_service_role_key,
+    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+}
+_REST = f"{settings.supabase_url}/rest/v1"
+
+
+async def _find_loyverse_store_ids() -> list[str]:
+    """Return all store UUIDs whose pos_provider is 'loyverse'.
+    (pos_provider='loyverse' 매장 목록 — items webhook이 어느 매장 메뉴를 갱신할지 결정)
+
+    Loyverse webhooks don't carry our internal store UUID, so we resolve by
+    pos_provider. Single-tenant deployments return one row; multi-tenant
+    setups (multiple JM stores on the same Loyverse merchant) return all
+    of them and we re-sync each. A future enhancement maps merchant_id to
+    a specific store row to avoid the broadcast.
+    (단일 테넌트는 1개 행 / 멀티 테넌트는 전체 — 향후 merchant_id 매핑으로 정밀화)
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/stores",
+            headers=_SUPABASE_HEADERS,
+            params={"pos_provider": "eq.loyverse", "select": "id"},
+        )
+    if resp.status_code != 200:
+        return []
+    return [row["id"] for row in (resp.json() or [])]
 
 
 @router.post("/api/pos/sync/{store_id}")
@@ -46,23 +76,44 @@ async def trigger_menu_sync(store_id: str) -> dict[str, Any]:
 @router.post("/api/webhooks/loyverse/item")
 @router.post("/api/webhooks/loyverse/items")
 async def loyverse_items_webhook(request: Request) -> dict[str, Any]:
-    """Stub for Loyverse items.update events.
-    (Loyverse 항목 변경 웹훅 — 200 OK 스텁)
+    """Loyverse items.update events — re-sync the affected store's catalog.
+    (Loyverse 항목 변경 웹훅 — 영향 받은 매장 카탈로그 재동기화)
 
-    Loyverse fires this on item create/update/delete (price change, name
-    change, new variant, etc.). For now we just log and acknowledge so the
-    webhook stops accumulating retries. Full handling — re-syncing the
-    affected item into menu_items — lands in a follow-up commit; the safer
-    interim is operator-triggered POST /api/pos/sync/{store_id}.
-    (현재 200만 응답 — 정식 처리는 후속 커밋, 임시론 수동 sync로 대응)
+    Loyverse fires this on every item create / update / delete (price, name,
+    description, new variant, etc.). The payload only carries item ids — not
+    enough to update menu_items in place — and crucially does NOT include
+    our internal store UUID. We therefore call sync_menu_from_pos() on every
+    Loyverse-configured store, which fetches /items + /inventory and upserts
+    the rows. Idempotent: repeat firings are safe.
+
+    Trade-off: a full sync on every item edit. Acceptable for menus under
+    a few hundred rows; if the catalog grows large, switch to a partial
+    fetch by item id (future enhancement).
+    (전체 재동기화 — 수백 항목 미만 메뉴에 적합 / 대용량은 추후 부분 fetch로 최적화)
     """
     try:
         body = await request.json()
     except Exception:
         body = {}
     n_items = len(body.get("items", []) or []) if isinstance(body, dict) else 0
-    log.info("loyverse items webhook: items=%d", n_items)
-    return {"received": True, "items": n_items}
+
+    store_ids = await _find_loyverse_store_ids()
+    refreshed: list[dict[str, Any]] = []
+    for sid in store_ids:
+        try:
+            res = await sync_menu_from_pos(sid)
+            refreshed.append({"store_id": sid, **res})
+        except Exception as exc:
+            # One store failure must not abort the others — Loyverse retries
+            # the whole webhook on non-2xx, so we still want to return 200
+            # even if one tenant misconfigured its API key.
+            # (한 매장 실패가 다른 매장 재동기화를 막으면 안 됨)
+            log.warning("items webhook sync failed | store=%s | %s", sid, exc)
+            refreshed.append({"store_id": sid, "success": False, "error": str(exc)})
+
+    log.info("loyverse items webhook: items=%d, refreshed_stores=%d",
+             n_items, len(refreshed))
+    return {"received": True, "items": n_items, "synced": refreshed}
 
 
 @router.post("/api/webhooks/loyverse/customers")
