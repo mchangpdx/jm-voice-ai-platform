@@ -45,11 +45,21 @@ class StoreSettings(BaseModel):
     is_override_busy: bool   = False
     override_until:   Optional[str] = None
     busy_schedules:   list["BusySchedule"] = []
+    # Phase 2-B.1.7b — order policy threshold (cents). 0 disables the policy
+    # (every order goes through pay_first). Set > 0 to fire small tickets to
+    # the kitchen immediately and collect payment via SMS link.
+    # (주문 정책 임계값 — 0이면 정책 비활성, 모든 주문 pay_first)
+    fire_immediate_threshold_cents: int = 0
 
 
 class StoreSettingsPatch(BaseModel):
     hourly_wage: Optional[float] = Field(None, gt=0, le=1000)
     timezone:    Optional[str]   = None
+    # Threshold dial exposed to dashboard Settings. ge=0 keeps the policy
+    # explicitly switchable off; le=10000 caps at $100 to prevent operators
+    # from accidentally fire-firing every ticket.
+    # (대시보드 Settings 노출 — 0=비활성, 최대 $100 캡)
+    fire_immediate_threshold_cents: Optional[int] = Field(None, ge=0, le=10000)
 
 
 class BusySchedule(BaseModel):
@@ -73,6 +83,17 @@ class BusyOverrideRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _cfg_to_settings(cfg: dict, schedules: list[dict]) -> StoreSettings:
+    # Pull threshold out of order_policy JSONB if present; default 0 keeps
+    # the policy off until an operator explicitly opts in.
+    # (정책 임계값을 JSONB에서 추출 — 0이면 비활성)
+    policy = cfg.get("order_policy") or {}
+    threshold = 0
+    if isinstance(policy, dict):
+        try:
+            threshold = max(0, int(policy.get("fire_immediate_threshold_cents") or 0))
+        except (TypeError, ValueError):
+            threshold = 0
+
     return StoreSettings(
         hourly_wage=float(cfg.get("hourly_wage") or _DEFAULT_HOURLY_WAGE),
         timezone=cfg.get("timezone") or _DEFAULT_TIMEZONE,
@@ -87,6 +108,7 @@ def _cfg_to_settings(cfg: dict, schedules: list[dict]) -> StoreSettings:
             )
             for s in schedules
         ],
+        fire_immediate_threshold_cents=threshold,
     )
 
 
@@ -127,9 +149,17 @@ async def patch_store_settings(
     """Update store_configs fields (hourly_wage, timezone).
     (store_configs 필드 업데이트 — 시급, 타임존)
     """
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
+    raw_updates = body.model_dump(exclude_none=True)
+    if not raw_updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Pull the policy field out — it lives inside order_policy JSONB, not as
+    # a flat column. Other fields are written through directly.
+    # (정책 임계값은 order_policy JSONB 안으로 머지)
+    threshold_update: Optional[int] = raw_updates.pop(
+        "fire_immediate_threshold_cents", None
+    )
+    updates: dict = dict(raw_updates)
 
     async with httpx.AsyncClient() as client:
         store = await _resolve_store(client, tenant_id)
@@ -138,9 +168,19 @@ async def patch_store_settings(
         cfg_resp = await client.get(
             f"{_REST}/store_configs",
             headers=_SUPABASE_HEADERS,
-            params={"store_id": f"eq.{store_id}", "select": "id"},
+            params={"store_id": f"eq.{store_id}", "select": "id,order_policy"},
         )
         existing = cfg_resp.json() if isinstance(cfg_resp.json(), list) else []
+
+        if threshold_update is not None:
+            # Merge into the existing JSONB policy rather than overwrite —
+            # preserves future B/C-axis fields once they ship.
+            # (기존 JSONB와 머지 — 향후 B/C축 필드 보존)
+            current_policy = (existing[0].get("order_policy") if existing else None) or {}
+            if not isinstance(current_policy, dict):
+                current_policy = {}
+            current_policy["fire_immediate_threshold_cents"] = int(threshold_update)
+            updates["order_policy"] = current_policy
 
         if existing:
             patch_resp = await client.patch(

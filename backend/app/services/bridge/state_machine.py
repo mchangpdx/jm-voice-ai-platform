@@ -30,16 +30,25 @@ class State:
     FAILED        = "failed"
     REFUNDED      = "refunded"
 
+    # Phase 2-B.1.7b — fire_immediate lane states
+    # Kitchen receives the order before payment lands; pay link follows by SMS.
+    # NO_SHOW is the terminal write-off when the customer never pays.
+    # (fire_immediate lane 상태 — 결제 전 키친 인쇄, 미결제 시 no_show)
+    FIRED_UNPAID  = "fired_unpaid"
+    NO_SHOW       = "no_show"
+
 
 # Adjacency list of valid forward edges (refund is the only retro edge)
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    State.PENDING:      {State.PAYMENT_SENT, State.CANCELED},
+    State.PENDING:      {State.PAYMENT_SENT, State.FIRED_UNPAID, State.CANCELED},
     State.PAYMENT_SENT: {State.PAID, State.CANCELED, State.FAILED},
+    State.FIRED_UNPAID: {State.PAID, State.NO_SHOW, State.CANCELED},
     State.PAID:         {State.FULFILLED, State.REFUNDED},
     State.FULFILLED:    {State.REFUNDED},
     State.CANCELED:     set(),     # terminal
     State.FAILED:       set(),     # terminal — recovery requires NEW payment row
     State.REFUNDED:     set(),     # terminal
+    State.NO_SHOW:      set(),     # terminal — written off; loss accounted in metrics
 }
 
 
