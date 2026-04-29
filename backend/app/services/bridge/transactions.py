@@ -80,11 +80,16 @@ async def create_transaction(
     call_log_id:     Optional[str] = None,
     source:          str = "voice",
     actor:           Optional[str] = None,
+    payment_lane:    Optional[str] = None,    # Phase 2-B.1.7b — fire_immediate | pay_first | None
 ) -> dict[str, Any]:
     """INSERT a new bridge_transactions row in state=pending and audit it.
     (state=pending 상태로 bridge_transactions 행 INSERT + 감사)
 
     Returns the inserted row dict (includes id, state, etc).
+
+    payment_lane: routing decision for order flows (Phase 2-B.1.7b). Reservation
+    flows pass None — the column is nullable for legacy/non-order rows.
+    (예약 흐름은 None — 정책 비적용 행)
     """
     if vertical not in _VERTICALS:
         raise ValueError(f"unknown vertical: {vertical!r}; allowed={sorted(_VERTICALS)}")
@@ -99,6 +104,7 @@ async def create_transaction(
         "total_cents":     int(total_cents),
         "state":           State.PENDING,
         "call_log_id":     call_log_id,
+        "payment_lane":    payment_lane,
     }
     row = {k: v for k, v in row.items() if v is not None}
 

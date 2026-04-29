@@ -26,8 +26,11 @@ import httpx
 from app.core.config import settings
 from app.services.bridge import transactions
 from app.services.bridge.payments.factory import get_payment_adapter
+from app.services.bridge.pos.factory import get_pos_adapter_for_store
 from app.services.bridge.pos.supabase import SupabasePOSAdapter
 from app.services.bridge.state_machine import State
+from app.services.menu.match import resolve_items_against_menu          # Phase 2-B.1.8
+from app.services.policy.order_lanes import decide_lane                 # Phase 2-B.1.7b
 from app.skills.scheduler.reservation import (
     combine_date_time,
     format_date_human,
@@ -279,3 +282,182 @@ def _success_message(args: dict[str, Any], customer: str, party_size: int) -> st
         f"party of {party_size}, on {format_date_human(args['reservation_date'])} "
         f"at {format_time_12h(args['reservation_time'])}."
     )
+
+
+# ── Restaurant: create_order (Phase 2-B.1.8) ──────────────────────────────────
+# Voice Engine entry point for food/drink orders. Lane decision (fire_immediate
+# vs pay_first) lives in app.services.policy.order_lanes.decide_lane and is
+# applied here. Pay link wiring is the responsibility of Phase 2-B.1.9.
+
+async def create_order(
+    *,
+    store_id:    str,
+    args:        dict[str, Any],
+    call_log_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Top-level order flow for the restaurant vertical.
+    (식당 버티컬 주문 최상위 흐름)
+
+    args keys:
+        items:           [{name, quantity}, ...]   required
+        customer_phone:  E.164 string              required (pay link target)
+        customer_name:   optional human name
+        notes:           optional free text
+
+    Returns a dict the Voice Engine consumes to choose its TTS reply:
+        success, status, lane, total_cents, state, transaction_id, pos_object_id,
+        items, ai_script_hint ('fire_immediate'|'pay_first'|'rejected')
+    """
+    # ── 1. Validate ───────────────────────────────────────────────────────
+    raw_items = args.get("items") or []
+    if not isinstance(raw_items, list) or len(raw_items) == 0:
+        return {"success": False,
+                "error":   "items list is empty — no order to place"}
+
+    if not args.get("customer_phone"):
+        return {"success": False,
+                "error":   "customer_phone is required to send a payment link"}
+
+    phone_e164 = normalize_phone_us(args["customer_phone"])
+    customer   = args.get("customer_name") or ""
+
+    # ── 2. Resolve items against menu_items (catalog enrichment) ──────────
+    resolved = await resolve_items_against_menu(
+        store_id=store_id,
+        items=raw_items,
+    )
+
+    # ── 3. Refusal gates: unknown items first, then sold_out ──────────────
+    unknown = [r for r in resolved if r.get("missing")]
+    if unknown:
+        return {
+            "success":         False,
+            "status":          "rejected",
+            "reason":          "unknown_item",
+            "unavailable":     unknown,
+            "ai_script_hint":  "rejected",
+        }
+
+    sold_out = [r for r in resolved if not r.get("sufficient_stock", True)]
+    if sold_out:
+        return {
+            "success":         False,
+            "status":          "rejected",
+            "reason":          "sold_out",
+            "unavailable":     sold_out,
+            "ai_script_hint":  "rejected",
+        }
+
+    # ── 4. Total — derived from real catalog prices, not from caller args ─
+    total_cents = sum(
+        int(round(float(r["price"]) * 100)) * int(r["quantity"])
+        for r in resolved
+    )
+
+    # ── 5. Idempotency probe — same store + phone + 'order' in 5-min window
+    # short-circuits to the existing transaction. Mirrors the reservation flow.
+    # (5분 윈도우 idempotency — 예약 흐름과 동일 패턴)
+    existing = await _find_recent_duplicate(
+        store_id        = store_id,
+        customer_phone  = phone_e164,
+        pos_object_type = "order",
+        unique_key      = "",       # orders dedup on store+phone+type only
+    )
+    if existing:
+        log.info("Idempotent order hit: tx=%s pos_object_id=%s",
+                 existing["id"], existing.get("pos_object_id"))
+        return {
+            "success":        True,
+            "idempotent":     True,
+            "transaction_id": existing["id"],
+            "pos_object_id":  existing.get("pos_object_id", ""),
+            "state":          existing.get("state", State.PENDING),
+            "ai_script_hint": "fire_immediate"
+                              if existing.get("state") == State.FIRED_UNPAID
+                              else "pay_first",
+        }
+
+    # ── 6. Lane decision (policy engine) ─────────────────────────────────
+    decision = await decide_lane(store_id=store_id, total_cents=total_cents)
+    lane     = decision["lane"]    # 'fire_immediate' | 'pay_first'
+
+    # ── 7. Open the bridge transaction with payment_lane recorded ────────
+    txn = await transactions.create_transaction(
+        store_id        = store_id,
+        vertical        = "restaurant",
+        pos_object_type = "order",
+        pos_object_id   = "",                    # backfilled after POS create
+        customer_phone  = phone_e164,
+        customer_name   = customer,
+        total_cents     = total_cents,
+        call_log_id     = call_log_id,
+        actor           = "tool_call:create_order",
+        payment_lane    = lane,
+    )
+    txn_id = txn["id"]
+
+    # ── 8. Lane branch ───────────────────────────────────────────────────
+    if lane == "fire_immediate":
+        # Try to inject into POS now; if the adapter raises, leave the
+        # transaction in PENDING so an operator can recover. Critical
+        # invariant: this branch must never raise out to the voice path.
+        # (POS 실패 시 PENDING 유지 — 음성 경로 보호)
+        adapter = await get_pos_adapter_for_store(store_id)
+        try:
+            pos_object_id = await adapter.create_pending(
+                vertical="restaurant",
+                store_id=store_id,
+                payload={
+                    "pos_object_type": "order",
+                    "items":           resolved,
+                    "customer_name":   customer,
+                    "customer_phone":  phone_e164,
+                    "bridge_tx_id":    txn_id,
+                },
+            )
+        except Exception as exc:
+            log.error("POS create_pending failed for tx=%s: %s", txn_id, exc)
+            return {
+                "success":        False,
+                "transaction_id": txn_id,
+                "lane":           lane,
+                "state":          State.PENDING,
+                "error":          f"POS injection failed: {exc}",
+                "ai_script_hint": "pos_failure",
+            }
+
+        # POS receipt created. Backfill link, advance state, stamp fired_at.
+        await transactions.set_pos_object_id(txn_id, pos_object_id)
+        await transactions.advance_state(
+            transaction_id = txn_id,
+            to_state       = State.FIRED_UNPAID,
+            source         = "voice",
+            actor          = "tool_call:create_order",
+            extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
+        )
+
+        return {
+            "success":         True,
+            "transaction_id":  txn_id,
+            "pos_object_id":   pos_object_id,
+            "lane":            lane,
+            "state":           State.FIRED_UNPAID,
+            "total_cents":     total_cents,
+            "items":           resolved,
+            "ai_script_hint":  "fire_immediate",
+        }
+
+    # ── pay_first: leave the transaction in PENDING. Phase 2-B.1.9 pay link
+    # route picks it up on customer click → advances PAYMENT_SENT → PAID and
+    # injects to POS. We don't call the POS adapter here.
+    # (pay_first: PENDING 유지 — pay link route가 결제 후 POS 인젝션)
+    return {
+        "success":         True,
+        "transaction_id":  txn_id,
+        "pos_object_id":   "",
+        "lane":            lane,
+        "state":           State.PENDING,
+        "total_cents":     total_cents,
+        "items":           resolved,
+        "ai_script_hint":  "pay_first",
+    }

@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
 from app.services.bridge import flows as bridge_flows
+from app.skills.order.order import ORDER_SCRIPT_BY_HINT, ORDER_TOOL_DEF
 from app.skills.scheduler.reservation import (
     RESERVATION_TOOL_DEF,
     format_date_human,
@@ -179,10 +180,29 @@ def build_system_prompt(store: dict) -> str:
         "   (e) If the tool returns an error ONCE: apologize once, briefly say 'I'll have our manager "
         "       call you back to finalize' and STOP. Do NOT retry the tool, do NOT loop.\n"
         "   (f) If the store does NOT take reservations, say 'walk-ins are always welcome' and DO NOT call the tool.\n"
-        "8. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless the "
-        "make_reservation tool actually returned success. Never invent confirmation numbers.\n"
-        "9. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
-        "10. ESCALATION: If the caller is upset or asks for a manager: "
+        "8. ORDERS — TOOL USAGE (create_order): When a customer wants to PLACE A PICKUP ORDER:\n"
+        "   (a) Use ONLY items from the menu shown above. If a customer asks for an item not on the "
+        "       menu, say 'we don't have that today' and offer one or two real items.\n"
+        "   (b) Collect: customer name, phone number for the payment link (use the caller's number "
+        "       unless they request a different one), each item with quantity, and any notes.\n"
+        "       PHONE: same 10-digit completeness rule as reservations applies.\n"
+        "   (c) Recite the order back in ONE sentence: "
+        "       'Confirming [N] [item], [N] [item] for [name] — total [count] items — is that right?'\n"
+        "   (d) ONLY after the customer says 'yes' verbally, call create_order with "
+        "       user_explicit_confirmation=true.\n"
+        "   (e) AFTER the tool succeeds, READ THE 'message' field VERBATIM. The system picks the "
+        "       right phrasing based on whether the kitchen got the order immediately or is waiting "
+        "       for payment first — never substitute your own wording.\n"
+        "   (f) If the tool returns success=false with reason='sold_out' or 'unknown_item', read "
+        "       the message and offer the customer a different item. Do NOT retry the tool with "
+        "       the same items.\n"
+        "   (g) If the tool returns success=false with reason='pos_failure', read the message and "
+        "       STOP. Do NOT retry the tool — a person will call back.\n"
+        "9. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless the "
+        "make_reservation OR create_order tool actually returned success. Never invent "
+        "confirmation numbers.\n"
+        "10. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
+        "11. ESCALATION: If the caller is upset or asks for a manager: "
         "'Let me connect you with our manager right away.'"
     )
 
@@ -288,7 +308,11 @@ async def _stream_gemini_response(
     kwargs: dict = {"system_instruction": system_prompt}
     tools_enabled = bool(store_id)
     if tools_enabled:
-        kwargs["tools"] = [RESERVATION_TOOL_DEF]
+        # Both reservation and order tools are exposed to Gemini. The model
+        # picks one (or none) per turn based on the customer's ask. Mixing
+        # reservation + order in the same call is not allowed by prompt rules.
+        # (예약 + 주문 도구를 모두 Gemini에 노출 — 프롬프트가 한 번에 하나만 선택)
+        kwargs["tools"] = [RESERVATION_TOOL_DEF, ORDER_TOOL_DEF]
 
     model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview", **kwargs)
     chat = model.start_chat()
@@ -370,6 +394,50 @@ async def _stream_gemini_response(
             result = {
                 "success": False,
                 "error":   bridge_result.get("error", "reservation failed"),
+            }
+    elif tool_name == "create_order":
+        # Phase 2-B.1.8 — order flow with lane-aware response.
+        # Bridge owns: bridge_transactions row, audit trail, state machine,
+        # menu match (variant_id resolution), policy lane decision,
+        # POS adapter selection, payment lane bookkeeping.
+        # SMS pay link wiring lands in Phase 2-B.1.10.
+        # (Bridge가 모두 관리 — SMS pay link는 Phase 2-B.1.10)
+        bridge_result = await bridge_flows.create_order(
+            store_id    = store_id,
+            args        = tool_args,
+            call_log_id = call_log_id,
+        )
+
+        # Pick the customer-facing line based on lane. Falling back to a
+        # neutral confirmation keeps the call from going silent if a new
+        # ai_script_hint is added without a matching script.
+        # (lane별 멘트 선택 — 누락된 hint는 안전한 기본 멘트로 폴백)
+        hint   = bridge_result.get("ai_script_hint", "")
+        script = ORDER_SCRIPT_BY_HINT.get(
+            hint,
+            "Thanks — I've got that. A team member will follow up shortly.",
+        )
+
+        if bridge_result.get("success"):
+            result = {
+                "success":         True,
+                "lane":            bridge_result.get("lane"),
+                "transaction_id":  bridge_result.get("transaction_id"),
+                "pos_object_id":   bridge_result.get("pos_object_id", ""),
+                "total_cents":     bridge_result.get("total_cents", 0),
+                "message":         script,
+                "idempotent":      bool(bridge_result.get("idempotent")),
+            }
+        else:
+            # Refusal (sold_out / unknown_item / pos_failure) — use the
+            # script for that hint so the agent says something useful.
+            result = {
+                "success":     False,
+                "lane":        bridge_result.get("lane"),
+                "reason":      bridge_result.get("reason"),
+                "unavailable": bridge_result.get("unavailable", []),
+                "message":     script,
+                "error":       bridge_result.get("error", ""),
             }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
