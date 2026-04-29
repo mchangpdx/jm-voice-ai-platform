@@ -81,6 +81,7 @@ async def create_transaction(
     source:          str = "voice",
     actor:           Optional[str] = None,
     payment_lane:    Optional[str] = None,    # Phase 2-B.1.7b — fire_immediate | pay_first | None
+    items_json:      Optional[list[dict[str, Any]]] = None,    # Phase 2-B.1.9 — resolved order lines for pay-link replay
 ) -> dict[str, Any]:
     """INSERT a new bridge_transactions row in state=pending and audit it.
     (state=pending 상태로 bridge_transactions 행 INSERT + 감사)
@@ -105,6 +106,7 @@ async def create_transaction(
         "state":           State.PENDING,
         "call_log_id":     call_log_id,
         "payment_lane":    payment_lane,
+        "items_json":      items_json,
     }
     row = {k: v for k, v in row.items() if v is not None}
 

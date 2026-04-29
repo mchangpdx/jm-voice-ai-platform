@@ -381,7 +381,11 @@ async def create_order(
     decision = await decide_lane(store_id=store_id, total_cents=total_cents)
     lane     = decision["lane"]    # 'fire_immediate' | 'pay_first'
 
-    # ── 7. Open the bridge transaction with payment_lane recorded ────────
+    # ── 7. Open the bridge transaction with payment_lane + items recorded ─
+    # items_json carries the resolved line items so the pay_link route can
+    # replay them into Loyverse after the customer pays without re-querying
+    # menu_items (price + variant could drift between order and payment).
+    # (items_json — pay_link 시점에 메뉴 재조회 없이 영수증 재구성 가능)
     txn = await transactions.create_transaction(
         store_id        = store_id,
         vertical        = "restaurant",
@@ -393,6 +397,7 @@ async def create_order(
         call_log_id     = call_log_id,
         actor           = "tool_call:create_order",
         payment_lane    = lane,
+        items_json      = resolved,
     )
     txn_id = txn["id"]
 
