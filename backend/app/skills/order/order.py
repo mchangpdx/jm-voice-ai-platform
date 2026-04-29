@@ -44,6 +44,14 @@ ORDER_TOOL_DEF: dict = {
                             "E.164 preferred — e.g. +15035551234)."
                         ),
                     },
+                    "customer_email": {
+                        "type": "string",
+                        "description": (
+                            "Optional email address. Ask the customer if they'd like a payment "
+                            "link by email (useful if SMS doesn't reach them or they prefer email). "
+                            "Only include when the customer explicitly provides it."
+                        ),
+                    },
                     "items": {
                         "type": "array",
                         "description": (

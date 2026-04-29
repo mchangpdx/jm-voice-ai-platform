@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
 from app.services.bridge import flows as bridge_flows
+from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.skills.order.order import ORDER_SCRIPT_BY_HINT, ORDER_TOOL_DEF
 from app.skills.scheduler.reservation import (
@@ -187,6 +188,9 @@ def build_system_prompt(store: dict) -> str:
         "   (b) Collect: customer name, phone number for the payment link (use the caller's number "
         "       unless they request a different one), each item with quantity, and any notes.\n"
         "       PHONE: same 10-digit completeness rule as reservations applies.\n"
+        "       EMAIL (optional): briefly ask 'Would you like the payment link by email as well?'. "
+        "       If yes, collect the email and pass it as customer_email. If no or unclear, omit "
+        "       customer_email — never invent or guess an address.\n"
         "   (c) Recite the order back in ONE sentence: "
         "       'Confirming [N] [item], [N] [item] for [name] — total [count] items — is that right?'\n"
         "   (d) ONLY after the customer says 'yes' verbally, call create_order with "
@@ -430,23 +434,51 @@ async def _stream_gemini_response(
                 "idempotent":      bool(bridge_result.get("idempotent")),
             }
 
-            # Fire-and-forget SMS pay link. Skip on idempotent re-hits — the
-            # link was already sent on the first call. SMS failure must NEVER
-            # block the audio path: any exception is logged and swallowed.
-            # (멱등 재요청은 SMS 재전송 안 함 — 첫 호출 때 이미 발송)
+            # Fire-and-forget pay link delivery. Skip on idempotent re-hits —
+            # the link was already sent on the first call. Two channels run
+            # in parallel: SMS (primary, blocked by Twilio TCR for now) and
+            # email (TCR-fallback, requires customer_email from the tool args).
+            # Either channel reaching the customer is enough to close the loop.
+            # Failures of either are swallowed — audio path must never block.
+            # (멱등 재요청은 양쪽 모두 스킵 / 한쪽만 도달해도 OK)
             if not bridge_result.get("idempotent"):
+                tx_id        = str(bridge_result.get("transaction_id") or "")
+                lane_str     = str(bridge_result.get("lane") or "pay_first")
+                total_cents  = int(bridge_result.get("total_cents") or 0)
+                items_for_em = bridge_result.get("items") or []
+
                 try:
                     asyncio.create_task(send_pay_link(
                         to             = tool_args.get("customer_phone", ""),
                         store_name     = store_name or "the restaurant",
-                        total_cents    = int(bridge_result.get("total_cents") or 0),
-                        transaction_id = str(bridge_result.get("transaction_id") or ""),
-                        lane           = str(bridge_result.get("lane") or "pay_first"),
+                        total_cents    = total_cents,
+                        transaction_id = tx_id,
+                        lane           = lane_str,
                     ))
-                    log.info("pay link SMS queued (fire-and-forget) tx=%s",
-                             bridge_result.get("transaction_id"))
+                    log.info("pay link SMS queued (fire-and-forget) tx=%s", tx_id)
                 except Exception as exc:
                     log.warning("pay link SMS dispatch error (ignored): %s", exc)
+
+                # Email fallback — only fires when the customer gave an
+                # email address. Useful while Twilio TCR approval is pending
+                # (carriers silently filter A2P SMS during that window).
+                # (TCR 승인 전 이메일 fallback — 수신처가 있을 때만 발송)
+                customer_email = (tool_args.get("customer_email") or "").strip()
+                if customer_email:
+                    try:
+                        asyncio.create_task(send_pay_link_email(
+                            to              = customer_email,
+                            customer_name   = tool_args.get("customer_name", ""),
+                            store_name      = store_name or "the restaurant",
+                            total_cents     = total_cents,
+                            items           = items_for_em,
+                            transaction_id  = tx_id,
+                            lane            = lane_str,
+                        ))
+                        log.info("pay link email queued (fire-and-forget) tx=%s to=%s",
+                                 tx_id, customer_email)
+                    except Exception as exc:
+                        log.warning("pay link email dispatch error (ignored): %s", exc)
         else:
             # Refusal (sold_out / unknown_item / pos_failure) — use the
             # script for that hint so the agent says something useful.

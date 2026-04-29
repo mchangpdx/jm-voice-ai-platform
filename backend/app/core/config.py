@@ -1,6 +1,7 @@
 # Application settings loaded from environment variables (환경 변수에서 로드하는 애플리케이션 설정)
 # Layer 1 — Core Security & Configuration (Layer 1 — 핵심 보안 및 설정)
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -62,16 +63,32 @@ class Settings(BaseSettings):
     # Relay timeout (릴레이 타임아웃)
     relay_timeout_seconds: int = 8
 
-    # Phase 2-B.1.10 — public base URL embedded in SMS pay links. Override
-    # via env (PUBLIC_BASE_URL=https://...) when the API is publicly reachable
-    # (e.g. ngrok / production). Default localhost is fine for unit tests.
-    # (SMS 결제 링크에 들어갈 공개 베이스 URL — 환경변수로 오버라이드)
-    public_base_url: str = "http://localhost:8000"
+    # Phase 2-B.1.10 — public base URL embedded in SMS / email pay links.
+    # Accepts either PUBLIC_BASE_URL or SERVER_URL (legacy jm-saas-platform
+    # naming) — the .env file may use either, no rename needed.
+    # (공개 베이스 URL — PUBLIC_BASE_URL 또는 SERVER_URL 둘 다 인식)
+    public_base_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("PUBLIC_BASE_URL", "SERVER_URL"),
+    )
 
     # No-show timeout for fire_immediate orders. Default 30 min — operator-tunable
     # later if a vertical/store needs a different window.
     # (fire_immediate 미결제 no-show 타임아웃 — 기본 30분)
     no_show_timeout_minutes: int = 30
+
+    # 2026-04-29 — Email pay-link fallback (TCR 미승인 임시 채널). Mirrors the
+    # legacy jm-saas-platform/utils/mailer.js pattern: Gmail SMTP with App
+    # Password. Sender display name fixed for brand consistency, sender
+    # address comes from SMTP_USER. All fields empty by default → adapter
+    # skips silently in dev when no creds are present.
+    # (이메일 fallback — Gmail SMTP, 미설정 시 자동 skip)
+    smtp_host:           str = "smtp.gmail.com"
+    smtp_port:           int = 587
+    smtp_user:           str = ""    # SMTP_USER (also the "from" address)
+    smtp_pass:           str = ""    # SMTP_PASS — Gmail App Password
+    smtp_from_name:      str = "JM Tech One"
+    smtp_secure:         bool = False   # True only on port 465
 
 
 # Module-level singleton — loaded once at import time (임포트 시 한 번 로드되는 모듈 수준 싱글톤)
