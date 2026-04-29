@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     # Relay timeout (릴레이 타임아웃)
     relay_timeout_seconds: int = 8
 
+    # Phase 2-B.1.10 — public base URL embedded in SMS pay links. Override
+    # via env (PUBLIC_BASE_URL=https://...) when the API is publicly reachable
+    # (e.g. ngrok / production). Default localhost is fine for unit tests.
+    # (SMS 결제 링크에 들어갈 공개 베이스 URL — 환경변수로 오버라이드)
+    public_base_url: str = "http://localhost:8000"
+
+    # No-show timeout for fire_immediate orders. Default 30 min — operator-tunable
+    # later if a vertical/store needs a different window.
+    # (fire_immediate 미결제 no-show 타임아웃 — 기본 30분)
+    no_show_timeout_minutes: int = 30
+
 
 # Module-level singleton — loaded once at import time (임포트 시 한 번 로드되는 모듈 수준 싱글톤)
 settings = Settings()

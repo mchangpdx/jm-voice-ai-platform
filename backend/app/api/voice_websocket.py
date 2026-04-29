@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
 from app.services.bridge import flows as bridge_flows
+from app.services.bridge.pay_link_sms import send_pay_link
 from app.skills.order.order import ORDER_SCRIPT_BY_HINT, ORDER_TOOL_DEF
 from app.skills.scheduler.reservation import (
     RESERVATION_TOOL_DEF,
@@ -428,6 +429,24 @@ async def _stream_gemini_response(
                 "message":         script,
                 "idempotent":      bool(bridge_result.get("idempotent")),
             }
+
+            # Fire-and-forget SMS pay link. Skip on idempotent re-hits — the
+            # link was already sent on the first call. SMS failure must NEVER
+            # block the audio path: any exception is logged and swallowed.
+            # (멱등 재요청은 SMS 재전송 안 함 — 첫 호출 때 이미 발송)
+            if not bridge_result.get("idempotent"):
+                try:
+                    asyncio.create_task(send_pay_link(
+                        to             = tool_args.get("customer_phone", ""),
+                        store_name     = store_name or "the restaurant",
+                        total_cents    = int(bridge_result.get("total_cents") or 0),
+                        transaction_id = str(bridge_result.get("transaction_id") or ""),
+                        lane           = str(bridge_result.get("lane") or "pay_first"),
+                    ))
+                    log.info("pay link SMS queued (fire-and-forget) tx=%s",
+                             bridge_result.get("transaction_id"))
+                except Exception as exc:
+                    log.warning("pay link SMS dispatch error (ignored): %s", exc)
         else:
             # Refusal (sold_out / unknown_item / pos_failure) — use the
             # script for that hint so the agent says something useful.

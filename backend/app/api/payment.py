@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from app.services.bridge.no_show_sweep import sweep_no_shows
 from app.services.bridge.pay_link import settle_payment
 
 log = logging.getLogger(__name__)
@@ -141,3 +142,17 @@ async def mock_payment_callback(transaction_id: str) -> HTMLResponse:
                     f"Unable to process payment: {result.get('error', 'unknown')}"),
         status_code=500,
     )
+
+
+@router.post("/api/internal/no-show-sweep")
+async def run_no_show_sweep() -> dict[str, Any]:
+    """Trigger one no-show sweep pass.
+    (no-show 청소 1회 실행)
+
+    Intended for the cron worker (or operator dashboard) to call. Each pass
+    is bounded (≤100 rows) so a runaway backlog doesn't block the request.
+    Returning structured counts lets the caller decide whether to schedule
+    another pass immediately.
+    (cron/대시보드용 — 한 번에 최대 100건 처리, 카운트 반환)
+    """
+    return await sweep_no_shows()
