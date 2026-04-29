@@ -43,6 +43,7 @@ async def trigger_menu_sync(store_id: str) -> dict[str, Any]:
     return result
 
 
+@router.post("/api/webhooks/loyverse/item")
 @router.post("/api/webhooks/loyverse/items")
 async def loyverse_items_webhook(request: Request) -> dict[str, Any]:
     """Stub for Loyverse items.update events.
@@ -83,6 +84,7 @@ async def loyverse_customers_webhook(request: Request) -> dict[str, Any]:
     return {"received": True, "customers": n_custs}
 
 
+@router.post("/api/webhooks/loyverse/inventory")
 @router.post("/api/webhooks/loyverse/inventory_levels")
 async def loyverse_inventory_webhook(request: Request) -> dict[str, Any]:
     """Loyverse posts inventory_levels.update events here. Body shape per the
