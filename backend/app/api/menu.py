@@ -43,6 +43,46 @@ async def trigger_menu_sync(store_id: str) -> dict[str, Any]:
     return result
 
 
+@router.post("/api/webhooks/loyverse/items")
+async def loyverse_items_webhook(request: Request) -> dict[str, Any]:
+    """Stub for Loyverse items.update events.
+    (Loyverse 항목 변경 웹훅 — 200 OK 스텁)
+
+    Loyverse fires this on item create/update/delete (price change, name
+    change, new variant, etc.). For now we just log and acknowledge so the
+    webhook stops accumulating retries. Full handling — re-syncing the
+    affected item into menu_items — lands in a follow-up commit; the safer
+    interim is operator-triggered POST /api/pos/sync/{store_id}.
+    (현재 200만 응답 — 정식 처리는 후속 커밋, 임시론 수동 sync로 대응)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    n_items = len(body.get("items", []) or []) if isinstance(body, dict) else 0
+    log.info("loyverse items webhook: items=%d", n_items)
+    return {"received": True, "items": n_items}
+
+
+@router.post("/api/webhooks/loyverse/customers")
+async def loyverse_customers_webhook(request: Request) -> dict[str, Any]:
+    """Stub for Loyverse customer create/update/delete events.
+    (Loyverse 고객 변경 웹훅 — 200 OK 스텁)
+
+    CRM (phone-based caller recognition) lands in Phase 3 — at that point
+    this handler will upsert into a `customers` table so the voice agent
+    can greet returning callers by name. Until then we acknowledge and
+    drop. (Phase 3 CRM에서 customers 테이블 upsert로 확장 예정)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    n_custs = len(body.get("customers", []) or []) if isinstance(body, dict) else 0
+    log.info("loyverse customers webhook: customers=%d", n_custs)
+    return {"received": True, "customers": n_custs}
+
+
 @router.post("/api/webhooks/loyverse/inventory_levels")
 async def loyverse_inventory_webhook(request: Request) -> dict[str, Any]:
     """Loyverse posts inventory_levels.update events here. Body shape per the

@@ -233,25 +233,59 @@ class LoyversePOSAdapter(POSAdapter):
 
     # ── Loyverse-specific (capability: SUPPORTS_MENU_SYNC) ──────────────────
 
+    async def _fetch_inventory_map(self, client: httpx.AsyncClient) -> dict[str, int]:
+        """Pull the authoritative on-hand quantities from Loyverse /inventory.
+        (권위 있는 재고 소스 — /items의 in_stock은 stale일 수 있음)
+
+        Returns variant_id → in_stock dict. Empty dict on failure (caller falls
+        back to whatever /items reported — not fatal).
+        """
+        try:
+            resp = await client.get(
+                f"{self.api_url}/inventory?limit=250",
+                headers=self._headers(),
+            )
+        except Exception as exc:
+            log.warning("Loyverse /inventory unreachable: %s", exc)
+            return {}
+        if resp.status_code != 200:
+            log.warning("Loyverse /inventory %s — falling back to /items in_stock",
+                        resp.status_code)
+            return {}
+        levels = resp.json().get("inventory_levels") or []
+        out: dict[str, int] = {}
+        for lvl in levels:
+            vid = lvl.get("variant_id")
+            qty = lvl.get("in_stock")
+            if vid is None or qty is None:
+                continue
+            try:
+                out[vid] = int(qty)
+            except (TypeError, ValueError):
+                continue
+        return out
+
     async def fetch_menu(self) -> list[dict[str, Any]]:
         """Fetch full menu from Loyverse, normalized to vendor-agnostic shape.
         (Loyverse 메뉴를 공급자 독립적 형태로 정규화하여 조회)
 
-        Pattern ported from jm-saas-platform/src/services/pos/loyverseAdapter.js.
-        Each item carries a list of variants; each variant has price + stock_quantity
-        from the primary store entry. Categories/inventory endpoints are separate
-        calls handled elsewhere.
+        Calls /items for catalog + /inventory for authoritative on-hand counts.
+        /items.in_stock is best-effort and frequently stale or 0 when an item
+        was created without "Track stock" toggled on. /inventory is the truth
+        source — /inventory takes priority when both are present.
+        (재고 소스 우선순위: /inventory > /items.in_stock — 정확성 보장)
         """
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
+            items_resp = await client.get(
                 f"{self.api_url}/items?limit=250",
                 headers=self._headers(),
             )
-        if resp.status_code != 200:
-            log.error("Loyverse fetch_menu %s", resp.status_code)
-            return []
+            if items_resp.status_code != 200:
+                log.error("Loyverse fetch_menu %s", items_resp.status_code)
+                return []
+            inventory_map = await self._fetch_inventory_map(client)
 
-        raw_items = resp.json().get("items", []) or []
+        raw_items = items_resp.json().get("items", []) or []
         normalized: list[dict[str, Any]] = []
         for item in raw_items:
             variants_raw = item.get("variants", []) or []
@@ -261,10 +295,16 @@ class LoyversePOSAdapter(POSAdapter):
                 store_entry = stores_arr[0] if stores_arr else {}
                 price = store_entry.get("price") if store_entry.get("price") is not None \
                         else (v.get("default_price") or 0)
-                stock = store_entry.get("in_stock") if store_entry.get("in_stock") is not None \
-                        else 0
+                # Stock priority: /inventory authoritative → /items embedded → 0
+                # (재고 우선순위: /inventory → /items embedded → 0)
+                vid = v.get("variant_id")
+                if vid in inventory_map:
+                    stock = inventory_map[vid]
+                else:
+                    stock = store_entry.get("in_stock") if store_entry.get("in_stock") is not None \
+                            else 0
                 variants.append({
-                    "variant_id":     v.get("variant_id"),
+                    "variant_id":     vid,
                     "sku":            v.get("sku"),
                     "option_value":   v.get("option1_value"),
                     "price":          float(price),
