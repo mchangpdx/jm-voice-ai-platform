@@ -50,6 +50,11 @@ class StoreSettings(BaseModel):
     # the kitchen immediately and collect payment via SMS link.
     # (주문 정책 임계값 — 0이면 정책 비활성, 모든 주문 pay_first)
     fire_immediate_threshold_cents: int = 0
+    # 2026-04-29 — fire_immediate orders that go unpaid for this many minutes
+    # roll over to NO_SHOW. Per-store dial: QSR may pick 15, bakery 120.
+    # Default 30 mirrors settings.no_show_timeout_minutes (global fallback).
+    # (매장별 no-show timeout — QSR 15분, 베이커리 120분 식으로 dial)
+    no_show_timeout_minutes: int = 30
 
 
 class StoreSettingsPatch(BaseModel):
@@ -60,6 +65,10 @@ class StoreSettingsPatch(BaseModel):
     # from accidentally fire-firing every ticket.
     # (대시보드 Settings 노출 — 0=비활성, 최대 $100 캡)
     fire_immediate_threshold_cents: Optional[int] = Field(None, ge=0, le=10000)
+    # 2026-04-29 — per-store no-show window (minutes). 1..1440 caps at 24h
+    # to prevent a misconfig from disabling or ballooning the sweep.
+    # (1~1440분 — 운영 사고 방지 캡)
+    no_show_timeout_minutes: Optional[int] = Field(None, ge=1, le=1440)
 
 
 class BusySchedule(BaseModel):
@@ -88,11 +97,20 @@ def _cfg_to_settings(cfg: dict, schedules: list[dict]) -> StoreSettings:
     # (정책 임계값을 JSONB에서 추출 — 0이면 비활성)
     policy = cfg.get("order_policy") or {}
     threshold = 0
+    no_show_minutes = 30   # mirrors settings.no_show_timeout_minutes default
     if isinstance(policy, dict):
         try:
             threshold = max(0, int(policy.get("fire_immediate_threshold_cents") or 0))
         except (TypeError, ValueError):
             threshold = 0
+        raw_ns = policy.get("no_show_timeout_minutes")
+        if raw_ns is not None:
+            try:
+                ns = int(raw_ns)
+                if 1 <= ns <= 1440:
+                    no_show_minutes = ns
+            except (TypeError, ValueError):
+                pass
 
     return StoreSettings(
         hourly_wage=float(cfg.get("hourly_wage") or _DEFAULT_HOURLY_WAGE),
@@ -109,6 +127,7 @@ def _cfg_to_settings(cfg: dict, schedules: list[dict]) -> StoreSettings:
             for s in schedules
         ],
         fire_immediate_threshold_cents=threshold,
+        no_show_timeout_minutes=no_show_minutes,
     )
 
 
@@ -153,11 +172,14 @@ async def patch_store_settings(
     if not raw_updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # Pull the policy field out — it lives inside order_policy JSONB, not as
-    # a flat column. Other fields are written through directly.
-    # (정책 임계값은 order_policy JSONB 안으로 머지)
+    # Pull policy fields out — they live inside order_policy JSONB, not as
+    # flat columns. Other fields are written through directly.
+    # (정책 필드는 order_policy JSONB 안으로 머지 — 기타 필드는 직접 쓰기)
     threshold_update: Optional[int] = raw_updates.pop(
         "fire_immediate_threshold_cents", None
+    )
+    no_show_update: Optional[int] = raw_updates.pop(
+        "no_show_timeout_minutes", None
     )
     updates: dict = dict(raw_updates)
 
@@ -172,14 +194,18 @@ async def patch_store_settings(
         )
         existing = cfg_resp.json() if isinstance(cfg_resp.json(), list) else []
 
-        if threshold_update is not None:
+        if threshold_update is not None or no_show_update is not None:
             # Merge into the existing JSONB policy rather than overwrite —
-            # preserves future B/C-axis fields once they ship.
-            # (기존 JSONB와 머지 — 향후 B/C축 필드 보존)
+            # preserves future B/C-axis fields once they ship + lets each
+            # dial be patched independently.
+            # (기존 JSONB와 머지 — 각 dial 독립 PATCH 가능)
             current_policy = (existing[0].get("order_policy") if existing else None) or {}
             if not isinstance(current_policy, dict):
                 current_policy = {}
-            current_policy["fire_immediate_threshold_cents"] = int(threshold_update)
+            if threshold_update is not None:
+                current_policy["fire_immediate_threshold_cents"] = int(threshold_update)
+            if no_show_update is not None:
+                current_policy["no_show_timeout_minutes"] = int(no_show_update)
             updates["order_policy"] = current_policy
 
         if existing:

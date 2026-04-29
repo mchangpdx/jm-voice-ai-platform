@@ -71,6 +71,43 @@ async def decide_lane(*, store_id: str, total_cents: int) -> dict[str, Any]:
     }
 
 
+async def read_no_show_timeouts() -> dict[str, int]:
+    """Return store_id → no_show_timeout_minutes for every store with a valid
+    per-store override. Stores without an override are absent from the map —
+    callers fall back to settings.no_show_timeout_minutes (global default).
+    (매장별 no-show timeout — 정책 부재/무효 매장은 글로벌 디폴트 사용)
+
+    Valid range: 1..1440 (= 24 hours). Out-of-range values are dropped so
+    an operator misconfig (e.g. 0 or 99999) can't disable the sweep or
+    extend it beyond a day.
+    (1~1440분 범위 — 운영 사고 방지 클램프)
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/store_configs",
+            headers=_SUPABASE_HEADERS,
+            params={"select": "store_id,order_policy"},
+        )
+    if resp.status_code != 200:
+        log.warning("read_no_show_timeouts: store_configs read %s", resp.status_code)
+        return {}
+
+    out: dict[str, int] = {}
+    for row in (resp.json() or []):
+        sid    = row.get("store_id")
+        policy = row.get("order_policy")
+        if not sid or not isinstance(policy, dict):
+            continue
+        raw = policy.get("no_show_timeout_minutes")
+        try:
+            mins = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= mins <= 1440:
+            out[sid] = mins
+    return out
+
+
 async def _read_threshold_cents(store_id: str) -> int:
     """Read store_configs.order_policy.fire_immediate_threshold_cents for a store.
     Missing row, NULL policy, missing key ⇒ 0 (policy off).

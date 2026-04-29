@@ -20,6 +20,7 @@ interface StoreSettings {
   override_until: string | null
   busy_schedules: BusySchedule[]
   fire_immediate_threshold_cents: number   // Phase 2-B.1.7b — 0 = policy off
+  no_show_timeout_minutes: number          // 2026-04-29 — per-store no-show window (1..1440)
 }
 
 const US_TIMEZONES = [
@@ -51,6 +52,7 @@ export default function Settings() {
   // Phase 2-B.1.7b — Order Policy state. UI takes dollars; API takes cents.
   // (UI는 달러, API는 센트 단위)
   const [fireThresholdDollars, setFireThresholdDollars] = useState('0')
+  const [noShowMinutes, setNoShowMinutes]               = useState('30')
   const [policySaving, setPolicySaving]                 = useState(false)
 
   // New schedule form state (per day)
@@ -71,6 +73,7 @@ export default function Settings() {
       // Cents → dollars for the input field. Empty input is rendered as "0".
       // (센트 → 달러 변환, 입력이 비면 "0")
       setFireThresholdDollars(((s.fire_immediate_threshold_cents ?? 0) / 100).toFixed(2))
+      setNoShowMinutes(String(s.no_show_timeout_minutes ?? 30))
     }).finally(() => setLoading(false))
   }, [])
 
@@ -92,22 +95,27 @@ export default function Settings() {
     }
   }
 
-  // Save the fire_immediate threshold. UI input is in dollars; API expects
-  // cents. Backend caps at 10000 cents ($100); 0 disables the policy.
-  // (정책 임계값 저장 — UI=달러, API=센트, 0이면 비활성)
+  // Save both Order Policy dials in one PATCH:
+  //   - fire_immediate_threshold (UI dollars → API cents, 0 = off, max $100)
+  //   - no_show_timeout_minutes (1..1440 — 24-hour cap)
+  // (한 번의 PATCH로 두 dial 저장 — 임계값 + no-show 시간)
   const savePolicySettings = async () => {
     const dollars = parseFloat(fireThresholdDollars)
-    if (isNaN(dollars) || dollars < 0) return
+    const minutes = parseInt(noShowMinutes, 10)
+    if (isNaN(dollars) || dollars < 0)              return
+    if (isNaN(minutes) || minutes < 1 || minutes > 1440) return
     const cents = Math.round(dollars * 100)
     if (cents > 10000) return
     setPolicySaving(true)
     try {
       const r = await api.patch('/store/settings', {
         fire_immediate_threshold_cents: cents,
+        no_show_timeout_minutes:        minutes,
       })
       setStoreSettings((s) => s ? {
         ...s,
         fire_immediate_threshold_cents: r.data.fire_immediate_threshold_cents,
+        no_show_timeout_minutes:        r.data.no_show_timeout_minutes,
       } : s)
       flash('Order policy saved!')
     } finally {
@@ -249,6 +257,24 @@ export default function Settings() {
               {Number(fireThresholdDollars) > 0
                 ? `Orders under $${Number(fireThresholdDollars).toFixed(2)} fire to the kitchen immediately. Larger orders wait for payment.`
                 : 'Policy is OFF — every order waits for payment before reaching the kitchen.'}
+            </p>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.fieldLabel}>No-Show Window (minutes)</label>
+            <input
+              className={styles.input}
+              type="number"
+              min="1"
+              max="1440"
+              step="1"
+              value={noShowMinutes}
+              onChange={(e) => setNoShowMinutes(e.target.value)}
+            />
+            <p className={styles.fieldHint}>
+              Fire-Immediate orders that go unpaid for this many minutes are
+              written off as no-shows. QSR ~15, casual restaurants ~30,
+              bakery / pre-orders ~120+. Range: 1–1440 (24 hours).
             </p>
           </div>
         </div>
