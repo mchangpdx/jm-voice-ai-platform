@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.agency import router as agency_router          # Agency multi-store dashboard (에이전시 멀티스토어 대시보드)
 from app.api.analytics import router as analytics_router    # Analytics charts (분석 차트)
 from app.api.auth import router as auth_router              # Auth login bridge (인증 로그인 브리지)
+from app.api.menu import router as menu_router              # Menu sync + Loyverse inventory webhook (메뉴 동기화 + 인벤토리 웹훅)
 from app.api.relay import router as relay_router            # Layer 4 Relay Bridge router (Layer 4 릴레이 브리지 라우터)
 from app.api.reservations import router as reservations_router  # Reservations (예약 관리)
 from app.api.settings import router as settings_router      # Store settings (스토어 설정)
@@ -58,6 +59,7 @@ app.include_router(reservations_router)  # Reservations (예약 관리)
 app.include_router(analytics_router)     # Analytics (분석)
 app.include_router(voice_bot_router)     # AI Voice Bot settings (AI Voice Bot 설정)
 app.include_router(voice_ws_router)      # Retell Custom LLM WebSocket (Retell ↔ Gemini 브리지)
+app.include_router(menu_router)          # Menu sync + Loyverse inventory webhook (메뉴 동기화 + 인벤토리 웹훅)
 
 
 @app.get("/health")
