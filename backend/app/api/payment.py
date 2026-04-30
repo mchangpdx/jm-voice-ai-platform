@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from app.services.bridge import transactions
 from app.services.bridge.no_show_sweep import sweep_no_shows
 from app.services.bridge.pay_link import settle_payment
 
@@ -30,15 +31,68 @@ router = APIRouter(tags=["Payment"])
 # Pattern ported from the legacy jm-saas-platform demo. Inline CSS avoids
 # external stylesheet dependencies that some mobile browsers strip.
 
-def _success_page(tx_id: str, status: str) -> str:
+def _success_page(
+    tx_id:        str,
+    status:       str,
+    items:        list | None = None,
+    total_cents:  int = 0,
+) -> str:
     """Page shown for status='paid' or 'already_paid'.
-    (정상 결제 / 멱등 재요청 시 표시 페이지)
+    (정상 결제 / 멱등 재요청 시 표시 페이지 — items + total 포함)
+
+    items / total_cents drive an inline receipt block so the customer
+    sees exactly what they paid for, mirroring how a Maverick / Stripe
+    receipt page would present it. Empty items falls back to the older
+    minimal layout.
+    (영수증 블록 — items 비어있으면 기존 최소 레이아웃)
     """
     sub_msg = (
         "Your order has been confirmed and sent to the kitchen."
         if status == "paid" else
         "We've already received this payment. Your order is on its way."
     )
+
+    receipt_block = ""
+    if items and total_cents > 0:
+        line_rows = []
+        for it in items:
+            try:
+                qty   = int(it.get("quantity") or 1)
+                nm    = (it.get("name") or "item").strip()
+                price = float(it.get("price") or 0)
+                line_total = price * qty
+            except (AttributeError, ValueError, TypeError):
+                continue
+            line_rows.append(
+                f'<tr><td style="padding:6px 0;color:#374151;font-size:14px;text-align:left;">{qty} × {nm}</td>'
+                f'<td style="padding:6px 0;color:#374151;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;">${line_total:.2f}</td></tr>'
+            )
+        rows_html = "".join(line_rows)
+        receipt_block = (
+            '<div style="background:#fff;border:1px solid #d1fae5;border-radius:8px;'
+            'padding:18px 22px;margin-bottom:24px;text-align:left;">'
+            '<div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Receipt</div>'
+            '<table style="width:100%;border-collapse:collapse;">'
+            f'{rows_html}'
+            '<tr><td colspan="2" style="border-top:1px dashed #d1fae5;padding-top:8px;"></td></tr>'
+            '<tr>'
+            '<td style="padding-top:6px;color:#15803d;font-size:15px;font-weight:bold;">Total paid</td>'
+            f'<td style="padding-top:6px;color:#15803d;font-size:15px;font-weight:bold;text-align:right;font-variant-numeric:tabular-nums;">${total_cents/100:.2f}</td>'
+            '</tr>'
+            '</table>'
+            '</div>'
+        )
+    elif total_cents > 0:
+        # Items unavailable but we still know the total — show it alone.
+        # (items 없어도 total 단독 표시)
+        receipt_block = (
+            '<div style="background:#fff;border:1px solid #d1fae5;border-radius:8px;'
+            'padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;">'
+            '<span style="color:#15803d;font-size:15px;font-weight:bold;">Total paid</span>'
+            f'<span style="color:#15803d;font-size:15px;font-weight:bold;font-variant-numeric:tabular-nums;">${total_cents/100:.2f}</span>'
+            '</div>'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,6 +107,7 @@ def _success_page(tx_id: str, status: str) -> str:
     </div>
     <h1 style="margin:0 0 12px;font-size:26px;font-weight:bold;color:#15803d;">Payment Successful!</h1>
     <p style="margin:0 0 28px;font-size:16px;color:#374151;line-height:1.6;">{sub_msg}</p>
+    {receipt_block}
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px 20px;margin-bottom:28px;">
       <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:4px;">Order ID</span>
       <span style="font-size:14px;font-weight:bold;color:#166534;font-family:monospace;">{tx_id}</span>
@@ -115,15 +170,41 @@ async def mock_payment_callback(transaction_id: str) -> HTMLResponse:
     result: dict[str, Any] = await settle_payment(transaction_id=transaction_id)
     status = result.get("status", "")
 
+    # Pull the transaction once so the success page can show the
+    # itemised receipt + total. Fetch is best-effort: if it fails we
+    # fall back to the simpler page so the customer never sees an
+    # error page just because the read-side flaked.
+    # (영수증 표시용 — 실패 시 최소 레이아웃으로 폴백)
+    receipt_items: list = []
+    receipt_total: int = 0
+    if status in ("paid", "already_paid", "paid_pos_pending"):
+        try:
+            tx_row = await transactions.get_transaction(transaction_id)
+            if tx_row:
+                items_raw = tx_row.get("items_json")
+                if isinstance(items_raw, list):
+                    receipt_items = items_raw
+                receipt_total = int(tx_row.get("total_cents") or 0)
+        except Exception as exc:
+            log.warning("receipt fetch failed tx=%s: %s", transaction_id, exc)
+
     if status in ("paid", "already_paid"):
-        return HTMLResponse(_success_page(transaction_id, status), status_code=200)
+        return HTMLResponse(
+            _success_page(transaction_id, status,
+                          items=receipt_items, total_cents=receipt_total),
+            status_code=200,
+        )
 
     if status == "paid_pos_pending":
         # The customer paid; the kitchen will see it once reconciliation
         # retries the POS write. Show the success page — from the payer's
         # perspective the transaction is closed.
         # (결제 완료 — POS 재시도는 reconciliation이 처리, 사용자에겐 성공)
-        return HTMLResponse(_success_page(transaction_id, "paid"), status_code=200)
+        return HTMLResponse(
+            _success_page(transaction_id, "paid",
+                          items=receipt_items, total_cents=receipt_total),
+            status_code=200,
+        )
 
     if status == "not_found":
         return HTMLResponse(

@@ -177,6 +177,11 @@ def build_system_prompt(store: dict) -> str:
         "recite the order, ask 'What's the best email to send the payment link to?' and pass it as "
         "customer_email. If the customer truly insists on SMS only, omit customer_email — but always "
         "ask once. "
+        "EMAIL READBACK (required): right after the customer says the email, READ IT BACK clearly so "
+        "they can correct STT errors — say 'Just to confirm, that's [local-part] at [domain] — "
+        "did I get that right?' and wait for an explicit yes. If the customer corrects you, capture "
+        "the new spelling and read THAT back too before continuing. Do NOT recite the order or call "
+        "create_order until the customer has confirmed the email is correct. "
         "Recite ONCE: 'Confirming [N] [item], [N] [item] "
         "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
         "CALL create_order with user_explicit_confirmation=true IMMEDIATELY — do NOT recite again, do NOT "
@@ -320,6 +325,12 @@ _HESITATION_TOKENS = {
     "wait", "hold", "on", "um", "uh", "oh", "hmm", "ah", "er",
     "like", "actually", "yeah", "yes", "okay", "ok", "well",
     "so", "you", "know", "i", "mean",
+    # Added after call_2a3bdd9a… where 'Just wait. Wait. Wait.' slipped
+    # past the gate because 'just' wasn't classified as filler. Same
+    # for 'and', 'please', 'sorry' — when standalone they carry no
+    # request payload and a customer using only these is hesitating.
+    # (call_2a3bdd9a 회귀 — just/and/please/sorry 추가)
+    "just", "and", "please", "sorry", "thanks", "thank",
 }
 
 
@@ -342,13 +353,9 @@ def _is_hesitation_only(text: str) -> bool:
 
 def _has_recent_explicit_modify_intent(transcript: list[dict], n_user: int = 3) -> bool:
     """True iff ANY of the last N user turns contains explicit modify
-    intent. Solves the 'yeah, that's correct' bug: when a customer
-    expresses 'I changed my mind, add one more' on turn N and replies
-    'yeah, that's correct' on turn N+1 to the recital, the cooldown
-    suppression should not fire — the intent was real even though the
-    affirmation that confirms it carries no modify keyword itself.
-    Live regression: call_05bad4f12f… turn 20.
-    (최근 N user turns 중 하나라도 modify 의도 → True)
+    intent. Kept for back-compat / tests; new code should prefer
+    _has_explicit_modify_intent_since_outcome which is outcome-anchored.
+    (최근 N user turns 중 하나라도 modify 의도 → True; 후방호환용)
     """
     user_turns = [
         (t.get("content") or "")
@@ -356,6 +363,41 @@ def _has_recent_explicit_modify_intent(transcript: list[dict], n_user: int = 3) 
         if t.get("role") == "user"
     ][-n_user:]
     return any(_has_explicit_modify_intent(t) for t in user_turns)
+
+
+def _has_explicit_modify_intent_since_outcome(transcript: list[dict]) -> bool:
+    """True iff a user turn AFTER the most recent modify outcome
+    contains explicit modify intent. If no outcome is in the transcript,
+    falls back to the last-3-user-turns check.
+
+    Why outcome-anchored: the simpler 'last 3 user turns' check kept
+    legacy intent words alive across multiple post-outcome acks, so a
+    bare 'yeah' / 'yes' after a successful modify kept re-firing
+    modify_order with the same items (live: call_2a3bdd9a…, 5 redundant
+    fires). Anchoring on the latest outcome makes the gate read 'has
+    the customer expressed a NEW modify intent since the last commit?'
+    which is the actual question we care about.
+    (직전 outcome 이후 user intent만 검사 — 묵은 intent로 인한 loop 차단)
+    """
+    last_outcome_idx = -1
+    for i, t in enumerate(transcript):
+        if t.get("role") == "user":
+            continue
+        c = (t.get("content") or "").lower()
+        if any(p in c for p in _MODIFY_OUTCOME_PHRASES):
+            last_outcome_idx = i
+
+    if last_outcome_idx == -1:
+        # No outcome yet — there's nothing to "anchor on", so fall back
+        # to the recent-window check so the first real modify intent is
+        # still picked up correctly.
+        return _has_recent_explicit_modify_intent(transcript)
+
+    for t in transcript[last_outcome_idx + 1:]:
+        if t.get("role") == "user":
+            if _has_explicit_modify_intent(t.get("content") or ""):
+                return True
+    return False
 
 
 def detect_force_tool_use(transcript: list[dict]) -> bool:
@@ -400,11 +442,13 @@ def detect_force_tool_use(transcript: list[dict]) -> bool:
         return False
 
     # Cooldown gate — bare yes/okay after a modify outcome is a closing
-    # ack, not a new modify command. Only allow FORCE TOOL during cooldown
-    # when the user actually said add/remove/change/etc., either on this
-    # turn OR within the last 3 user turns (the customer often expresses
-    # the modify intent THEN says 'yeah, that's correct' to the recital).
-    if _in_modify_cooldown(transcript) and not _has_recent_explicit_modify_intent(transcript):
+    # ack, not a new modify command. Allow FORCE TOOL during cooldown
+    # only when the customer expressed explicit add/remove/change intent
+    # AFTER the most recent modify outcome (not before).
+    if (
+        _in_modify_cooldown(transcript)
+        and not _has_explicit_modify_intent_since_outcome(transcript)
+    ):
         return False
 
     return True
@@ -624,13 +668,12 @@ async def _stream_gemini_response(
             yield "Take your time."
             return
 
-        # Per-call modify cap (Proposal F). After many successful or
-        # no-op modifies on this call, refuse further re-fires regardless
-        # of cooldown state. Belt-and-suspenders: bridge no-op detection
-        # already prevents DB pollution, but the cap silences the audible
-        # repetition. Generous cap (8) so legitimate multi-edit calls work.
-        # (modify 호출 횟수 cap — 8회 초과 시 closing)
-        if tool_name == "modify_order" and modify_count >= 8:
+        # Per-call modify cap (Proposal F, tightened from 8 → 4 after
+        # call_2a3bdd9a… showed Gemini reflexively burning through 5
+        # redundant modify calls on a 3-edit transcript). 4 still covers
+        # any realistic 'add → remove → change qty → confirm' flow.
+        # (modify 호출 cap — 8 → 4로 강화, 합법적 multi-edit 통화는 계속 작동)
+        if tool_name == "modify_order" and modify_count >= 4:
             _mon("AUTO-FIRE BLOCKED (modify cap %d) tool=%s → closing line",
                  modify_count, tool_name)
             yield "Got it — your order is set. Tap the payment link whenever you're ready."
@@ -648,6 +691,31 @@ async def _stream_gemini_response(
             and in_modify_cooldown
             and not user_has_modify_intent
         ):
+            # Proposal I — first cooldown turn after a real outcome
+            # gets a warm summary recap; later turns get the short
+            # closing line. Customers can hang up on either.
+            # (첫 cooldown은 order summary, 이후는 짧은 closing)
+            sess_items = (session or {}).get("last_order_items") or []
+            sess_total = int((session or {}).get("last_order_total") or 0)
+            already_sent = bool((session or {}).get("closing_emitted"))
+            if sess_items and sess_total and not already_sent:
+                phrase_parts = []
+                for it in sess_items:
+                    qty = int(it.get("quantity") or 1) if isinstance(it, dict) else 1
+                    nm  = (it.get("name") if isinstance(it, dict) else "") or "item"
+                    plural = "" if qty == 1 else "s"
+                    phrase_parts.append(f"{qty} {nm}{plural}")
+                phrase = ", ".join(phrase_parts) if phrase_parts else "your order"
+                summary = (
+                    f"Your order — {phrase} for ${sess_total / 100:.2f} — will be ready "
+                    f"as soon as the payment lands. Thanks for calling JM Cafe, see you soon!"
+                )
+                if session is not None:
+                    session["closing_emitted"] = True
+                _mon("AUTO-FIRE BLOCKED (cooldown, no intent) tool=%s → order summary closing",
+                     tool_name)
+                yield summary
+                return
             _mon("AUTO-FIRE BLOCKED (modify cooldown, no intent) tool=%s items=%d → closing line",
                  tool_name, len(tool_args.get("items") or []))
             yield "Got it — your order is set. Tap the payment link whenever you're ready."
@@ -800,6 +868,15 @@ async def _stream_gemini_response(
                 "idempotent":      bool(bridge_result.get("idempotent")),
             }
 
+            # Snapshot items + total to the session for the closing-summary
+            # line (Proposal I). Skip on idempotent re-hits — the original
+            # entry already wrote the snapshot.
+            # (closing line용 items/total 스냅샷)
+            if session is not None and not bridge_result.get("idempotent"):
+                session["last_order_items"] = bridge_result.get("items") or []
+                session["last_order_total"] = int(bridge_result.get("total_cents") or 0)
+                session["closing_emitted"]  = False
+
             # Fire-and-forget pay link delivery. Skip on idempotent re-hits —
             # the link was already sent on the first call. Two channels run
             # in parallel: SMS (primary, blocked by Twilio TCR for now) and
@@ -878,9 +955,17 @@ async def _stream_gemini_response(
         # per-call cap (Proposal F) can refuse runaway re-fires. We
         # bump on any successful outcome including modify_noop — both
         # exercise the same code path and cost the same audit work.
-        # (모든 성공/no-op 경로 카운트 증가 — gate에서 cap 적용)
+        # Also snapshot the latest committed items + total so the
+        # closing-summary line (Proposal I) can recap the order back to
+        # the customer when they end the call.
+        # (modify 카운트 + 최신 items/total 스냅샷 — closing line 용)
         if session is not None and bridge_result.get("success"):
             session["modify_count"] = int(session.get("modify_count") or 0) + 1
+            session["last_order_items"] = bridge_result.get("items") or session.get("last_order_items") or []
+            session["last_order_total"] = int(bridge_result.get("total_cents") or session.get("last_order_total") or 0)
+            # A NEW outcome resets the closing flag so a subsequent
+            # cooldown period can speak the recap once for the new state.
+            session["closing_emitted"] = False
 
         hint = bridge_result.get("ai_script_hint", "")
         # Modify-specific scripts first; fall back to ORDER_SCRIPT_BY_HINT
@@ -998,6 +1083,9 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_user_ts":       0.0,    # timestamp of last processed turn
         "caller_phone_e164":  "",     # Retell from_number, set by _init_session
         "modify_count":       0,      # successful modify_order calls — Proposal F cap
+        "last_order_items":   [],     # latest committed items snapshot (Proposal I)
+        "last_order_total":   0,      # latest committed total_cents (Proposal I)
+        "closing_emitted":    False,  # one-shot flag for the order-summary closing line
     }
     init_done = asyncio.Event()
 
@@ -1136,10 +1224,11 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
         caller_phone_e164    = s.get("caller_phone_e164") or ""
         in_cooldown          = _in_modify_cooldown(transcript)
-        # Allow modify when the customer expressed the intent in this turn
-        # OR within the last 3 user turns (covers 'I changed my mind, add
-        # one' on turn N → 'yeah, that's correct' on turn N+1 to recital).
-        user_intent          = _has_recent_explicit_modify_intent(transcript)
+        # Allow modify only when the customer expressed intent AFTER the
+        # most recent modify outcome (not the looser last-3 window —
+        # that kept stale 'add' keywords alive across multiple post-
+        # outcome acks and caused the redundant-modify loop).
+        user_intent          = _has_explicit_modify_intent_since_outcome(transcript)
         force_tool_use       = detect_force_tool_use(transcript)
         if force_tool_use:
             _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
