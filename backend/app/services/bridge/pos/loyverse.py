@@ -181,9 +181,19 @@ class LoyversePOSAdapter(POSAdapter):
                 }
             ],
         }
-        # Optional external order reference for traceability back to bridge_transactions
+        # Optional external order reference for traceability back to
+        # bridge_transactions. Loyverse caps object.order at 20 chars; our
+        # bridge_tx_id is a 36-char UUID, so the full value triggers HTTP 400
+        # INVALID_VALUE and the entire /receipts call fails (no sale, no
+        # inventory decrement). Truncate to the first 18 chars — that keeps
+        # the UUID's first two hex segments (e.g. 'da443768-2f85-4304'),
+        # which is unique enough within a single store's lifetime, and the
+        # reverse mapping is preserved by storing Loyverse's receipt_number
+        # back into bridge_transactions.pos_object_id below.
+        # (UUID 36자 → 20자 한도 충돌 회피, 첫 18자로 절단)
         if payload.get("bridge_tx_id"):
-            receipt_payload["order"] = str(payload["bridge_tx_id"])
+            tx_ref = str(payload["bridge_tx_id"])[:18]
+            receipt_payload["order"] = tx_ref
 
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(

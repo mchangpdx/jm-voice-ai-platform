@@ -353,8 +353,38 @@ async def create_order(
                 "error":           "customer_phone is required to send a payment link",
                 "ai_script_hint":  "validation_failed"}
 
-    phone_e164 = normalize_phone_us(args["customer_phone"])
-    customer   = args.get("customer_name") or ""
+    # Anti-hallucination guard: Gemini fills required fields with placeholders
+    # when the customer hasn't actually provided them, e.g. phone='+10000000000'
+    # or name='Anonymous'. Reject those so the model has to ask the customer
+    # for real values instead of writing junk into bridge_transactions.
+    # (Gemini 환각 차단 — placeholder phone/name 거부)
+    raw_phone   = (args.get("customer_phone") or "").strip()
+    raw_name    = (args.get("customer_name")  or "").strip()
+    digits_only = "".join(c for c in raw_phone if c.isdigit())
+
+    _PLACEHOLDER_DIGITS = {
+        "10000000000", "0000000000", "1111111111", "5555555555",
+        "1234567890",  "12345678901","9999999999", "9876543210",
+    }
+    _PLACEHOLDER_NAMES = {
+        "anonymous", "customer", "guest", "n/a", "na", "unknown",
+        "no name",   "test",     "tester","caller", "user",
+    }
+    if digits_only in _PLACEHOLDER_DIGITS or len(digits_only) < 10:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "validation_failed",
+                "error":           f"customer_phone looks invalid: {raw_phone!r}",
+                "ai_script_hint":  "validation_failed"}
+    if not raw_name or raw_name.lower() in _PLACEHOLDER_NAMES:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "validation_failed",
+                "error":           f"customer_name looks invalid: {raw_name!r}",
+                "ai_script_hint":  "validation_failed"}
+
+    phone_e164 = normalize_phone_us(raw_phone)
+    customer   = raw_name
 
     # ── 2. Resolve items against menu_items (catalog enrichment) ──────────
     resolved = await resolve_items_against_menu(
@@ -484,14 +514,34 @@ async def create_order(
             }
 
         # POS receipt created. Backfill link, advance state, stamp fired_at.
-        await transactions.set_pos_object_id(txn_id, pos_object_id)
-        await transactions.advance_state(
-            transaction_id = txn_id,
-            to_state       = State.FIRED_UNPAID,
-            source         = "voice",
-            actor          = "tool_call:create_order",
-            extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
-        )
+        # The Loyverse side already booked revenue and decremented inventory;
+        # if the bridge-side state UPDATE fails (e.g. CHECK constraint drift,
+        # connectivity blip), we MUST NOT bubble the exception to the voice
+        # layer — that would leave the customer in dead silence after the
+        # kitchen already received the order. Treat the bridge-side advance
+        # as best-effort: log + emit a recovery audit hint via _BRIDGE_DRIFT
+        # so reconcile_pos_drift.py can fix the row offline. The customer
+        # still gets the fire_immediate script, which is accurate (kitchen
+        # has the order, pay link is sent).
+        # (Loyverse는 이미 매출/재고 처리 — bridge UPDATE 실패해도 침묵 금지)
+        try:
+            await transactions.set_pos_object_id(txn_id, pos_object_id)
+        except Exception as exc:
+            log.error("set_pos_object_id failed tx=%s pos_id=%s: %s — "
+                      "Loyverse has the receipt; bridge row is drifted, "
+                      "needs reconcile.", txn_id, pos_object_id, exc)
+        try:
+            await transactions.advance_state(
+                transaction_id = txn_id,
+                to_state       = State.FIRED_UNPAID,
+                source         = "voice",
+                actor          = "tool_call:create_order",
+                extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
+            )
+        except Exception as exc:
+            log.error("advance_state(FIRED_UNPAID) failed tx=%s: %s — "
+                      "Loyverse receipt %s already exists; needs reconcile.",
+                      txn_id, exc, pos_object_id)
 
         return {
             "success":         True,

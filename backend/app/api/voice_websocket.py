@@ -146,8 +146,14 @@ def build_system_prompt(store: dict) -> str:
         "[name], party of [N], [day, Month D] at [12-h time] — is that right?'. "
         "On verbal yes, CALL make_reservation with user_explicit_confirmation=true. After success the "
         "booking is FINAL — never re-call. On error, apologize once + 'a manager will call you back' + STOP.\n"
-        "5. ORDERS (create_order): Use ONLY items from the menu above. Collect name, phone, items+quantity. "
-        "Optional email — only if the customer offers it. Recite ONCE: 'Confirming [N] [item], [N] [item] "
+        "5. ORDERS (create_order): Use ONLY items from the menu above. Collect name + items+quantity. "
+        "PHONE: do NOT ask the customer for their phone number — the system already has it from the "
+        "inbound call. Only ask if they explicitly want the link sent to a different number. "
+        "EMAIL (REQUIRED while SMS delivery is being verified): after items are agreed but BEFORE you "
+        "recite the order, ask 'What's the best email to send the payment link to?' and pass it as "
+        "customer_email. If the customer truly insists on SMS only, omit customer_email — but always "
+        "ask once. "
+        "Recite ONCE: 'Confirming [N] [item], [N] [item] "
         "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
         "CALL create_order with user_explicit_confirmation=true IMMEDIATELY — do NOT recite again, do NOT "
         "apologize, do NOT ask the same question twice. If you have already confirmed the items once, the "
@@ -255,9 +261,15 @@ async def _load_store_by_agent(agent_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-async def _get_agent_id_from_call(call_id: str) -> Optional[str]:
-    """Fetch agent_id from Retell REST API using call_id.
-    (Retell REST API에서 call_id로 agent_id 조회)
+async def _get_call_metadata(call_id: str) -> dict:
+    """Fetch agent_id + from_number (caller phone) from Retell REST API.
+    Returns {} on failure so callers can branch cleanly.
+    (Retell REST API에서 call_id로 agent_id + from_number 동시 조회)
+
+    from_number is the carrier-authenticated caller ID. Using it as the
+    server-side source of truth for customer_phone removes the entire
+    class of STT/Gemini phone-hallucination bugs (verified 2026-04-29
+    against legacy jm-saas-platform pattern in src/websocket/llmServer.js).
     """
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -269,10 +281,22 @@ async def _get_agent_id_from_call(call_id: str) -> Optional[str]:
                 },
             )
         if resp.status_code == 200:
-            return resp.json().get("agent_id")
+            body = resp.json()
+            return {
+                "agent_id":    body.get("agent_id") or "",
+                "from_number": body.get("from_number") or "",
+            }
     except Exception as exc:
-        log.warning("_get_agent_id_from_call failed: %s", exc)
-    return None
+        log.warning("_get_call_metadata failed: %s", exc)
+    return {}
+
+
+# Back-compat shim — keep the old call site working until everything is
+# migrated to _get_call_metadata().
+# (구 호출부 호환 — _get_call_metadata로 점진 이행)
+async def _get_agent_id_from_call(call_id: str) -> Optional[str]:
+    meta = await _get_call_metadata(call_id)
+    return meta.get("agent_id") or None
 
 
 async def _generate_greeting(system_prompt: str) -> str:
@@ -301,6 +325,7 @@ async def _stream_gemini_response(
     call_log_id: Optional[str] = None,
     store_name: Optional[str] = None,
     force_tool_use: bool = False,
+    caller_phone_e164: str = "",
 ) -> AsyncGenerator[str, None]:
     """Stream Gemini text chunks. Handles tool calls transparently.
     (Gemini 텍스트 스트리밍 + tool 호출 처리)
@@ -391,10 +416,86 @@ async def _stream_gemini_response(
     # ── Tool roundtrip ────────────────────────────────────────────────────
     tool_name = function_call.name
     tool_args = dict(function_call.args) if function_call.args else {}
+
+    # ── AUTO-FIRE GATE (server-side hardening) ────────────────────────────
+    # Reject any create_order / make_reservation that arrives WITHOUT the
+    # FORCE TOOL signal. force_tool_use=True means we detected the explicit
+    # confirmation pattern (assistant recital + user yes-class word) just
+    # before this turn — that's the only path we trust to actually book or
+    # charge a customer. Anything else is Gemini AUTO-deciding it has
+    # 'enough info' and self-firing, which is exactly how 'Guest' /
+    # 'Anonymous' / mid-sentence STT garbage have been slipping through.
+    #
+    # When we block, we coerce Gemini back into a clean confirm cycle by
+    # synthesizing a recital from whatever args it provided. The customer
+    # hears 'Just to confirm, that's X for Y — is that right?', says yes,
+    # detect_force_tool_use fires next turn, and we run the real tool.
+    # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
+    if tool_name in ("create_order", "make_reservation") and not force_tool_use:
+        items_for_recital: list[str] = []
+        try:
+            for it in (tool_args.get("items") or []):
+                d = dict(it) if not isinstance(it, dict) else it
+                qty  = int(d.get("quantity") or 1)
+                nm   = (d.get("name") or "").strip() or "item"
+                plural = "" if qty == 1 else "s"
+                items_for_recital.append(f"{qty} {nm}{plural}")
+        except Exception:
+            pass
+        recital_name = (tool_args.get("customer_name") or "").strip() or "you"
+        if tool_name == "create_order":
+            phrase = ", ".join(items_for_recital) or "your order"
+            recital = (f"Just to confirm, that's {phrase} for {recital_name} "
+                       f"— is that right?")
+        else:
+            recital = (f"Just to confirm a reservation for {recital_name} "
+                       f"— is that right?")
+        _mon("AUTO-FIRE BLOCKED tool=%s args_phone=%r args_name=%r args_email=%r "
+             "items=%d → recital fallback",
+             tool_name,
+             tool_args.get("customer_phone") or "",
+             tool_args.get("customer_name") or "",
+             tool_args.get("customer_email") or "",
+             len(tool_args.get("items") or []))
+        yield recital
+        return
+
+    # Server-side caller_phone override — single source of truth.
+    # Retell hands us the carrier-authenticated caller phone (from_number)
+    # at WebSocket connect; we ALWAYS use that over anything Gemini puts
+    # in customer_phone. Gemini's transcribed/hallucinated value is
+    # discarded unconditionally when we have a caller_phone_e164.
+    #
+    # The earlier "alternate-number bypass" tried to honour 'send to a
+    # different number' requests but in practice Gemini's hallucinated
+    # 555-fictional numbers always tripped the bypass and we ended up
+    # with multiple Loyverse receipts under fake phones (verified in
+    # call_c350ebdcc5...: 3 distinct fake phones → 3 receipts in 30s).
+    # Alternate-number routing, when needed, will land as an explicit
+    # store-config feature — not as a heuristic on Gemini args.
+    # (caller_phone_e164은 항상 server source-of-truth — bypass 제거)
+    if tool_name in ("create_order", "make_reservation") and caller_phone_e164:
+        tool_args["customer_phone"] = caller_phone_e164
+
     # Use _mon for visibility — log.info from this module is silenced by
     # uvicorn's default logger config and never reaches /tmp/backend.log.
-    # (uvicorn 기본 설정으로 log.info는 silent — _mon로 강제 노출)
-    _mon("TOOL CALL name=%s args=%s", tool_name, tool_args)
+    # Pull out the item names explicitly so reject-loops are diagnosable
+    # without parsing proto MapComposite repr() (which hides actual names).
+    # (item 이름을 명시 추출 — proto repr이 가려서 디버그 불가했음)
+    item_summary: list[str] = []
+    try:
+        for it in (tool_args.get("items") or []):
+            d = dict(it) if not isinstance(it, dict) else it
+            item_summary.append(f"{d.get('quantity', '?')}x {d.get('name', '?')!r}")
+    except Exception:
+        pass
+    _mon("TOOL CALL name=%s phone=%r name=%r email=%r force=%s items=[%s]",
+         tool_name,
+         tool_args.get("customer_phone"),
+         tool_args.get("customer_name"),
+         tool_args.get("customer_email") or "",
+         force_tool_use,
+         ", ".join(item_summary))
 
     if tool_name == "make_reservation":
         # Phase 2-B: route through Bridge Server. Bridge owns:
@@ -433,9 +534,9 @@ async def _stream_gemini_response(
                     time_12h      = format_time_12h(tool_args["reservation_time"]),
                     party_size    = int(tool_args.get("party_size", 0)),
                 ))
-                log.info("SMS confirmation queued (fire-and-forget) to=%s", phone_e164)
+                _mon("SMS confirmation queued (fire-and-forget) to=%s", phone_e164)
             except Exception as exc:
-                log.warning("SMS dispatch error (ignored): %s", exc)
+                _mon("SMS dispatch error (ignored): %s", exc)
         else:
             result = {
                 "success": False,
@@ -496,9 +597,10 @@ async def _stream_gemini_response(
                         transaction_id = tx_id,
                         lane           = lane_str,
                     ))
-                    log.info("pay link SMS queued (fire-and-forget) tx=%s", tx_id)
+                    _mon("PAY LINK SMS queued tx=%s to=%s lane=%s",
+                         tx_id, tool_args.get("customer_phone", "")[:14], lane_str)
                 except Exception as exc:
-                    log.warning("pay link SMS dispatch error (ignored): %s", exc)
+                    _mon("PAY LINK SMS dispatch error tx=%s: %s", tx_id, exc)
 
                 # Email fallback — only fires when the customer gave an
                 # email address. Useful while Twilio TCR approval is pending
@@ -516,10 +618,13 @@ async def _stream_gemini_response(
                             transaction_id  = tx_id,
                             lane            = lane_str,
                         ))
-                        log.info("pay link email queued (fire-and-forget) tx=%s to=%s",
-                                 tx_id, customer_email)
+                        _mon("PAY LINK EMAIL queued tx=%s to=%s lane=%s",
+                             tx_id, customer_email, lane_str)
                     except Exception as exc:
-                        log.warning("pay link email dispatch error (ignored): %s", exc)
+                        _mon("PAY LINK EMAIL dispatch error tx=%s: %s", tx_id, exc)
+                else:
+                    _mon("PAY LINK EMAIL skipped tx=%s — no customer_email in tool args",
+                         tx_id)
         else:
             # Refusal (sold_out / unknown_item / pos_failure) — use the
             # script for that hint so the agent says something useful.
@@ -534,8 +639,25 @@ async def _stream_gemini_response(
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
-    _mon("TOOL RESULT name=%s success=%s lane=%s message_len=%d",
-         tool_name, result.get("success"), result.get("lane"),
+    # Surface the actual rejection reason and rejected items so a failed
+    # call is diagnosable without diffing the bridge code path.
+    # (거부 이유 + 거부된 item 명시 — 디버그 추적 가능)
+    unavail_summary = ""
+    unavail_list = result.get("unavailable") or []
+    if unavail_list:
+        try:
+            unavail_summary = ", ".join(
+                f"{u.get('quantity','?')}x {u.get('name','?')}" for u in unavail_list
+            )
+        except Exception:
+            unavail_summary = repr(unavail_list)
+    _mon("TOOL RESULT name=%s success=%s lane=%s reason=%s unavailable=[%s] err=%r message_len=%d",
+         tool_name,
+         result.get("success"),
+         result.get("lane"),
+         result.get("reason"),
+         unavail_summary,
+         result.get("error"),
          len(result.get("message") or ""))
 
     # Yield the bridge-supplied script verbatim. We deliberately do NOT round-
@@ -573,15 +695,22 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
     turn_count    = 0
     _mon("CONNECTED call=%s", call_id)
 
-    # Session state — mutated by _init_session task and WS message loop
+    # Session state — mutated by _init_session task and WS message loop.
+    # caller_phone_e164 is the carrier-authenticated caller ID, captured
+    # from Retell's /v2/get-call REST response on connect. The order tool
+    # roundtrip overrides whatever Gemini puts in customer_phone with this
+    # value when present, removing the entire phone-hallucination class
+    # (verified in jm-saas-platform legacy pattern).
+    # (caller_phone_e164 — Retell carrier-authenticated phone, server source of truth)
     sess = {
-        "store":          None,   # dict once loaded
-        "system_prompt":  "",
-        "initialized":    False,  # True after greeting sent
-        "greeting_sent":  False,
-        "pending":        [],     # response_required messages buffered during init
-        "last_user_msg":  "",     # dedupe key for barge-in echo
-        "last_user_ts":   0.0,    # timestamp of last processed turn
+        "store":              None,   # dict once loaded
+        "system_prompt":      "",
+        "initialized":        False,  # True after greeting sent
+        "greeting_sent":      False,
+        "pending":            [],     # response_required messages buffered during init
+        "last_user_msg":      "",     # dedupe key for barge-in echo
+        "last_user_ts":       0.0,    # timestamp of last processed turn
+        "caller_phone_e164":  "",     # Retell from_number, set by _init_session
     }
     init_done = asyncio.Event()
 
@@ -589,7 +718,9 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
     async def _init_session():
         """Load store via REST, generate greeting, mark initialized."""
         try:
-            agent_id = await _get_agent_id_from_call(call_id)
+            meta     = await _get_call_metadata(call_id)
+            agent_id = meta.get("agent_id") or ""
+            from_num = meta.get("from_number") or ""
             if not agent_id:
                 _mon("INIT: no agent_id from REST for call=%s (web/test call)", call_id)
                 return  # will fall back to call_details event
@@ -601,7 +732,15 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
 
             sess["store"]         = store
             sess["system_prompt"] = build_system_prompt(store)
-            _mon("INIT OK call=%s store=%s", call_id, store["name"])
+            # Stash carrier-authenticated caller phone so the order tool
+            # roundtrip can override Gemini's customer_phone with it.
+            # (caller_phone_e164는 Gemini args를 server-side override)
+            if from_num:
+                sess["caller_phone_e164"] = from_num
+                _mon("INIT OK call=%s store=%s caller=%s",
+                     call_id, store["name"], from_num)
+            else:
+                _mon("INIT OK call=%s store=%s caller=<unknown>", call_id, store["name"])
 
             # Generate and send proactive greeting (response_id=0, no prior request)
             try:
@@ -708,6 +847,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
 
         store_id_for_tools   = s["store"]["id"]   if s.get("store") else None
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
+        caller_phone_e164    = s.get("caller_phone_e164") or ""
         force_tool_use       = detect_force_tool_use(transcript)
         if force_tool_use:
             _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
@@ -719,6 +859,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                 store_id=store_id_for_tools, call_log_id=cid,
                 store_name=store_name_for_tools,
                 force_tool_use=force_tool_use,
+                caller_phone_e164=caller_phone_e164,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000
@@ -764,7 +905,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                     # Eager init hasn't loaded store yet (or failed) — load now
                     call_info = raw.get("call", {})
                     agent_id  = call_info.get("agent_id", "")
-                    from_num  = call_info.get("from_number", "unknown")
+                    from_num  = call_info.get("from_number", "") or "unknown"
                     store = await _load_store_by_agent(agent_id)
                     if not store:
                         _mon("NO STORE agent_id=%s — closing", agent_id)
@@ -773,11 +914,15 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                         return
                     sess["store"]         = store
                     sess["system_prompt"] = build_system_prompt(store)
+                    if from_num and from_num != "unknown" and not sess.get("caller_phone_e164"):
+                        sess["caller_phone_e164"] = from_num
                     _mon("CALL START (call_details) call=%s store=%s agent=%s from=%s",
                          call_id, store["name"], agent_id[:24], from_num)
                 else:
-                    # Eager init already loaded — just log from_number
-                    from_num = raw.get("call", {}).get("from_number", "unknown")
+                    # Eager init already loaded — just log from_number, capture if missing
+                    from_num = raw.get("call", {}).get("from_number", "") or "unknown"
+                    if from_num and from_num != "unknown" and not sess.get("caller_phone_e164"):
+                        sess["caller_phone_e164"] = from_num
                     _mon("CALL START (already init) call=%s store=%s from=%s",
                          call_id, sess["store"]["name"], from_num)
 

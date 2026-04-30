@@ -22,11 +22,21 @@
 from __future__ import annotations
 
 import logging
+from difflib import get_close_matches
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+
+# Fuzzy fallback threshold. 0.85 catches "caffe latte" → "cafe latte"
+# (one-letter typo over 11 chars ≈ 0.91 ratio) and "mochi" → "mocha"
+# (one-letter sub over 5 chars ≈ 0.80, so it's BELOW threshold and stays
+# unmatched), but never collapses semantically distinct items like
+# "latte" → "mocha". Anything tighter than 0.85 starts rejecting STT
+# noise we want to forgive; anything looser starts collapsing real menus.
+# (퍼지 매칭 임계값 — STT/LLM 오타 수준만 흡수, 의미 다른 매뉴는 거절)
+_FUZZY_CUTOFF = 0.85
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +88,7 @@ async def resolve_items_against_menu(
         if nm and nm not in by_name:
             by_name[nm] = r
 
+    catalog_keys = list(by_name.keys())
     enriched: list[dict[str, Any]] = []
     for item in items:
         raw_name = item.get("name") or ""
@@ -85,6 +96,19 @@ async def resolve_items_against_menu(
         qty      = int(item.get("quantity") or 1)
 
         match = by_name.get(key)
+        if match is None and key:
+            # Exact (case-insensitive) miss — try a tight fuzzy fallback.
+            # The customer almost-certainly meant a real menu item; STT or
+            # the LLM dropped/added a letter ("caffe latte" vs "cafe latte",
+            # "ham burger" vs "hamburger"). Threshold is conservative
+            # enough that semantically distinct items don't collapse.
+            # (정확 매치 실패 시 보수적 fuzzy fallback)
+            close = get_close_matches(key, catalog_keys, n=1, cutoff=_FUZZY_CUTOFF)
+            if close:
+                fuzzy_key = close[0]
+                match = by_name[fuzzy_key]
+                log.info("Menu fuzzy match: %r -> %r", raw_name, match["name"])
+
         if match is None:
             enriched.append({
                 "name":             raw_name.strip(),

@@ -14,14 +14,19 @@ ORDER_TOOL_DEF: dict = {
             "name": "create_order",
             "description": (
                 "Place a confirmed food/drink order for pickup. "
-                "BEFORE calling this tool you MUST: "
-                "(a) confirm the customer's name and the phone number we should send the payment link to "
-                "    (use the caller's phone unless they ask to use a different one), "
-                "(b) recite the full order back to the customer with item names and quantities, "
-                "(c) receive an explicit verbal 'yes' from the customer. "
-                "Only then set user_explicit_confirmation=true. "
-                "Never call this tool without verbal confirmation. "
-                "Do NOT invent menu items — only call with items that were quoted from the menu."
+                "PRECONDITIONS (ALL must be true before calling): "
+                "(a) the customer has SPOKEN their actual name to you in this call — "
+                "    NEVER invent placeholders like 'Anonymous', 'Customer', 'Guest', or 'N/A'. "
+                "    If the customer has not given a name yet, ASK first. "
+                "(b) PHONE: the system fills customer_phone automatically from the inbound caller "
+                "    ID — DO NOT ask the customer for their phone, and DO NOT invent placeholders. "
+                "    Only override (pass a different customer_phone) when the customer explicitly "
+                "    asks to send the link to a different number AND has spoken 10+ real digits. "
+                "(c) you have recited the full order back with exact menu names and quantities. "
+                "(d) the customer has said an explicit verbal 'yes' to your recital. "
+                "Only when ALL FOUR are true, set user_explicit_confirmation=true and call this tool. "
+                "If any one is missing, DO NOT call — ask the customer for the missing piece. "
+                "Do NOT invent menu items — use only items quoted from the menu."
             ),
             "parameters": {
                 "type": "object",
@@ -40,16 +45,20 @@ ORDER_TOOL_DEF: dict = {
                     "customer_phone": {
                         "type": "string",
                         "description": (
-                            "Phone number to receive the SMS payment link (digits and + only, "
-                            "E.164 preferred — e.g. +15035551234)."
+                            "Caller phone in E.164 (e.g. +15035551234). The system "
+                            "auto-fills this from the inbound caller ID — leave it as the "
+                            "default the system provides. Only set a different value when the "
+                            "customer EXPLICITLY asks to send the link to another number "
+                            "AND speaks 10+ real digits — never invent placeholders."
                         ),
                     },
                     "customer_email": {
                         "type": "string",
                         "description": (
-                            "Optional email address. Ask the customer if they'd like a payment "
-                            "link by email (useful if SMS doesn't reach them or they prefer email). "
-                            "Only include when the customer explicitly provides it."
+                            "Email address for the payment link. While SMS delivery is being "
+                            "verified, ALWAYS ask the customer 'What's the best email to send "
+                            "the payment link to?' before reciting the order. Pass the spoken "
+                            "address here. Omit only when the customer explicitly refuses email."
                         ),
                     },
                     "items": {
