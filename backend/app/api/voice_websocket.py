@@ -187,6 +187,9 @@ def build_system_prompt(store: dict) -> str:
         "stop. The pay link / kitchen handoff happens after the call ends.\n"
         "6. MODIFY ORDER (modify_order): Call this ONLY when the customer EXPLICITLY "
         "states a change to a JUST-placed order (add X, remove Y, change quantity Z). "
+        "Hesitation noises ALONE — 'wait', 'hold on', 'um', 'uh', 'oh', 'hmm' — are "
+        "NOT a modify request. Wait for the actual change in words before calling "
+        "modify_order; otherwise reply briefly ('Take your time.') and stay silent. "
         "Recite the FULL UPDATED order with the NEW total once ('Updated to two cafe "
         "lattes and one croissant for $15.97 — is that right?'), and on the explicit "
         "yes, call modify_order with the COMPLETE new items list (NOT a delta). The "
@@ -275,18 +278,26 @@ _MODIFY_INTENT_TOKENS = {
 
 
 def _in_modify_cooldown(transcript: list[dict]) -> bool:
-    """True iff one of the last 4 assistant turns ended a modify cycle
+    """True iff one of the last 6 assistant turns ended a modify cycle
     (success or no-op). Used to suppress reflexive FORCE TOOL on bare
-    yes/okay acks that follow a modify outcome — those are call-closing
-    phrases, not new modify commands.
-    (직전 4턴 내 modify 결과 멘트 존재 → bare yes는 closing ack로 처리)
+    yes/okay acks that follow a modify outcome.
+
+    Window widened from 4 to 6 assistant turns: AUTO-fire BLOCKED
+    recitals are themselves assistant turns, so when Gemini reflexively
+    re-fires modify many times the success message gets pushed out of a
+    too-narrow window and cooldown silently turns off (live regression
+    in call_05bad4f12f… resp_id=13/14 — bare 'oh yeah' bypassed
+    cooldown and modify_order ran a no-op against the same items).
+    Counting only assistant turns (not all turns) keeps the window
+    proportional to actual outcome distance, not user chatter.
+    (4 → 6 — 자가 트리거 recital 사이에 success 메시지가 밀려나는 문제 보강)
     """
-    recent = [
+    agent_turns = [
         (t.get("content") or "").lower()
-        for t in transcript[-8:]
+        for t in transcript
         if t.get("role") != "user"
-    ][-4:]
-    blob = " ".join(recent)
+    ][-6:]
+    blob = " ".join(agent_turns)
     return any(p in blob for p in _MODIFY_OUTCOME_PHRASES)
 
 
@@ -297,6 +308,54 @@ def _has_explicit_modify_intent(user_text: str) -> bool:
     """
     lc = (user_text or "").lower()
     return any(tok in lc for tok in _MODIFY_INTENT_TOKENS)
+
+
+# Filler / hesitation tokens. Used together to detect 'utterance carries
+# only hesitation, no actual request' so the AUTO-fire gate can skip the
+# recital entirely. 'oh wait wait wait' tokenizes to all-hesitation and
+# the AI says 'Take your time.' instead of re-firing modify with stale
+# items. Live: call_05bad4f12f… resp_id=11 'Oh, wait. Wait. Wait. Wait.'
+# (망설임/필러 토큰만으로 구성된 발화 → recital 생략)
+_HESITATION_TOKENS = {
+    "wait", "hold", "on", "um", "uh", "oh", "hmm", "ah", "er",
+    "like", "actually", "yeah", "yes", "okay", "ok", "well",
+    "so", "you", "know", "i", "mean",
+}
+
+
+def _is_hesitation_only(text: str) -> bool:
+    """True iff the utterance contains no word outside the hesitation
+    set — pure filler. Single-word affirmations ('yes', 'okay') count
+    as hesitation here intentionally; FORCE TOOL handles the real
+    affirmation path through detect_force_tool_use, so an AUTO-firing
+    Gemini on a bare yes during cooldown should NOT yield a recital.
+    (필러 only — 진짜 요청이 없으면 recital 생략)
+    """
+    if not text:
+        return True
+    words = [w.strip(".,!?'\"-") for w in text.lower().split()]
+    words = [w for w in words if w]
+    if not words:
+        return True
+    return all(w in _HESITATION_TOKENS for w in words)
+
+
+def _has_recent_explicit_modify_intent(transcript: list[dict], n_user: int = 3) -> bool:
+    """True iff ANY of the last N user turns contains explicit modify
+    intent. Solves the 'yeah, that's correct' bug: when a customer
+    expresses 'I changed my mind, add one more' on turn N and replies
+    'yeah, that's correct' on turn N+1 to the recital, the cooldown
+    suppression should not fire — the intent was real even though the
+    affirmation that confirms it carries no modify keyword itself.
+    Live regression: call_05bad4f12f… turn 20.
+    (최근 N user turns 중 하나라도 modify 의도 → True)
+    """
+    user_turns = [
+        (t.get("content") or "")
+        for t in transcript
+        if t.get("role") == "user"
+    ][-n_user:]
+    return any(_has_explicit_modify_intent(t) for t in user_turns)
 
 
 def detect_force_tool_use(transcript: list[dict]) -> bool:
@@ -342,8 +401,10 @@ def detect_force_tool_use(transcript: list[dict]) -> bool:
 
     # Cooldown gate — bare yes/okay after a modify outcome is a closing
     # ack, not a new modify command. Only allow FORCE TOOL during cooldown
-    # when the user actually said add/remove/change/etc.
-    if _in_modify_cooldown(transcript) and not _has_explicit_modify_intent(last_user):
+    # when the user actually said add/remove/change/etc., either on this
+    # turn OR within the last 3 user turns (the customer often expresses
+    # the modify intent THEN says 'yeah, that's correct' to the recital).
+    if _in_modify_cooldown(transcript) and not _has_recent_explicit_modify_intent(transcript):
         return False
 
     return True
@@ -437,6 +498,9 @@ async def _stream_gemini_response(
     caller_phone_e164: str = "",
     in_modify_cooldown: bool = False,
     user_has_modify_intent: bool = False,
+    last_user_text: str = "",
+    modify_count: int = 0,
+    session: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """Stream Gemini text chunks. Handles tool calls transparently.
     (Gemini 텍스트 스트리밍 + tool 호출 처리)
@@ -547,23 +611,38 @@ async def _stream_gemini_response(
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
     if tool_name in ("create_order", "make_reservation", "modify_order") and not force_tool_use:
+        # Hesitation-only short-circuit (Proposal E). When the customer's
+        # current turn is filler/hesitation only ('oh wait wait wait'),
+        # emit a brief 'Take your time' and stay silent — never recite
+        # stale items, never re-fire the same modify. Live: call_05bad4f…
+        # spent 4 turns on 'wait wait' and Gemini fired modify_order with
+        # unchanged items each time.
+        # (필러 only → recital 생략, 짧은 안내만)
+        if tool_name == "modify_order" and _is_hesitation_only(last_user_text):
+            _mon("AUTO-FIRE BLOCKED (hesitation-only) tool=%s user=%r → calm line",
+                 tool_name, last_user_text[:40])
+            yield "Take your time."
+            return
+
+        # Per-call modify cap (Proposal F). After many successful or
+        # no-op modifies on this call, refuse further re-fires regardless
+        # of cooldown state. Belt-and-suspenders: bridge no-op detection
+        # already prevents DB pollution, but the cap silences the audible
+        # repetition. Generous cap (8) so legitimate multi-edit calls work.
+        # (modify 호출 횟수 cap — 8회 초과 시 closing)
+        if tool_name == "modify_order" and modify_count >= 8:
+            _mon("AUTO-FIRE BLOCKED (modify cap %d) tool=%s → closing line",
+                 modify_count, tool_name)
+            yield "Got it — your order is set. Tap the payment link whenever you're ready."
+            return
+
         # Modify-cooldown special case: if Gemini is reflexively re-firing
         # modify_order right after a successful (or no-op) modify AND the
-        # customer's current turn has no explicit add/remove/change intent,
-        # do NOT yield a recital — the recital itself re-triggers FORCE
-        # TOOL on the next bare yes and the customer hears 'Updated …' /
-        # 'Your order is unchanged' on repeat. Yield a closing line that
-        # does not match _CONFIRMATION_PATTERNS so detect_force_tool_use
-        # returns False on the next yes.
-        #
-        # When the customer DOES have explicit modify intent ('add another',
-        # 'remove one', 'changed my mind', 'instead'), fall through to the
-        # normal recital below — they really do want a change, even though
-        # we're in cooldown. Mirrors the symmetric check in
-        # detect_force_tool_use so cooldown handling is consistent across
-        # gates. Live regression observed in call_c424e16a… where the gate
-        # ate a legitimate "changed my mind, remove one pepperoni".
-        # (cooldown + 명시 수정 의도 부재 시에만 closing — 그 외에는 정상 recital)
+        # customer's current turn has no explicit add/remove/change intent
+        # (and no recent 3-turn intent either), do NOT yield a recital.
+        # Yield a closing line so detect_force_tool_use returns False on
+        # the next yes.
+        # (cooldown + 명시 수정 의도 부재 → closing)
         if (
             tool_name == "modify_order"
             and in_modify_cooldown
@@ -795,6 +874,14 @@ async def _stream_gemini_response(
             call_log_id       = call_log_id,
         )
 
+        # Track modify count on the session so the AUTO-fire gate's
+        # per-call cap (Proposal F) can refuse runaway re-fires. We
+        # bump on any successful outcome including modify_noop — both
+        # exercise the same code path and cost the same audit work.
+        # (모든 성공/no-op 경로 카운트 증가 — gate에서 cap 적용)
+        if session is not None and bridge_result.get("success"):
+            session["modify_count"] = int(session.get("modify_count") or 0) + 1
+
         hint = bridge_result.get("ai_script_hint", "")
         # Modify-specific scripts first; fall back to ORDER_SCRIPT_BY_HINT
         # for the shared 'rejected' / 'validation_failed' lines.
@@ -910,6 +997,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_user_msg":      "",     # dedupe key for barge-in echo
         "last_user_ts":       0.0,    # timestamp of last processed turn
         "caller_phone_e164":  "",     # Retell from_number, set by _init_session
+        "modify_count":       0,      # successful modify_order calls — Proposal F cap
     }
     init_done = asyncio.Event()
 
@@ -1048,7 +1136,10 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
         caller_phone_e164    = s.get("caller_phone_e164") or ""
         in_cooldown          = _in_modify_cooldown(transcript)
-        user_intent          = _has_explicit_modify_intent(last_user)
+        # Allow modify when the customer expressed the intent in this turn
+        # OR within the last 3 user turns (covers 'I changed my mind, add
+        # one' on turn N → 'yeah, that's correct' on turn N+1 to recital).
+        user_intent          = _has_recent_explicit_modify_intent(transcript)
         force_tool_use       = detect_force_tool_use(transcript)
         if force_tool_use:
             _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
@@ -1066,6 +1157,9 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                 caller_phone_e164=caller_phone_e164,
                 in_modify_cooldown=in_cooldown,
                 user_has_modify_intent=user_intent,
+                last_user_text=last_user,
+                modify_count=int(s.get("modify_count") or 0),
+                session=s,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000

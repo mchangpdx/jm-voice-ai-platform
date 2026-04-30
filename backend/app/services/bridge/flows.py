@@ -749,9 +749,17 @@ async def modify_order(
                 out.append((nm, qty))
         return sorted(out)
 
-    if _items_key(target.get("items_json") or []) == _items_key(resolved):
-        log.info("modify_order no-op for tx=%s — items unchanged",
-                 target["id"])
+    old_key = _items_key(target.get("items_json") or [])
+    new_key = _items_key(resolved)
+    # log.warning so the line reaches /tmp/backend.log (log.info is
+    # silenced under uvicorn's default logger config). One-liner per
+    # modify call; harmless in volume given the cooldown gate above.
+    # (warning 레벨 — log.info는 uvicorn에서 silent)
+    log.warning("modify_order compare tx=%s old=%s new=%s match=%s",
+                target["id"], old_key, new_key, old_key == new_key)
+    if old_key == new_key:
+        log.warning("modify_order no-op for tx=%s — items unchanged",
+                    target["id"])
         return {
             "success":         True,
             "transaction_id":  target["id"],
