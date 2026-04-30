@@ -27,7 +27,12 @@ from app.core.config import settings
 from app.services.bridge import flows as bridge_flows
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
-from app.skills.order.order import ORDER_SCRIPT_BY_HINT, ORDER_TOOL_DEF
+from app.skills.order.order import (
+    MODIFY_ORDER_SCRIPT_BY_HINT,
+    MODIFY_ORDER_TOOL_DEF,
+    ORDER_SCRIPT_BY_HINT,
+    ORDER_TOOL_DEF,
+)
 from app.skills.scheduler.reservation import (
     RESERVATION_TOOL_DEF,
     format_date_human,
@@ -161,11 +166,19 @@ def build_system_prompt(store: dict) -> str:
         "is FINAL: do NOT call create_order again, do NOT ask 'is that right?' again. If the customer says "
         "'okay' or 'thanks' or 'bye', reply with one short closing sentence ('Thanks, see you soon.') and "
         "stop. The pay link / kitchen handoff happens after the call ends.\n"
-        "6. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
-        "7. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
+        "6. MODIFY ORDER (modify_order): If the customer asks to change an order they "
+        "JUST placed in this same call (add an item, remove one, change a quantity) AND it "
+        "has not yet been paid for, recite the FULL UPDATED order with the NEW total "
+        "('Updated to two cafe lattes and one croissant for $15.97 — is that right?'). On "
+        "the explicit verbal yes, call modify_order with the COMPLETE new items list (NOT "
+        "a delta). The same payment link automatically reflects the new total — do NOT "
+        "promise a new link, do NOT ask for the phone or email again. If the bridge "
+        "returns modify_too_late, apologize and offer to cancel + place a fresh order.\n"
+        "7. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
+        "8. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
         "pos_failure → apologize once + STOP, a person will call back.\n"
-        "8. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
-        "9. ESCALATION: 'Let me connect you with our manager right away.'"
+        "9. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
+        "10. ESCALATION: 'Let me connect you with our manager right away.'"
     )
 
     return "\n\n".join(parts)
@@ -357,7 +370,11 @@ async def _stream_gemini_response(
         # picks one (or none) per turn based on the customer's ask. Mixing
         # reservation + order in the same call is not allowed by prompt rules.
         # (예약 + 주문 도구를 모두 Gemini에 노출 — 프롬프트가 한 번에 하나만 선택)
-        kwargs["tools"] = [RESERVATION_TOOL_DEF, ORDER_TOOL_DEF]
+        kwargs["tools"] = [
+            RESERVATION_TOOL_DEF,
+            ORDER_TOOL_DEF,
+            MODIFY_ORDER_TOOL_DEF,
+        ]
         if force_tool_use:
             kwargs["tool_config"] = {
                 "function_calling_config": {"mode": "ANY"},
@@ -431,7 +448,7 @@ async def _stream_gemini_response(
     # hears 'Just to confirm, that's X for Y — is that right?', says yes,
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
-    if tool_name in ("create_order", "make_reservation") and not force_tool_use:
+    if tool_name in ("create_order", "make_reservation", "modify_order") and not force_tool_use:
         items_for_recital: list[str] = []
         try:
             for it in (tool_args.get("items") or []):
@@ -631,6 +648,60 @@ async def _stream_gemini_response(
             result = {
                 "success":     False,
                 "lane":        bridge_result.get("lane"),
+                "reason":      bridge_result.get("reason"),
+                "unavailable": bridge_result.get("unavailable", []),
+                "message":     script,
+                "error":       bridge_result.get("error", ""),
+            }
+    elif tool_name == "modify_order":
+        # Phase 2-C.B1 — replace items on an in-flight order. Bridge owns
+        # target lookup (caller-id), state-guarding (PENDING / PAYMENT_SENT
+        # only), menu resolution, total recompute, persistence, audit.
+        # No new pay link is dispatched — /pay/{tx_id} reads total_cents at
+        # click time, so the existing link auto-reflects the new total.
+        # (B1 — 결제 전 items 교체. pay link 재발송 X)
+        bridge_result = await bridge_flows.modify_order(
+            store_id          = store_id,
+            args              = tool_args,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = call_log_id,
+        )
+
+        hint = bridge_result.get("ai_script_hint", "")
+        # Modify-specific scripts first; fall back to ORDER_SCRIPT_BY_HINT
+        # for the shared 'rejected' / 'validation_failed' lines.
+        # (modify 전용 스크립트 우선, 공용은 ORDER_SCRIPT_BY_HINT 폴백)
+        script_template = (
+            MODIFY_ORDER_SCRIPT_BY_HINT.get(hint)
+            or ORDER_SCRIPT_BY_HINT.get(
+                hint,
+                "Thanks — I've got that.",
+            )
+        )
+
+        # Substitute {total} for the success line. Other lines have no
+        # placeholder, so .format() leaves them unchanged.
+        # (성공 시 새 total을 멘트에 치환)
+        new_total_cents = int(bridge_result.get("total_cents") or 0)
+        total_human     = f"${new_total_cents / 100:.2f}"
+        try:
+            script = script_template.format(total=total_human)
+        except (KeyError, IndexError):
+            script = script_template
+
+        if bridge_result.get("success"):
+            result = {
+                "success":         True,
+                "transaction_id":  bridge_result.get("transaction_id"),
+                "lane":            bridge_result.get("lane"),
+                "state":           bridge_result.get("state"),
+                "total_cents":     new_total_cents,
+                "items":           bridge_result.get("items"),
+                "message":         script,
+            }
+        else:
+            result = {
+                "success":     False,
                 "reason":      bridge_result.get("reason"),
                 "unavailable": bridge_result.get("unavailable", []),
                 "message":     script,

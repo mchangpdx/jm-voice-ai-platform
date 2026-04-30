@@ -317,13 +317,18 @@ async def test_create_order_keeps_pending_on_pos_failure():
                   "customer_name":  "Michael"},
         )
 
-    # Caller-visible signal — order is "soft-failed" but transaction is still open
+    # Caller-visible signal — order is hard-failed and the bridge tx is
+    # advanced to FAILED so the broadened idempotency probe excludes it
+    # (Phase F-2.E: a 'pending' tx with a fake POS state was matching
+    # the next yes and returning a misleading success).
+    # (POS 실패 = FAILED 전이 — 다음 idempotency probe에서 제외됨)
     assert res["success"] is False
-    assert res["state"]   == State.PENDING
+    assert res["state"]   == State.FAILED
     assert "pos" in res["error"].lower()
-    # State machine NEVER advanced past PENDING
-    for call in mock_tx.advance_state.await_args_list:
-        assert call.kwargs.get("to_state") != State.FIRED_UNPAID
+    # The state machine MUST have advanced to FAILED, never to FIRED_UNPAID.
+    to_states = [c.kwargs.get("to_state") for c in mock_tx.advance_state.await_args_list]
+    assert State.FIRED_UNPAID not in to_states
+    assert State.FAILED       in to_states
 
 
 # ── Idempotency ───────────────────────────────────────────────────────────────

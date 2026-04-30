@@ -126,3 +126,99 @@ ORDER_SCRIPT_BY_HINT: dict[str, str] = {
         "Could you confirm the items and a phone number for the payment link?"
     ),
 }
+
+
+# B1 — modify_order tool definition (Phase 2-C).
+# Customer wants to change items on an order they JUST placed (before
+# payment). Tool args deliberately OMIT customer_phone / customer_name
+# / customer_email — the bridge looks them up from the in-flight tx
+# via caller-id, which kills the phone-hallucination class for modify
+# the same way it does for create.
+# (B1 — 결제 전 in-flight 주문 items 수정 tool)
+
+MODIFY_ORDER_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "modify_order",
+            "description": (
+                "Update the items on an in-flight pickup order, before payment. "
+                "Use ONLY when the customer explicitly asks to add, remove, or "
+                "change items on an order they JUST placed in this same call. "
+                "PRECONDITIONS: "
+                "(a) the customer has clearly stated the change, "
+                "(b) you have recited the FULL UPDATED order back with the new "
+                "    item list and the new total, "
+                "(c) the customer has said an explicit verbal yes to the recital. "
+                "The 'items' list REPLACES the current order entirely — pass the "
+                "COMPLETE final list of items with their final quantities, NOT a "
+                "delta. Do NOT pass customer_phone / customer_name / customer_email "
+                "— the system looks them up from the existing order via the inbound "
+                "caller ID. Do NOT invent menu items or placeholders. If no "
+                "in-flight order exists, the bridge will respond accordingly and "
+                "you must NOT retry."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_explicit_confirmation": {
+                        "type": "boolean",
+                        "description": (
+                            "Set to true ONLY after the customer has verbally said "
+                            "'yes' to your updated recital. False or missing = do "
+                            "not call."
+                        ),
+                    },
+                    "items": {
+                        "type": "array",
+                        "description": (
+                            "Complete final list of items the customer wants on "
+                            "the order. Each entry must have name (exact menu name) "
+                            "and quantity (positive integer)."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Exact menu item name (case-insensitive).",
+                                },
+                                "quantity": {
+                                    "type": "integer",
+                                    "description": "How many of this item, at least 1.",
+                                },
+                            },
+                            "required": ["name", "quantity"],
+                        },
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional special requests or modifiers.",
+                    },
+                },
+                "required": ["user_explicit_confirmation", "items"],
+            },
+        }
+    ]
+}
+
+
+# Customer-facing lines for modify_order outcomes. The voice handler
+# substitutes {total} on success before yielding, so the customer hears
+# the new total verbatim instead of a templated placeholder.
+# (modify_order 결과별 멘트 — handler가 {total}을 실제 금액으로 치환)
+
+MODIFY_ORDER_SCRIPT_BY_HINT: dict[str, str] = {
+    "modify_success": (
+        "Updated — your new total is {total}. The same payment link still works."
+    ),
+    "modify_no_target": (
+        "I don't see an active order to modify. Would you like to start a new one?"
+    ),
+    "modify_too_late": (
+        "The kitchen has already started that order, so I can't change it now. "
+        "I can cancel it and place a fresh one if you'd like."
+    ),
+    # rejected / validation_failed share lines with create_order so the
+    # customer hears consistent phrasing. The handler can fall back to
+    # ORDER_SCRIPT_BY_HINT when one of those hints comes back.
+}

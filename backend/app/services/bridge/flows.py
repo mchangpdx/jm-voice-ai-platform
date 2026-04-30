@@ -568,3 +568,181 @@ async def create_order(
         "items":           resolved,
         "ai_script_hint":  "pay_first",
     }
+
+
+# ── B1: modify_order (Phase 2-C) ──────────────────────────────────────────────
+# Per spec backend/docs/specs/B1_modify_order.md.
+# Replaces items_json + total_cents on the most-recent in-flight order
+# for a given (store_id, caller_phone). Lifecycle state is invariant
+# under modification; an 'items_modified' audit row is appended.
+# (B1 — 결제 전 in-flight 주문의 items 교체. state 불변, audit row 추가)
+
+
+async def _find_modifiable_order(
+    *,
+    store_id:           str,
+    customer_phone:     str,
+    window_minutes:     int = 5,
+) -> Optional[dict[str, Any]]:
+    """Locate the single most-recent in-flight order for this caller.
+    (이 caller의 최근 in-flight 주문 1건 조회 — modify 대상 식별)
+
+    State filter is intentionally narrow: only PENDING and PAYMENT_SENT
+    qualify. FIRED_UNPAID, PAID, FULFILLED already left the modifiable
+    window (kitchen is working / customer paid / pickup happened).
+    Returns full row including items_json + total_cents so the caller
+    can build a 'before' snapshot for the audit payload.
+    """
+    since_iso = (
+        datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    ).isoformat()
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/bridge_transactions",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "store_id":        f"eq.{store_id}",
+                "customer_phone":  f"eq.{customer_phone}",
+                "pos_object_type": "eq.order",
+                "state":           "in.(pending,payment_sent)",
+                "created_at":      f"gte.{since_iso}",
+                "select":          "id,store_id,vertical,pos_object_type,"
+                                   "pos_object_id,customer_phone,customer_name,"
+                                   "state,payment_lane,total_cents,items_json,"
+                                   "created_at,updated_at",
+                "order":           "created_at.desc",
+                "limit":           "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_find_modifiable_order %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+async def modify_order(
+    *,
+    store_id:          str,
+    args:              dict[str, Any],
+    caller_phone_e164: str,
+    call_log_id:       Optional[str] = None,
+) -> dict[str, Any]:
+    """Update the items on an in-flight order.
+    (in-flight 주문의 items 교체 — Phase 2-C.B1)
+
+    args (Gemini tool args) carries:
+        items: list[{name, quantity}]   required, replaces current list
+        notes: str                      optional, ignored for now
+
+    caller_phone_e164 is the carrier-authenticated phone — it's how we
+    locate the target transaction and match its customer_phone column.
+
+    Returns a dict shaped like create_order's return so the Voice Engine
+    handler can pick a script via ORDER_SCRIPT_BY_HINT / dedicated
+    MODIFY_ORDER_SCRIPT_BY_HINT.
+    """
+    # 1. Coerce items off Gemini's proto.RepeatedComposite into a list of
+    #    plain dicts (same trick as create_order — isinstance(_, list)
+    #    fails on the proto type).
+    raw_items_proto = args.get("items") or []
+    raw_items: list = []
+    try:
+        for it in raw_items_proto:
+            raw_items.append(dict(it) if not isinstance(it, dict) else it)
+    except TypeError:
+        raw_items = []
+
+    if len(raw_items) == 0:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "validation_failed",
+                "error":           "items list is empty — nothing to modify",
+                "ai_script_hint":  "validation_failed"}
+
+    # 2. Locate the target.
+    target = await _find_modifiable_order(
+        store_id       = store_id,
+        customer_phone = caller_phone_e164,
+    )
+    if not target:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "no_order_to_modify",
+                "error":           "no in-flight order for this caller",
+                "ai_script_hint":  "modify_no_target"}
+
+    # 3. State guard. We only allow PENDING + PAYMENT_SENT here —
+    #    anything else means the kitchen has fired or the customer has
+    #    paid, both of which take modification off the table.
+    if target["state"] not in (State.PENDING, State.PAYMENT_SENT):
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "order_too_late",
+                "transaction_id":  target["id"],
+                "state":           target["state"],
+                "ai_script_hint":  "modify_too_late"}
+
+    # 4. Resolve the new items against the live menu catalogue.
+    resolved = await resolve_items_against_menu(
+        store_id = store_id,
+        items    = raw_items,
+    )
+    unknown = [r for r in resolved if r.get("missing")]
+    if unknown:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "unknown_item",
+                "unavailable":     unknown,
+                "transaction_id":  target["id"],
+                "ai_script_hint":  "rejected"}
+
+    sold_out = [r for r in resolved if not r.get("sufficient_stock", True)]
+    if sold_out:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "sold_out",
+                "unavailable":     sold_out,
+                "transaction_id":  target["id"],
+                "ai_script_hint":  "rejected"}
+
+    # 5. Compute the new total. Same arithmetic as create_order.
+    new_total = sum(
+        int(round(float(r["price"]) * 100)) * int(r["quantity"])
+        for r in resolved
+    )
+    old_total = int(target.get("total_cents") or 0)
+
+    # 6. Persist the content edit + audit row. Both go through
+    #    transactions.* so the unit tests can patch the module.
+    await transactions.update_items_and_total(
+        transaction_id = target["id"],
+        items          = resolved,
+        total_cents    = new_total,
+    )
+    await transactions.append_audit(
+        transaction_id = target["id"],
+        event_type     = "items_modified",
+        source         = "voice",
+        actor          = "tool_call:modify_order",
+        from_state     = target["state"],
+        to_state       = target["state"],
+        payload        = {
+            "old_items": target.get("items_json") or [],
+            "new_items": resolved,
+            "old_total": old_total,
+            "new_total": new_total,
+            "call_log_id": call_log_id,
+        },
+    )
+
+    return {
+        "success":         True,
+        "transaction_id":  target["id"],
+        "lane":            target.get("payment_lane"),
+        "state":           target["state"],
+        "total_cents":     new_total,
+        "items":           resolved,
+        "ai_script_hint":  "modify_success",
+    }

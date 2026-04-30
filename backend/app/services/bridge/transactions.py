@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -241,3 +242,66 @@ async def get_transaction(transaction_id: str) -> Optional[dict[str, Any]]:
         return None
     rows = resp.json()
     return rows[0] if rows else None
+
+
+async def update_items_and_total(
+    *,
+    transaction_id: str,
+    items:          list[dict[str, Any]],
+    total_cents:    int,
+) -> None:
+    """Replace items_json + total_cents on an in-flight bridge_transaction.
+    (in-flight 트랜잭션의 items_json + total_cents 갱신 — modify_order 전용)
+
+    State is NOT changed — modification is a content edit, lifecycle is
+    separately governed by advance_state(). Caller is responsible for
+    appending the corresponding 'items_modified' audit row via
+    append_audit() so the event stream stays complete.
+    """
+    payload = {
+        "items_json":  items,
+        "total_cents": int(total_cents),
+        "updated_at":  datetime.now(timezone.utc).isoformat(),
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.patch(
+            f"{_REST}/bridge_transactions",
+            headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params={"id": f"eq.{transaction_id}"},
+            json=payload,
+        )
+    if resp.status_code not in (200, 204):
+        log.warning("update_items_and_total %s: %s",
+                    resp.status_code, resp.text[:200])
+        raise RuntimeError(
+            f"update_items_and_total patch failed: {resp.status_code}"
+        )
+
+
+async def append_audit(
+    *,
+    transaction_id: str,
+    event_type:     str,
+    source:         str,
+    actor:          str,
+    payload:        Optional[dict[str, Any]] = None,
+    from_state:     Optional[str] = None,
+    to_state:       Optional[str] = None,
+) -> None:
+    """Write a non-state-transition audit row to bridge_events.
+    (상태 전이가 없는 도메인 이벤트 기록 — modify, refund, note 등 공용)
+
+    Used by domain commands that mutate a transaction's content but not
+    its lifecycle (e.g. modify_order's 'items_modified'). Lifecycle
+    moves still go through advance_state() which writes its own
+    'state_transition' rows.
+    """
+    await _post_event(
+        transaction_id = transaction_id,
+        event_type     = event_type,
+        source         = source,
+        actor          = actor,
+        from_state     = from_state,
+        to_state       = to_state,
+        payload_json   = payload or {},
+    )
