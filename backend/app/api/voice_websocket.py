@@ -436,6 +436,7 @@ async def _stream_gemini_response(
     force_tool_use: bool = False,
     caller_phone_e164: str = "",
     in_modify_cooldown: bool = False,
+    user_has_modify_intent: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Stream Gemini text chunks. Handles tool calls transparently.
     (Gemini 텍스트 스트리밍 + tool 호출 처리)
@@ -547,15 +548,28 @@ async def _stream_gemini_response(
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
     if tool_name in ("create_order", "make_reservation", "modify_order") and not force_tool_use:
         # Modify-cooldown special case: if Gemini is reflexively re-firing
-        # modify_order right after a successful (or no-op) modify and the
-        # customer hasn't actually said add/remove/change, do NOT yield a
-        # recital — the recital itself re-triggers FORCE TOOL on the next
-        # bare yes and the customer hears 'Updated …' / 'Your order is
-        # unchanged' on repeat. Yield a closing line that does not match
-        # _CONFIRMATION_PATTERNS so detect_force_tool_use returns False.
-        # (modify cooldown 중 reflexive AUTO-fire는 closing line으로 종료)
-        if tool_name == "modify_order" and in_modify_cooldown:
-            _mon("AUTO-FIRE BLOCKED (modify cooldown) tool=%s items=%d → closing line",
+        # modify_order right after a successful (or no-op) modify AND the
+        # customer's current turn has no explicit add/remove/change intent,
+        # do NOT yield a recital — the recital itself re-triggers FORCE
+        # TOOL on the next bare yes and the customer hears 'Updated …' /
+        # 'Your order is unchanged' on repeat. Yield a closing line that
+        # does not match _CONFIRMATION_PATTERNS so detect_force_tool_use
+        # returns False on the next yes.
+        #
+        # When the customer DOES have explicit modify intent ('add another',
+        # 'remove one', 'changed my mind', 'instead'), fall through to the
+        # normal recital below — they really do want a change, even though
+        # we're in cooldown. Mirrors the symmetric check in
+        # detect_force_tool_use so cooldown handling is consistent across
+        # gates. Live regression observed in call_c424e16a… where the gate
+        # ate a legitimate "changed my mind, remove one pepperoni".
+        # (cooldown + 명시 수정 의도 부재 시에만 closing — 그 외에는 정상 recital)
+        if (
+            tool_name == "modify_order"
+            and in_modify_cooldown
+            and not user_has_modify_intent
+        ):
+            _mon("AUTO-FIRE BLOCKED (modify cooldown, no intent) tool=%s items=%d → closing line",
                  tool_name, len(tool_args.get("items") or []))
             yield "Got it — your order is set. Tap the payment link whenever you're ready."
             return
@@ -1034,13 +1048,14 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
         caller_phone_e164    = s.get("caller_phone_e164") or ""
         in_cooldown          = _in_modify_cooldown(transcript)
+        user_intent          = _has_explicit_modify_intent(last_user)
         force_tool_use       = detect_force_tool_use(transcript)
         if force_tool_use:
             _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
                  cid, response_id)
         if in_cooldown:
-            _mon("MODIFY COOLDOWN call=%s resp_id=%d — recent modify outcome on transcript",
-                 cid, response_id)
+            _mon("MODIFY COOLDOWN call=%s resp_id=%d intent=%s — recent modify outcome on transcript",
+                 cid, response_id, user_intent)
 
         try:
             async for chunk in _stream_gemini_response(
@@ -1050,6 +1065,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                 force_tool_use=force_tool_use,
                 caller_phone_e164=caller_phone_e164,
                 in_modify_cooldown=in_cooldown,
+                user_has_modify_intent=user_intent,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000
