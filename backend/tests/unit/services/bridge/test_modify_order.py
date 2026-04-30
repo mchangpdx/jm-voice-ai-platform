@@ -233,12 +233,14 @@ async def test_modify_order_happy_path_updates_items_and_audit():
     assert payload["new_items"]    == new_resolved
 
 
-# ── T7: idempotent — same items list ─────────────────────────────────────────
+# ── T7: no-op short-circuit — same items list ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_modify_order_idempotent_when_items_unchanged():
-    """Replaying modify with identical items → success but the persisted
-    state is byte-identical (the UPDATE is a no-op semantically)."""
+async def test_modify_order_noop_when_items_unchanged_skips_db_writes():
+    """Replaying modify with identical items short-circuits to
+    ai_script_hint='modify_noop' WITHOUT writing UPDATE / audit rows.
+    Without this defense the voice agent gets stuck in an infinite
+    recital loop on benign acks — verified live in call_feede2b9..."""
     from app.services.bridge import flows
 
     same_items = [_resolved("Cafe Latte", qty=1, price=5.99)]
@@ -260,9 +262,42 @@ async def test_modify_order_idempotent_when_items_unchanged():
         )
 
     assert res["success"] is True
-    assert res["total_cents"] == 599
-    # Still writes the UPDATE + audit — keeps the change visible in the
-    # event stream even when the payload happens to match. This matches
-    # the rest of the bridge: every command writes its event.
+    assert res["ai_script_hint"] == "modify_noop"
+    assert res["total_cents"]    == 599
+    # No-op path explicitly skips persistence so reflexive AUTO-fire
+    # loops can't pile up redundant audit rows.
+    txns_mod.update_items_and_total.assert_not_called()
+    txns_mod.append_audit.assert_not_called()
+
+
+# ── T8: real change still writes UPDATE + audit ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_modify_order_writes_when_items_actually_change():
+    """Sanity inverse of T7: a different quantity is a real change and
+    must hit the DB."""
+    from app.services.bridge import flows
+
+    target = _tx(items=[_resolved("Cafe Latte", qty=1, price=5.99)], total=599)
+    new_items = [_resolved("Cafe Latte", qty=2, price=5.99)]   # qty ↑
+
+    with patch.object(flows, "_find_modifiable_order",
+                      new=AsyncMock(return_value=target)), \
+         patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=new_items)), \
+         patch.object(flows, "transactions") as txns_mod:
+        txns_mod.update_items_and_total = AsyncMock()
+        txns_mod.append_audit            = AsyncMock()
+
+        res = await flows.modify_order(
+            store_id=STORE,
+            args={"items":[{"name":"Cafe Latte","quantity":2}]},
+            caller_phone_e164=CALLER,
+            call_log_id=None,
+        )
+
+    assert res["success"] is True
+    assert res["ai_script_hint"] == "modify_success"
+    assert res["total_cents"]    == 1198
     txns_mod.update_items_and_total.assert_awaited_once()
     txns_mod.append_audit.assert_awaited_once()

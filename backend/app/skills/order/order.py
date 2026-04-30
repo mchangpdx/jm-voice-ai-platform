@@ -22,9 +22,14 @@ ORDER_TOOL_DEF: dict = {
                 "    ID — DO NOT ask the customer for their phone, and DO NOT invent placeholders. "
                 "    Only override (pass a different customer_phone) when the customer explicitly "
                 "    asks to send the link to a different number AND has spoken 10+ real digits. "
-                "(c) you have recited the full order back with exact menu names and quantities. "
-                "(d) the customer has said an explicit verbal 'yes' to your recital. "
-                "Only when ALL FOUR are true, set user_explicit_confirmation=true and call this tool. "
+                "(c) EMAIL: the customer has SPOKEN an email address (something@something.tld) for "
+                "    the payment link. While SMS delivery is being verified, email is required — "
+                "    ask 'What's the best email to send the payment link to?' if the customer "
+                "    hasn't volunteered one. Only omit customer_email when the customer explicitly "
+                "    refuses email AND has confirmed they want SMS only. "
+                "(d) you have recited the full order back with exact menu names and quantities. "
+                "(e) the customer has said an explicit verbal 'yes' to your recital. "
+                "Only when ALL FIVE are true, set user_explicit_confirmation=true and call this tool. "
                 "If any one is missing, DO NOT call — ask the customer for the missing piece. "
                 "Do NOT invent menu items — use only items quoted from the menu."
             ),
@@ -210,6 +215,10 @@ MODIFY_ORDER_TOOL_DEF: dict = {
 MODIFY_ORDER_SCRIPT_BY_HINT: dict[str, str] = {
     "modify_success": (
         "Updated — your new total is {total}. The same payment link still works."
+    ),
+    "modify_noop": (
+        "Your order is unchanged — the total is still {total}. "
+        "Tap the payment link whenever you're ready."
     ),
     "modify_no_target": (
         "I don't see an active order to modify. Would you like to start a new one?"

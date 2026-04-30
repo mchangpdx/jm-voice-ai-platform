@@ -376,7 +376,24 @@ async def create_order(
                 "reason":          "validation_failed",
                 "error":           f"customer_phone looks invalid: {raw_phone!r}",
                 "ai_script_hint":  "validation_failed"}
-    if not raw_name or raw_name.lower() in _PLACEHOLDER_NAMES:
+    # Reject the name when:
+    #   (a) it is empty,
+    #   (b) the whole string matches a placeholder (e.g. 'Anonymous'),
+    #   (c) ANY whitespace-separated token matches a placeholder
+    #       (e.g. 'Unknown Customer' → tokens ['unknown','customer'] →
+    #       both in set → reject). Live observed in call_838fa514…
+    #       where 'Unknown Customer' slipped past the exact-match check.
+    # We explicitly do NOT use substring matching — that would reject
+    # legitimate names that happen to contain a placeholder substring
+    # ('Carmen' contains 'arme' but not the token 'guest').
+    # (이름 placeholder 차단 강화 — 토큰 단위 매칭으로 'Unknown Customer' 차단)
+    name_lc = raw_name.lower()
+    name_tokens = [t for t in name_lc.split() if t]
+    if (
+        not raw_name
+        or name_lc in _PLACEHOLDER_NAMES
+        or any(tok in _PLACEHOLDER_NAMES for tok in name_tokens)
+    ):
         return {"success":         False,
                 "status":          "rejected",
                 "reason":          "validation_failed",
@@ -713,6 +730,37 @@ async def modify_order(
         for r in resolved
     )
     old_total = int(target.get("total_cents") or 0)
+
+    # 5b. No-op short-circuit. If the resolved new items are identical
+    # (same names + quantities, order-insensitive) to what's already on
+    # the transaction, skip the UPDATE + audit row and return a dedicated
+    # 'modify_noop' hint. Without this, the voice handler would re-enter
+    # the recital cycle when Gemini reflexively re-fires modify_order on
+    # benign acks ("okay", "thank you"), and the customer hears
+    # "Updated — your total is $X.XX" repeated indefinitely (live
+    # observed in call_feede2b9... — 4 modify calls, 0 actual changes).
+    # (no-op 단축 회로 — 같은 items 반복 modify 호출은 무한 loop의 연료)
+    def _items_key(items: list[dict]) -> list[tuple]:
+        out: list[tuple] = []
+        for it in items or []:
+            nm  = (it.get("name") or "").strip().lower()
+            qty = int(it.get("quantity") or 0)
+            if nm and qty > 0:
+                out.append((nm, qty))
+        return sorted(out)
+
+    if _items_key(target.get("items_json") or []) == _items_key(resolved):
+        log.info("modify_order no-op for tx=%s — items unchanged",
+                 target["id"])
+        return {
+            "success":         True,
+            "transaction_id":  target["id"],
+            "lane":            target.get("payment_lane"),
+            "state":           target["state"],
+            "total_cents":     old_total,
+            "items":           target.get("items_json") or [],
+            "ai_script_hint":  "modify_noop",
+        }
 
     # 6. Persist the content edit + audit row. Both go through
     #    transactions.* so the unit tests can patch the module.

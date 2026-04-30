@@ -294,14 +294,19 @@ async def append_audit(
     Used by domain commands that mutate a transaction's content but not
     its lifecycle (e.g. modify_order's 'items_modified'). Lifecycle
     moves still go through advance_state() which writes its own
-    'state_transition' rows.
+    'state_transition' rows. _post_event takes a client positionally so
+    callers can batch events on a single connection — we open a fresh
+    one per audit since modify is fire-once per call.
+    (_post_event는 client를 positional로 요구 — 1회성 audit이라 새 client 사용)
     """
-    await _post_event(
-        transaction_id = transaction_id,
-        event_type     = event_type,
-        source         = source,
-        actor          = actor,
-        from_state     = from_state,
-        to_state       = to_state,
-        payload_json   = payload or {},
-    )
+    async with httpx.AsyncClient(timeout=10) as client:
+        await _post_event(
+            client,
+            transaction_id = transaction_id,
+            event_type     = event_type,
+            source         = source,
+            actor          = actor,
+            from_state     = from_state,
+            to_state       = to_state,
+            payload_json   = payload or {},
+        )

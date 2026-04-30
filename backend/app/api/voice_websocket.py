@@ -109,12 +109,31 @@ def build_system_prompt(store: dict) -> str:
     if store.get("business_hours"):
         parts.append(f"Business hours: {store['business_hours']}")
 
+    # Menu — the authoritative orderable item list. Without this block the
+    # model has nothing to ground its suggestions on and starts inventing
+    # items off custom_knowledge / temporary_prompt strings (live-observed:
+    # call_838fa514… the model offered 'Avocado BLT' from temporary_prompt
+    # while denying the pizzas that are actually on the menu).
+    # (menu_cache 주입 — orderable item의 single source of truth)
+    if store.get("menu_cache"):
+        parts.append(
+            "Menu (only these items are orderable, with current prices):\n"
+            f"{store['menu_cache']}"
+        )
+
     if store.get("custom_knowledge"):
         parts.append(f"Store knowledge:\n{store['custom_knowledge']}")
 
     if store.get("temporary_prompt"):
+        # Reframed from 'highest priority' to 'informational' so daily-special
+        # text doesn't outweigh the menu block above. Combined with rule 5(a)
+        # ('use ONLY items from the menu above'), this prevents the model
+        # from offering specials whose components are not in menu_items.
+        # (specials는 menu_cache 항목으로만 구성된다는 가드 동반)
         parts.append(
-            f"TODAY'S IMPORTANT NOTES (highest priority):\n{store['temporary_prompt']}"
+            f"TODAY'S NOTES (informational — items mentioned here are still "
+            f"only orderable if they appear in the Menu above):\n"
+            f"{store['temporary_prompt']}"
         )
 
     # Inject current date/time so 'tomorrow', 'tonight', 'next Friday' resolve correctly.
@@ -166,14 +185,21 @@ def build_system_prompt(store: dict) -> str:
         "is FINAL: do NOT call create_order again, do NOT ask 'is that right?' again. If the customer says "
         "'okay' or 'thanks' or 'bye', reply with one short closing sentence ('Thanks, see you soon.') and "
         "stop. The pay link / kitchen handoff happens after the call ends.\n"
-        "6. MODIFY ORDER (modify_order): If the customer asks to change an order they "
-        "JUST placed in this same call (add an item, remove one, change a quantity) AND it "
-        "has not yet been paid for, recite the FULL UPDATED order with the NEW total "
-        "('Updated to two cafe lattes and one croissant for $15.97 — is that right?'). On "
-        "the explicit verbal yes, call modify_order with the COMPLETE new items list (NOT "
-        "a delta). The same payment link automatically reflects the new total — do NOT "
-        "promise a new link, do NOT ask for the phone or email again. If the bridge "
-        "returns modify_too_late, apologize and offer to cancel + place a fresh order.\n"
+        "6. MODIFY ORDER (modify_order): Call this ONLY when the customer EXPLICITLY "
+        "states a change to a JUST-placed order (add X, remove Y, change quantity Z). "
+        "Recite the FULL UPDATED order with the NEW total once ('Updated to two cafe "
+        "lattes and one croissant for $15.97 — is that right?'), and on the explicit "
+        "yes, call modify_order with the COMPLETE new items list (NOT a delta). The "
+        "same payment link automatically reflects the new total — do NOT promise a "
+        "new link, do NOT ask for phone or email again. AFTER modify_order returns "
+        "success or modify_noop, the order is SETTLED: do NOT call modify_order again, "
+        "do NOT recite again, do NOT ask 'is that right?' again. Treat any subsequent "
+        "'okay' / 'thanks' / 'yes' / 'fine' / 'thank you' as the END of the call and "
+        "close with one short line ('Thanks, see you soon.'). Only call modify_order "
+        "again if the customer EXPLICITLY says new add/remove/change words like 'add', "
+        "'remove', 'drop', 'change to', 'instead', 'make it', 'cancel the X'. A bare "
+        "yes / okay / thanks is NEVER a modify request. If bridge returns modify_too_late, "
+        "apologize and offer to cancel + place a fresh order.\n"
         "7. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
         "8. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
         "pos_failure → apologize once + STOP, a person will call back.\n"
@@ -218,7 +244,59 @@ _AFFIRMATION_TOKENS = {
 # last reply contained one AND the user's current reply is an affirmation,
 # we force tool_config=ANY so Gemini commits to the tool instead of looping.
 # (직전 assistant 발화에 confirmation 패턴이 있고 사용자가 yes-class면 tool 강제)
-_CONFIRMATION_PATTERNS = ("is that right", "is that correct", "confirming")
+_CONFIRMATION_PATTERNS = (
+    "is that right",
+    "is that correct",
+    "confirming",
+    "updating your order to",   # modify_order recital phrasing
+    "updated to",                # alternate modify recital
+    "your updated order is",
+)
+
+# Phrases the assistant emits AFTER a successful or no-op modify outcome.
+# When one of these is in the recent transcript and the user has not used
+# explicit modify intent words, a bare 'yes/okay' is a closing
+# acknowledgement, not another modify command — suppress FORCE TOOL.
+# (modify 결과 멘트 — 직후 yes는 종료 ack로 해석, FORCE TOOL 차단)
+_MODIFY_OUTCOME_PHRASES = (
+    "updated — your new total",
+    "your order is unchanged",
+)
+
+# Words that signal the customer ACTUALLY wants to add/remove/change items.
+# A bare yes / okay does NOT count. Only when one of these is present can
+# we treat the turn as a real modify intent during the cooldown window.
+# (수정 의도 키워드 — bare yes는 modify로 간주하지 않음)
+_MODIFY_INTENT_TOKENS = {
+    "add", "remove", "drop", "change", "instead", "actually",
+    "another", "more", "less", "without", "with",
+    "make it", "i changed my mind", "switch", "swap",
+}
+
+
+def _in_modify_cooldown(transcript: list[dict]) -> bool:
+    """True iff one of the last 4 assistant turns ended a modify cycle
+    (success or no-op). Used to suppress reflexive FORCE TOOL on bare
+    yes/okay acks that follow a modify outcome — those are call-closing
+    phrases, not new modify commands.
+    (직전 4턴 내 modify 결과 멘트 존재 → bare yes는 closing ack로 처리)
+    """
+    recent = [
+        (t.get("content") or "").lower()
+        for t in transcript[-8:]
+        if t.get("role") != "user"
+    ][-4:]
+    blob = " ".join(recent)
+    return any(p in blob for p in _MODIFY_OUTCOME_PHRASES)
+
+
+def _has_explicit_modify_intent(user_text: str) -> bool:
+    """True iff the user's current turn contains an explicit add/remove/
+    change keyword. Bare yes/okay/thanks returns False.
+    (사용자 발화에 명시적 수정 키워드가 있는지 — bare yes는 False)
+    """
+    lc = (user_text or "").lower()
+    return any(tok in lc for tok in _MODIFY_INTENT_TOKENS)
 
 
 def detect_force_tool_use(transcript: list[dict]) -> bool:
@@ -226,7 +304,15 @@ def detect_force_tool_use(transcript: list[dict]) -> bool:
     True iff the last assistant message recited a confirmation AND the
     user's current message is a clear affirmation. Stops the confirm-loop
     bug where Gemini ignores 'yes' and keeps re-asking.
-    (마지막 assistant 발화가 'is that right?' + 사용자 yes → tool_config=ANY 강제)
+
+    Modify cooldown: if a recent assistant turn ended a modify cycle and
+    the user's current message has no explicit modify intent, suppress
+    FORCE TOOL — the yes is a closing ack, not a new modify command.
+    Without this, every post-modify 'okay' triggers another modify and
+    the customer hears 'Updated …' / 'Your order is unchanged' on
+    repeat (live-observed in call_feede2b9… and call_838fa514…).
+    (마지막 assistant 발화 confirmation + 사용자 yes → tool 강제. 단,
+     modify 직후 cooldown 중에는 명시 수정 키워드 없으면 차단)
     """
     last_user = ""
     last_assistant = ""
@@ -248,9 +334,19 @@ def detect_force_tool_use(transcript: list[dict]) -> bool:
     # Match affirmation as standalone word or short fragment within the user
     # turn ("yes that's correct" / "yeah, sure" / "sí claro").
     user_tokens = {tok.strip() for tok in last_user.replace(",", " ").split()}
-    if user_tokens & _AFFIRMATION_TOKENS:
-        return True
-    return any(phrase in last_user for phrase in _AFFIRMATION_TOKENS)
+    is_affirmation = bool(user_tokens & _AFFIRMATION_TOKENS) or any(
+        phrase in last_user for phrase in _AFFIRMATION_TOKENS
+    )
+    if not is_affirmation:
+        return False
+
+    # Cooldown gate — bare yes/okay after a modify outcome is a closing
+    # ack, not a new modify command. Only allow FORCE TOOL during cooldown
+    # when the user actually said add/remove/change/etc.
+    if _in_modify_cooldown(transcript) and not _has_explicit_modify_intent(last_user):
+        return False
+
+    return True
 
 
 # ── Async I/O helpers (mockable in tests) ─────────────────────────────────────
@@ -266,7 +362,7 @@ async def _load_store_by_agent(agent_id: str) -> Optional[dict]:
             params={
                 "retell_agent_id": f"eq.{agent_id}",
                 "select": "id,name,retell_agent_id,system_prompt,temporary_prompt,"
-                          "business_hours,custom_knowledge,is_active",
+                          "business_hours,custom_knowledge,menu_cache,is_active",
                 "limit": "1",
             },
         )
@@ -339,6 +435,7 @@ async def _stream_gemini_response(
     store_name: Optional[str] = None,
     force_tool_use: bool = False,
     caller_phone_e164: str = "",
+    in_modify_cooldown: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Stream Gemini text chunks. Handles tool calls transparently.
     (Gemini 텍스트 스트리밍 + tool 호출 처리)
@@ -449,6 +546,19 @@ async def _stream_gemini_response(
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
     if tool_name in ("create_order", "make_reservation", "modify_order") and not force_tool_use:
+        # Modify-cooldown special case: if Gemini is reflexively re-firing
+        # modify_order right after a successful (or no-op) modify and the
+        # customer hasn't actually said add/remove/change, do NOT yield a
+        # recital — the recital itself re-triggers FORCE TOOL on the next
+        # bare yes and the customer hears 'Updated …' / 'Your order is
+        # unchanged' on repeat. Yield a closing line that does not match
+        # _CONFIRMATION_PATTERNS so detect_force_tool_use returns False.
+        # (modify cooldown 중 reflexive AUTO-fire는 closing line으로 종료)
+        if tool_name == "modify_order" and in_modify_cooldown:
+            _mon("AUTO-FIRE BLOCKED (modify cooldown) tool=%s items=%d → closing line",
+                 tool_name, len(tool_args.get("items") or []))
+            yield "Got it — your order is set. Tap the payment link whenever you're ready."
+            return
         items_for_recital: list[str] = []
         try:
             for it in (tool_args.get("items") or []):
@@ -463,6 +573,10 @@ async def _stream_gemini_response(
         if tool_name == "create_order":
             phrase = ", ".join(items_for_recital) or "your order"
             recital = (f"Just to confirm, that's {phrase} for {recital_name} "
+                       f"— is that right?")
+        elif tool_name == "modify_order":
+            phrase = ", ".join(items_for_recital) or "your order"
+            recital = (f"Just to confirm — your updated order is {phrase} "
                        f"— is that right?")
         else:
             recital = (f"Just to confirm a reservation for {recital_name} "
@@ -919,9 +1033,13 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         store_id_for_tools   = s["store"]["id"]   if s.get("store") else None
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
         caller_phone_e164    = s.get("caller_phone_e164") or ""
+        in_cooldown          = _in_modify_cooldown(transcript)
         force_tool_use       = detect_force_tool_use(transcript)
         if force_tool_use:
             _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
+                 cid, response_id)
+        if in_cooldown:
+            _mon("MODIFY COOLDOWN call=%s resp_id=%d — recent modify outcome on transcript",
                  cid, response_id)
 
         try:
@@ -931,6 +1049,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
                 store_name=store_name_for_tools,
                 force_tool_use=force_tool_use,
                 caller_phone_e164=caller_phone_e164,
+                in_modify_cooldown=in_cooldown,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000
