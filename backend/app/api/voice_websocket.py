@@ -177,10 +177,14 @@ def build_system_prompt(store: dict) -> str:
         "recite the order, ask 'What's the best email to send the payment link to?' and pass it as "
         "customer_email. If the customer truly insists on SMS only, omit customer_email — but always "
         "ask once. "
-        "EMAIL READBACK (required): right after the customer says the email, READ IT BACK clearly so "
-        "they can correct STT errors — say 'Just to confirm, that's [local-part] at [domain] — "
-        "did I get that right?' and wait for an explicit yes. If the customer corrects you, capture "
-        "the new spelling and read THAT back too before continuing. Do NOT recite the order or call "
+        "EMAIL READBACK (required, LETTER-BY-LETTER): right after the customer says the email, "
+        "spell the local part one letter at a time with commas so the customer can catch single-"
+        "letter STT errors. Phonetic readback ('cymee at gmail') sounds identical to what they "
+        "spoke and they will not catch a missing 't' — letter-by-letter ('c, y, m, e, e, t at "
+        "gmail dot com — did I get that right?') makes the difference audible. Wait for an "
+        "explicit yes; if they correct you, capture the new spelling and read THAT back the same "
+        "way. Common domains can be spoken whole ('at gmail dot com', 'at yahoo dot com') — only "
+        "the local part needs the letter-by-letter treatment. Do NOT recite the order or call "
         "create_order until the customer has confirmed the email is correct. "
         "Recite ONCE: 'Confirming [N] [item], [N] [item] "
         "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
@@ -640,6 +644,42 @@ async def _stream_gemini_response(
     tool_name = function_call.name
     tool_args = dict(function_call.args) if function_call.args else {}
 
+    # ── Recent-signature dedup (Proposal R) ───────────────────────────────
+    # Retell's transcript echo lags behind our yields; that lag lets a
+    # FORCE TOOL fire on a stale assistant recital trigger the same tool
+    # call with the same items 2-4× in a row, even though the bridge
+    # has already committed. Bridge no-op detection prevents DB churn,
+    # but the customer hears 'I just sent a payment link' / 'Your order
+    # is unchanged' multiple times. Dedupe the exact tool+items signature
+    # within a 5-second window per session.
+    # (5초 내 동일 tool+items signature 차단 — race-safe)
+    if session is not None and tool_name in ("create_order", "modify_order"):
+        items_for_sig: list[tuple[str, int]] = []
+        try:
+            for it in (tool_args.get("items") or []):
+                d  = dict(it) if not isinstance(it, dict) else it
+                nm = (d.get("name") or "").strip().lower()
+                qt = int(d.get("quantity") or 0)
+                if nm and qt > 0:
+                    items_for_sig.append((nm, qt))
+        except Exception:
+            pass
+        sig_str = "|".join(f"{n}:{q}" for n, q in sorted(items_for_sig))
+        prev = session.get("last_tool_sig") or ("", "", 0.0)
+        prev_name, prev_sig, prev_ts = (prev[0], prev[1], float(prev[2] or 0.0))
+        now_ts = time.time()
+        if (
+            prev_name == tool_name
+            and prev_sig == sig_str
+            and sig_str
+            and (now_ts - prev_ts) < 5.0
+        ):
+            _mon("TOOL DEDUP tool=%s sig=%s — within 5s, skipping",
+                 tool_name, sig_str[:80])
+            yield "Got it — already on it."
+            return
+        session["last_tool_sig"] = (tool_name, sig_str, now_ts)
+
     # ── AUTO-FIRE GATE (server-side hardening) ────────────────────────────
     # Reject any create_order / make_reservation that arrives WITHOUT the
     # FORCE TOOL signal. force_tool_use=True means we detected the explicit
@@ -668,12 +708,18 @@ async def _stream_gemini_response(
             yield "Take your time."
             return
 
-        # Per-call modify cap (Proposal F, tightened from 8 → 4 after
-        # call_2a3bdd9a… showed Gemini reflexively burning through 5
-        # redundant modify calls on a 3-edit transcript). 4 still covers
-        # any realistic 'add → remove → change qty → confirm' flow.
-        # (modify 호출 cap — 8 → 4로 강화, 합법적 multi-edit 통화는 계속 작동)
-        if tool_name == "modify_order" and modify_count >= 4:
+        # Per-call modify cap (Proposal F, threshold 4). Only applies when
+        # the customer's current turn has NO explicit modify intent —
+        # Proposal P fix after call_aefb581b… turn 28 where 'I changed my
+        # mind. I changed my mind.' (real intent) was blocked by the cap.
+        # When intent is present we trust the customer; the cap is only
+        # for runaway reflexive AUTO re-fires.
+        # (intent 있으면 cap 무시 — 합법적 modify는 항상 통과)
+        if (
+            tool_name == "modify_order"
+            and modify_count >= 4
+            and not user_has_modify_intent
+        ):
             _mon("AUTO-FIRE BLOCKED (modify cap %d) tool=%s → closing line",
                  modify_count, tool_name)
             yield "Got it — your order is set. Tap the payment link whenever you're ready."
@@ -856,6 +902,39 @@ async def _stream_gemini_response(
             hint,
             "Thanks — I've got that. A team member will follow up shortly.",
         )
+
+        # Proposal Q — when bridge rejects with sold_out / unknown_item,
+        # name the unavailable item explicitly. The bridge gives us the
+        # unavailable list; the AI's recovery line should NAME the item
+        # so the customer doesn't get a generic 'something else' nudge
+        # and silently re-order the same thing (live in 1st call turn 12).
+        # (sold_out / unknown 시 unavailable item 명시)
+        if hint == "rejected":
+            unavail = bridge_result.get("unavailable") or []
+            unavail_names: list[str] = []
+            try:
+                for u in unavail:
+                    nm = (u.get("name") if isinstance(u, dict) else "") or ""
+                    if nm and nm not in unavail_names:
+                        unavail_names.append(nm)
+            except Exception:
+                pass
+            if unavail_names:
+                if len(unavail_names) == 1:
+                    naming = unavail_names[0]
+                elif len(unavail_names) == 2:
+                    naming = f"{unavail_names[0]} and {unavail_names[1]}"
+                else:
+                    naming = ", ".join(unavail_names[:-1]) + f", and {unavail_names[-1]}"
+                reason = bridge_result.get("reason") or "unavailable"
+                if reason == "sold_out":
+                    lead = f"Sorry, {naming} just sold out today."
+                else:
+                    lead = f"Sorry, we don't have {naming} on the menu."
+                script = (
+                    f"{lead} Could I get you something else? — feel free to ask "
+                    f"what's available."
+                )
 
         if bridge_result.get("success"):
             result = {
@@ -1086,6 +1165,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_order_items":   [],     # latest committed items snapshot (Proposal I)
         "last_order_total":   0,      # latest committed total_cents (Proposal I)
         "closing_emitted":    False,  # one-shot flag for the order-summary closing line
+        "last_tool_sig":      ("", "", 0.0),  # (tool_name, items_key_str, ts) — Proposal R dedup
     }
     init_done = asyncio.Event()
 
