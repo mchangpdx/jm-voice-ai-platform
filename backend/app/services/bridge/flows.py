@@ -77,15 +77,28 @@ async def _find_recent_duplicate(
     unique_key:      str,           # vertical-specific dedup key (reservation_time / scheduled_at / ...)
     window_minutes:  int = 5,
 ) -> Optional[dict[str, Any]]:
-    """Probe bridge_transactions for a recent successful match.
-    (최근 성공한 매칭 조회)
+    """Probe bridge_transactions for a recent in-flight or completed match.
+    (최근 진행중/성공 매칭 조회 — 동일 통화 5번 호출 collapse 핵심)
 
-    A "match" is: same store + customer_phone + pos_object_type + state in
-    {paid, fulfilled} within the time window. Returns the row dict if found,
-    None otherwise. Excludes failed/canceled — user is allowed to retry after
-    a real failure.
+    A "match" is: same store + customer_phone + pos_object_type within the
+    time window, in any non-failure state. Returns the row dict if found.
+    Excludes failed/canceled/refunded/no_show — those mean the user is
+    allowed to retry. Includes pending/payment_sent/fired_unpaid/paid/
+    fulfilled — those mean an active or completed order/reservation
+    already exists, so a duplicate must short-circuit to it.
+
+    Why this list (not 'state in (paid,fulfilled)' alone): pay_first orders
+    sit in 'pending' until the customer taps the SMS link. If we only
+    matched paid/fulfilled, every spoken yes during a single call would
+    create a new transaction row — exactly the bug we hit on call
+    call_d59f895b… (5 dup pending rows for one Yeah-loop).
     """
     since_iso = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).isoformat()
+    # PostgREST has no "not.in.(...)" via params shorthand, so we list the
+    # in-scope states explicitly. Order matters: most-likely state first
+    # gives the planner a small win on the customer_phone+state index.
+    # (PostgREST 호환을 위해 in-list 명시)
+    in_flight_or_done = "pending,payment_sent,fired_unpaid,paid,fulfilled"
     async with httpx.AsyncClient(timeout=8) as client:
         resp = await client.get(
             f"{_REST}/bridge_transactions",
@@ -94,7 +107,7 @@ async def _find_recent_duplicate(
                 "store_id":        f"eq.{store_id}",
                 "customer_phone":  f"eq.{customer_phone}",
                 "pos_object_type": f"eq.{pos_object_type}",
-                "state":           "in.(paid,fulfilled)",
+                "state":           f"in.({in_flight_or_done})",
                 "created_at":      f"gte.{since_iso}",
                 "select":          "id,pos_object_id,state,created_at",
                 "order":           "created_at.desc",
@@ -309,14 +322,36 @@ async def create_order(
         items, ai_script_hint ('fire_immediate'|'pay_first'|'rejected')
     """
     # ── 1. Validate ───────────────────────────────────────────────────────
-    raw_items = args.get("items") or []
-    if not isinstance(raw_items, list) or len(raw_items) == 0:
-        return {"success": False,
-                "error":   "items list is empty — no order to place"}
+    # Every early return ships an ai_script_hint so the voice handler can pick
+    # a customer-facing line via ORDER_SCRIPT_BY_HINT — without it the agent
+    # falls through to a generic "team member will follow up" line.
+    # (early return마다 ai_script_hint 동봉 — 음성 멘트 일관성)
+    # Gemini SDK returns function-call args as proto RepeatedComposite,
+    # not Python list, so isinstance(_, list) returns False even when
+    # the model passed a populated items array. Coerce to a plain list
+    # of dicts before any downstream validation or catalog resolution.
+    # (Gemini args는 RepeatedComposite — list 변환 후 검증)
+    raw_items_proto = args.get("items") or []
+    raw_items: list = []
+    try:
+        for it in raw_items_proto:
+            raw_items.append(dict(it) if not isinstance(it, dict) else it)
+    except TypeError:
+        raw_items = []
+
+    if len(raw_items) == 0:
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "validation_failed",
+                "error":           "items list is empty — no order to place",
+                "ai_script_hint":  "validation_failed"}
 
     if not args.get("customer_phone"):
-        return {"success": False,
-                "error":   "customer_phone is required to send a payment link"}
+        return {"success":         False,
+                "status":          "rejected",
+                "reason":          "validation_failed",
+                "error":           "customer_phone is required to send a payment link",
+                "ai_script_hint":  "validation_failed"}
 
     phone_e164 = normalize_phone_us(args["customer_phone"])
     customer   = args.get("customer_name") or ""
@@ -422,11 +457,28 @@ async def create_order(
             )
         except Exception as exc:
             log.error("POS create_pending failed for tx=%s: %s", txn_id, exc)
+            # Advance to FAILED so the idempotency probe in subsequent
+            # turns excludes this row. Otherwise a PENDING tx stays
+            # eligible for re-match and the next yes returns success=True
+            # with a 'pay_first' script the customer never actually got
+            # a link for. Audit row is written via advance_state.
+            # (POS 실패 → FAILED 전이 — idempotency 거짓 성공 차단)
+            try:
+                await transactions.advance_state(
+                    transaction_id = txn_id,
+                    to_state       = State.FAILED,
+                    source         = "voice",
+                    actor          = "pos_adapter:create_pending_failed",
+                    extra_fields   = {},
+                )
+            except Exception as inner:
+                log.error("FAILED transition write also failed tx=%s: %s",
+                          txn_id, inner)
             return {
                 "success":        False,
                 "transaction_id": txn_id,
                 "lane":           lane,
-                "state":          State.PENDING,
+                "state":          State.FAILED,
                 "error":          f"POS injection failed: {exc}",
                 "ai_script_hint": "pos_failure",
             }

@@ -84,12 +84,9 @@ _REST = f"{settings.supabase_url}/rest/v1"
 # Uses response_id=0 (no response_required from Retell yet).
 # (Retell이 response_required를 보내기 전에 response_id=0으로 선제적 인사말 전송)
 _GREETING_PROMPT = (
-    "The call just connected. The customer hasn't spoken yet. "
-    "Greet warmly in 1 short sentence in ENGLISH (default for the first hello) — "
-    "say the store name, briefly introduce yourself as the AI assistant, "
-    "and invite the customer to ask anything. "
-    "Sound like a friendly real human, not a script. "
-    "No markdown, no bullets, no emojis."
+    "The call just connected. The customer has not spoken yet. "
+    "Greet in ONE short English sentence: store name + 'how can I help?'. "
+    "Maximum 10 words. No name introduction, no markdown, no emojis."
 )
 
 
@@ -131,98 +128,110 @@ def build_system_prompt(store: dict) -> str:
     except Exception:
         pass
 
-    # Global rules — voice quality + language + safety guardrails
-    # Short prompt = lower TTFT. Every rule pulls its weight.
+    # Global rules — slim, voice-first, tool-call decisive.
+    # Short prompt = lower TTFT and clearer tool-selection signal.
+    # (Phase F-2 슬림화: Korean 제거, sub-rules 통합, tool 호출 결단 강화)
     parts.append(
-        "STRICT RULES (non-negotiable):\n"
-        "1. BREVITY: Max 1-2 short sentences per reply. Voice-only — zero markdown, zero lists. "
-        "Do NOT tack on extra recommendations or upsells unless the customer asked.\n"
-        "2. LANGUAGES SUPPORTED: English, Spanish (Español), Korean (한국어). "
-        "All three are fully supported — never claim you can't speak any of them.\n"
-        "3. LANGUAGE MATCHING (CRITICAL): Reply in the language of the customer's CURRENT message. "
-        "Short English fillers like 'Okay', 'Yes', 'No', 'Hello', 'Thanks', 'Hmm' are ENGLISH — "
-        "switch back to English immediately when you hear them, even if the previous turn was Korean. "
-        "Each turn is matched independently — never carry inertia from prior turns.\n"
-        "4. AMBIGUOUS / INAUDIBLE / SILENT: If the customer's words are unclear, '(inaudible)', "
-        "or empty/silent, reply in the SAME LANGUAGE as YOUR OWN previous reply (not a different one) — "
-        "with a brief 1-sentence acknowledgment or a polite 'Sorry, could you repeat that?'. "
-        "NEVER switch language on an empty/unclear turn. Do NOT pivot to a sales pitch.\n"
-        "5. KOREAN STYLE — natural spoken cafe-staff tone (구어체):\n"
-        "   - Short and direct. End with '~요' / '~예요' / '~세요'.\n"
-        "   - BANNED phrases (do NOT use): '꼭 들러주세요', '꼭 한번 들러보세요', '꼭 놀러 오세요', "
-        "'맛보러 오세요', '편하신 시간에 언제든', '편하게 ~ 주세요', '꼭 맛보고 가세요'.\n"
-        "   - BANNED behavior: weather small-talk ('날씨가 좋으니'), repeating menu unsolicited, "
-        "self-serving 들러주세요 endings.\n"
-        "   - Good examples: '네, 가능해요.' / '오늘은 오후 9시까지 해요.' / "
-        "'죄송한데 그건 매니저한테 확인해 볼게요.' / '아보카도 BLT 샌드위치는 12달러예요.'\n"
-        "   - Bad examples: '아보카도 BLT 샌드위치 세트가 준비되어 있으니 꼭 들러주세요.' (clichéd, pushy)\n"
-        "6. OTHER LANGUAGES: For languages outside English/Spanish/Korean, briefly apologize in the "
-        "customer's current language and offer one of the three.\n"
-        "7. RESERVATIONS — TOOL USAGE: When a customer asks to make a reservation:\n"
-        "   (a) Politely collect ALL six fields one at a time, briefly: name, phone, "
-        "       date (resolve 'tomorrow' / 'tonight' from the CURRENT DATE/TIME anchor above to "
-        "       a strict YYYY-MM-DD value), time, party size.\n"
-        "       PHONE: collect a complete 10-digit US phone number. If the customer pauses "
-        "       after fewer than 10 digits, ask for the missing digits before continuing. "
-        "       Never call the tool with an incomplete number.\n"
-        "       BUSINESS HOURS GUARD: Cross-check the requested time against the Business hours "
-        "       block above. If the requested time is OUTSIDE business hours, DO NOT call "
-        "       make_reservation. Tell the customer 'we close at [hour] on [day]' and offer the "
-        "       latest available slot before close, or the earliest slot the next business day.\n"
-        "       TIME CONVERSION: When the customer says '7 PM', pass '19:00' to the tool. "
-        "       But when SPEAKING the time aloud, ALWAYS use 12-hour format with AM/PM "
-        "       (e.g. '7 PM', not '19:00', not 'nineteen hundred'). Never read 24-hour clock to a customer.\n"
-        "   (b) Recite the full summary back in ONE short sentence using 12-hour time: "
-        "       'Confirming a reservation for [name], party of [N], on [day, Month D] at [12-hour time] — is that right?'\n"
-        "   (c) ONLY after the customer says 'yes' verbally, call make_reservation "
-        "       with user_explicit_confirmation=true.\n"
-        "   (d) AFTER the tool succeeds, the reservation is FINAL. If the customer asks "
-        "       'did it go through?' or 're-confirm', just answer 'Yes, confirmed for [date] at [12-hour time]'. "
-        "       DO NOT call make_reservation again. The booking is already saved.\n"
-        "   (e) If the tool returns an error ONCE: apologize once, briefly say 'I'll have our manager "
-        "       call you back to finalize' and STOP. Do NOT retry the tool, do NOT loop.\n"
-        "   (f) If the store does NOT take reservations, say 'walk-ins are always welcome' and DO NOT call the tool.\n"
-        "8. ORDERS — TOOL USAGE (create_order): When a customer wants to PLACE A PICKUP ORDER:\n"
-        "   (a) Use ONLY items from the menu shown above. If a customer asks for an item not on the "
-        "       menu, say 'we don't have that today' and offer one or two real items.\n"
-        "   (b) Collect: customer name, phone number for the payment link (use the caller's number "
-        "       unless they request a different one), each item with quantity, and any notes.\n"
-        "       PHONE: same 10-digit completeness rule as reservations applies.\n"
-        "       EMAIL (optional): briefly ask 'Would you like the payment link by email as well?'. "
-        "       If yes, collect the email and pass it as customer_email. If no or unclear, omit "
-        "       customer_email — never invent or guess an address.\n"
-        "   (c) Recite the order back in ONE sentence: "
-        "       'Confirming [N] [item], [N] [item] for [name] — total [count] items — is that right?'\n"
-        "   (d) ONLY after the customer says 'yes' verbally, call create_order with "
-        "       user_explicit_confirmation=true.\n"
-        "   (e) AFTER the tool succeeds, READ THE 'message' field VERBATIM. The system picks the "
-        "       right phrasing based on whether the kitchen got the order immediately or is waiting "
-        "       for payment first — never substitute your own wording.\n"
-        "   (f) If the tool returns success=false with reason='sold_out' or 'unknown_item', read "
-        "       the message and offer the customer a different item. Do NOT retry the tool with "
-        "       the same items.\n"
-        "   (g) If the tool returns success=false with reason='pos_failure', read the message and "
-        "       STOP. Do NOT retry the tool — a person will call back.\n"
-        "9. NO PHANTOM BOOKINGS: Never claim a booking/reservation/order is confirmed unless the "
-        "make_reservation OR create_order tool actually returned success. Never invent "
-        "confirmation numbers.\n"
-        "10. UNCERTAINTY: If unsure, say 'I'm not sure — please ask us directly.' Do not fabricate.\n"
-        "11. ESCALATION: If the caller is upset or asks for a manager: "
-        "'Let me connect you with our manager right away.'"
+        "RULES (non-negotiable):\n"
+        "1. BREVITY: 1-2 short sentences per reply. Voice only — no markdown, no lists, no upsells.\n"
+        "2. LANGUAGES: English and Spanish only. Reply in the language of the customer's CURRENT "
+        "message. Short fillers ('Yes', 'No', 'Okay', 'Thanks') are ENGLISH — switch back instantly. "
+        "If the customer speaks anything else, briefly apologize in their language and offer English or Spanish.\n"
+        "3. UNCLEAR / SILENT: Stay in YOUR previous language and say 'Sorry, could you repeat that?'. "
+        "Never switch language on an empty turn.\n"
+        "4. RESERVATIONS (make_reservation): Collect name, 10-digit US phone (re-ask if fewer digits), "
+        "date (YYYY-MM-DD from CURRENT DATE anchor), time (pass 24-h to the tool, SPEAK 12-h with AM/PM), "
+        "party size. Cross-check the time against business_hours — if outside, decline and offer the "
+        "nearest available slot; do NOT call the tool. Recite ONCE: 'Confirming a reservation for "
+        "[name], party of [N], [day, Month D] at [12-h time] — is that right?'. "
+        "On verbal yes, CALL make_reservation with user_explicit_confirmation=true. After success the "
+        "booking is FINAL — never re-call. On error, apologize once + 'a manager will call you back' + STOP.\n"
+        "5. ORDERS (create_order): Use ONLY items from the menu above. Collect name, phone, items+quantity. "
+        "Optional email — only if the customer offers it. Recite ONCE: 'Confirming [N] [item], [N] [item] "
+        "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
+        "CALL create_order with user_explicit_confirmation=true IMMEDIATELY — do NOT recite again, do NOT "
+        "apologize, do NOT ask the same question twice. If you have already confirmed the items once, the "
+        "next yes means CALL THE TOOL. AFTER the tool returns success and you read its message, the order "
+        "is FINAL: do NOT call create_order again, do NOT ask 'is that right?' again. If the customer says "
+        "'okay' or 'thanks' or 'bye', reply with one short closing sentence ('Thanks, see you soon.') and "
+        "stop. The pay link / kitchen handoff happens after the call ends.\n"
+        "6. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
+        "7. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
+        "pos_failure → apologize once + STOP, a person will call back.\n"
+        "8. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
+        "9. ESCALATION: 'Let me connect you with our manager right away.'"
     )
 
     return "\n\n".join(parts)
 
 
+# Cap transcript length sent to Gemini. Past ~12 turns the model starts
+# self-loop hallucinating ("I'm sorry, I missed the items in the system…")
+# from seeing its own repeated confirmations in history. Voice flows are
+# short by nature — last 12 turns is plenty of context.
+# (12턴 초과 시 자가증식 사과 루프 차단)
+_TRANSCRIPT_TAIL_TURNS = 12
+
+
 def format_transcript(transcript: list[dict]) -> str:
     """Convert Retell transcript array to conversation string for Gemini.
-    (Retell transcript 배열을 Gemini용 대화 문자열로 변환)
+    (Retell transcript 배열을 Gemini용 대화 문자열로 변환 — 최근 N턴만)
     """
+    tail = transcript[-_TRANSCRIPT_TAIL_TURNS:] if len(transcript) > _TRANSCRIPT_TAIL_TURNS else transcript
     lines = []
-    for turn in transcript:
+    for turn in tail:
         role = "Customer" if turn["role"] == "user" else "Assistant"
         lines.append(f"{role}: {turn['content']}")
     return "\n".join(lines)
+
+
+# Affirmation tokens that trigger forced tool-call mode after a "Confirming…"
+# recital. Lowercase + punctuation-stripped match. Covers EN + ES.
+# (확정 토큰 — 영어 + 스페인어; 정확한 yes-class 발화에만 매칭)
+_AFFIRMATION_TOKENS = {
+    "yes", "yeah", "yep", "yup", "sure", "correct", "right",
+    "that's right", "thats right", "that's correct", "thats correct",
+    "ok", "okay", "go ahead", "do it", "confirm", "confirmed",
+    "sí", "si", "claro", "correcto", "está bien", "esta bien",
+}
+
+# Phrases the assistant uses right before a tool call. If the assistant's
+# last reply contained one AND the user's current reply is an affirmation,
+# we force tool_config=ANY so Gemini commits to the tool instead of looping.
+# (직전 assistant 발화에 confirmation 패턴이 있고 사용자가 yes-class면 tool 강제)
+_CONFIRMATION_PATTERNS = ("is that right", "is that correct", "confirming")
+
+
+def detect_force_tool_use(transcript: list[dict]) -> bool:
+    """Heuristic: should we force Gemini into tool-call mode this turn?
+    True iff the last assistant message recited a confirmation AND the
+    user's current message is a clear affirmation. Stops the confirm-loop
+    bug where Gemini ignores 'yes' and keeps re-asking.
+    (마지막 assistant 발화가 'is that right?' + 사용자 yes → tool_config=ANY 강제)
+    """
+    last_user = ""
+    last_assistant = ""
+    for turn in reversed(transcript):
+        c = (turn.get("content") or "").lower().strip().strip(".!?,")
+        if not last_user and turn.get("role") == "user":
+            last_user = c
+        elif not last_assistant and turn.get("role") != "user":
+            last_assistant = c
+        if last_user and last_assistant:
+            break
+
+    if not last_user or not last_assistant:
+        return False
+
+    if not any(p in last_assistant for p in _CONFIRMATION_PATTERNS):
+        return False
+
+    # Match affirmation as standalone word or short fragment within the user
+    # turn ("yes that's correct" / "yeah, sure" / "sí claro").
+    user_tokens = {tok.strip() for tok in last_user.replace(",", " ").split()}
+    if user_tokens & _AFFIRMATION_TOKENS:
+        return True
+    return any(phrase in last_user for phrase in _AFFIRMATION_TOKENS)
 
 
 # ── Async I/O helpers (mockable in tests) ─────────────────────────────────────
@@ -291,19 +300,25 @@ async def _stream_gemini_response(
     store_id: Optional[str] = None,
     call_log_id: Optional[str] = None,
     store_name: Optional[str] = None,
+    force_tool_use: bool = False,
 ) -> AsyncGenerator[str, None]:
-    """Stream Gemini text chunks. Handles make_reservation tool calls transparently.
-    (Gemini 텍스트 스트리밍 + make_reservation 도구 호출 처리)
+    """Stream Gemini text chunks. Handles tool calls transparently.
+    (Gemini 텍스트 스트리밍 + tool 호출 처리)
 
     Function-calling flow:
       1. Send conversation with tools enabled
       2. If chunk contains function_call → execute server-side, send result back
       3. Stream the follow-up text response after tool result
 
+    force_tool_use=True sets tool_config to ANY mode — Gemini MUST emit a
+    function call this turn instead of free text. Used after the user
+    explicitly confirms a recited order/reservation, to break the
+    "I'm sorry, I missed the items" self-loop in flash-lite.
+    (force_tool_use=True → 사과 루프 차단용 강제 tool 호출 모드)
+
     store_id and call_log_id are server-resolved — never trusted from Gemini args.
     """
     import google.generativeai as genai
-    from google.generativeai import protos
 
     genai.configure(api_key=settings.gemini_api_key)
 
@@ -318,6 +333,11 @@ async def _stream_gemini_response(
         # reservation + order in the same call is not allowed by prompt rules.
         # (예약 + 주문 도구를 모두 Gemini에 노출 — 프롬프트가 한 번에 하나만 선택)
         kwargs["tools"] = [RESERVATION_TOOL_DEF, ORDER_TOOL_DEF]
+        if force_tool_use:
+            kwargs["tool_config"] = {
+                "function_calling_config": {"mode": "ANY"},
+            }
+            log.info("Gemini tool_config=ANY forced (post-confirmation)")
 
     model = genai.GenerativeModel("models/gemini-3.1-flash-lite-preview", **kwargs)
     chat = model.start_chat()
@@ -330,22 +350,40 @@ async def _stream_gemini_response(
     )
 
     function_call = None
+    chunk_idx = 0
     for chunk in response:
+        chunk_idx += 1
         try:
-            for cand in chunk.candidates:
-                for part in cand.content.parts:
+            cand_count = len(chunk.candidates)
+            for ci, cand in enumerate(chunk.candidates):
+                fr = getattr(cand, "finish_reason", "?")
+                part_count = len(cand.content.parts)
+                for pi, part in enumerate(cand.content.parts):
                     fc = getattr(part, "function_call", None)
-                    if fc and getattr(fc, "name", ""):
+                    fc_name = getattr(fc, "name", "") if fc else ""
+                    txt_dbg = getattr(part, "text", "") or ""
+                    if force_tool_use:
+                        _mon(
+                            "STREAM DBG chunk=%d cand=%d/%d part=%d/%d "
+                            "finish=%s text=%r fc.name=%r",
+                            chunk_idx, ci, cand_count, pi, part_count,
+                            fr, txt_dbg[:40], fc_name,
+                        )
+                    if fc and fc_name:
                         function_call = fc
                         continue
-                    txt = getattr(part, "text", "")
-                    if txt:
-                        yield txt
-        except Exception:
+                    if txt_dbg:
+                        yield txt_dbg
+        except Exception as exc:
             # Fallback: SDK shape variation across versions (SDK 버전 호환 폴백)
+            if force_tool_use:
+                _mon("STREAM DBG chunk=%d EXCEPTION: %r", chunk_idx, exc)
             txt = getattr(chunk, "text", "") or ""
             if txt:
                 yield txt
+    if force_tool_use:
+        _mon("STREAM DBG done: total_chunks=%d function_call_set=%s",
+             chunk_idx, bool(function_call))
 
     if not function_call or not tools_enabled:
         return
@@ -353,7 +391,10 @@ async def _stream_gemini_response(
     # ── Tool roundtrip ────────────────────────────────────────────────────
     tool_name = function_call.name
     tool_args = dict(function_call.args) if function_call.args else {}
-    log.info("Gemini tool call: %s args=%s", tool_name, tool_args)
+    # Use _mon for visibility — log.info from this module is silenced by
+    # uvicorn's default logger config and never reaches /tmp/backend.log.
+    # (uvicorn 기본 설정으로 log.info는 silent — _mon로 강제 노출)
+    _mon("TOOL CALL name=%s args=%s", tool_name, tool_args)
 
     if tool_name == "make_reservation":
         # Phase 2-B: route through Bridge Server. Bridge owns:
@@ -493,32 +534,25 @@ async def _stream_gemini_response(
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
-    log.info("Tool %s result: %s", tool_name, result)
+    _mon("TOOL RESULT name=%s success=%s lane=%s message_len=%d",
+         tool_name, result.get("success"), result.get("lane"),
+         len(result.get("message") or ""))
 
-    followup = await loop.run_in_executor(
-        None,
-        lambda: chat.send_message(
-            protos.Content(parts=[
-                protos.Part(function_response=protos.FunctionResponse(
-                    name=tool_name,
-                    response={"result": result},
-                ))
-            ]),
-            stream=True,
-        ),
-    )
-
-    for chunk in followup:
-        try:
-            for cand in chunk.candidates:
-                for part in cand.content.parts:
-                    txt = getattr(part, "text", "")
-                    if txt:
-                        yield txt
-        except Exception:
-            txt = getattr(chunk, "text", "") or ""
-            if txt:
-                yield txt
+    # Yield the bridge-supplied script verbatim. We deliberately do NOT round-
+    # trip the function_response through Gemini for a paraphrase: with
+    # tool_config=ANY (force_tool_use path) the chat session keeps emitting
+    # another function_call instead of text, producing chunks=0. Even in AUTO
+    # mode our system prompt rule 6 mandates VERBATIM reading of the message.
+    # So we are authoritative here — Gemini does not edit the customer line.
+    # (Gemini paraphrase 차단 — tool_config=ANY가 followup도 function_call로 강제,
+    #  rule 6에서 VERBATIM 명시 — bridge message를 그대로 Retell로 전달)
+    msg = result.get("message") or ""
+    if msg:
+        yield msg
+    else:
+        # Last-resort safety: a tool result with no message would leave the
+        # caller in silence. Emit a generic acknowledgment so the call moves on.
+        yield "Got it. A team member will follow up shortly."
 
 
 # ── WebSocket endpoint ────────────────────────────────────────────────────────
@@ -609,6 +643,22 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         transcript   = raw.get("transcript", [])
         conversation = format_transcript(transcript)
 
+        # Lifecycle-safe send. Retell hangs up mid-stream when the caller drops
+        # the line; firing send_json on a closed socket raises 'Cannot call
+        # send once close'. Check client_state before every write so a hangup
+        # doesn't poison the rest of the turn loop.
+        # (통화 끊김 후 send 시도 보호 — Retell side close에 대비)
+        async def _safe_send(payload: dict) -> bool:
+            try:
+                if ws.client_state.value != 1:   # 1 = CONNECTED
+                    return False
+                await ws.send_json(payload)
+                return True
+            except Exception as exc:             # send race lost — log and drop
+                _mon("WS SEND DROPPED call=%s resp_id=%s: %s",
+                     cid, payload.get("response_id"), exc)
+                return False
+
         last_user = next(
             (t["content"] for t in reversed(transcript) if t["role"] == "user"), ""
         )
@@ -622,7 +672,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
             and (now - s.get("last_user_ts", 0)) < 1.5
         ):
             _mon("ECHO SKIP call=%s resp_id=%d user=%r", cid, response_id, last_user[:60])
-            await ws.send_json({
+            await _safe_send({
                 "response_id":      response_id,
                 "content":          "",
                 "content_complete": True,
@@ -634,6 +684,22 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         turn_count        += 1
         _mon("TURN %d resp_id=%d user=%r", turn_count, response_id, last_user[:60])
 
+        # Turn-1 silent-input guard: the eager greeting (response_id=0) has
+        # already played, but Retell often fires response_required before the
+        # caller has actually said anything. last_user lands as 'Hi', 'I',
+        # 'Hello' or empty, and Gemini replies with a second greeting that
+        # collides audibly with the first. Suppress it: emit empty content
+        # with content_complete=true and let the caller speak.
+        # (Turn 1 빈 발화시 두 번째 인사 차단 — eager greeting과 겹침 방지)
+        if turn_count == 1 and len(last_user.strip()) <= 5:
+            _mon("TURN1 SHORT SKIP call=%s user=%r", cid, last_user[:30])
+            await _safe_send({
+                "response_id":      response_id,
+                "content":          "",
+                "content_complete": True,
+            })
+            return
+
         t_start  = time.time()
         ttft_ms  = 0.0
         chunk_n  = 0
@@ -642,23 +708,31 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
 
         store_id_for_tools   = s["store"]["id"]   if s.get("store") else None
         store_name_for_tools = s["store"]["name"] if s.get("store") else None
+        force_tool_use       = detect_force_tool_use(transcript)
+        if force_tool_use:
+            _mon("FORCE TOOL call=%s resp_id=%d (post-confirmation yes detected)",
+                 cid, response_id)
 
         try:
             async for chunk in _stream_gemini_response(
                 s["system_prompt"], conversation,
                 store_id=store_id_for_tools, call_log_id=cid,
                 store_name=store_name_for_tools,
+                force_tool_use=force_tool_use,
             ):
                 if chunk_n == 0:
                     ttft_ms = (time.time() - t_start) * 1000
                 chunk_n  += 1
                 full_txt += chunk
-                await ws.send_json({
+                if not await _safe_send({
                     "response_id":      response_id,
                     "content":          chunk,
                     "content_complete": False,
-                })
-            await ws.send_json({
+                }):
+                    # Caller hung up mid-stream — abort the rest of the turn.
+                    # (통화 끊김 — 남은 청크 발송 중단)
+                    break
+            await _safe_send({
                 "response_id":      response_id,
                 "content":          "",
                 "content_complete": True,
@@ -666,7 +740,7 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         except Exception as exc:
             error = True
             _mon("GEMINI ERROR call=%s turn=%d: %s", cid, turn_count, exc)
-            await ws.send_json({
+            await _safe_send({
                 "response_id":      response_id,
                 "content":          "I'm sorry, I had a connection issue. Could you repeat that?",
                 "content_complete": True,

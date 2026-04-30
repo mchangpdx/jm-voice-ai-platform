@@ -112,4 +112,8 @@ ORDER_SCRIPT_BY_HINT: dict[str, str] = {
         "Sorry, our system had a hiccup taking the order. A team member will call you right "
         "back to finalize."
     ),
+    "validation_failed": (
+        "I'm missing something to place the order — let me ask once more so I get it right. "
+        "Could you confirm the items and a phone number for the payment link?"
+    ),
 }

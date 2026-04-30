@@ -85,11 +85,24 @@ async def sync_menu_from_pos(store_id: str) -> dict[str, Any]:
     # Build menu_cache: one line per item at its lowest variant price. Lowest
     # is shown so the LLM never quotes a price the customer can't actually get.
     # (메뉴 캐시: 항목당 최저 변형 가격 한 줄 — 고객이 못 받는 가격 인용 방지)
+    #
+    # Cache hygiene: drop sentinel rows that exist in menu_items for internal
+    # bookkeeping (e.g. the synthetic 'Reservation' $0.00 row used by the
+    # restaurant reservation flow). Exposing them on the prompt confuses the
+    # LLM into routing pickup orders through make_reservation. Filter on:
+    #   - name 'Reservation' (case-insensitive)  ← legacy seed
+    #   - price <= 0                              ← any zero/free placeholder
+    # (가짜 시드 항목 제외 — Gemini가 reservation tool로 오라우팅하는 것 방지)
     lowest_price: dict[str, float] = {}
     for r in rows:
-        nm = r["name"]
-        if nm not in lowest_price or r["price"] < lowest_price[nm]:
-            lowest_price[nm] = r["price"]
+        nm    = r["name"]
+        price = r["price"]
+        if not nm or price <= 0:
+            continue
+        if nm.strip().lower() == "reservation":
+            continue
+        if nm not in lowest_price or price < lowest_price[nm]:
+            lowest_price[nm] = price
 
     menu_cache = "\n".join(
         f"{nm} - ${price:.2f}" for nm, price in lowest_price.items()
