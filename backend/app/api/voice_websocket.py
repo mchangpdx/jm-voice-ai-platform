@@ -177,14 +177,16 @@ def build_system_prompt(store: dict) -> str:
         "recite the order, ask 'What's the best email to send the payment link to?' and pass it as "
         "customer_email. If the customer truly insists on SMS only, omit customer_email — but always "
         "ask once. "
-        "EMAIL READBACK (required, LETTER-BY-LETTER): right after the customer says the email, "
-        "spell the local part one letter at a time with commas so the customer can catch single-"
-        "letter STT errors. Phonetic readback ('cymee at gmail') sounds identical to what they "
-        "spoke and they will not catch a missing 't' — letter-by-letter ('c, y, m, e, e, t at "
-        "gmail dot com — did I get that right?') makes the difference audible. Wait for an "
-        "explicit yes; if they correct you, capture the new spelling and read THAT back the same "
-        "way. Common domains can be spoken whole ('at gmail dot com', 'at yahoo dot com') — only "
-        "the local part needs the letter-by-letter treatment. Do NOT recite the order or call "
+        "EMAIL READBACK (required, NATO PHONETIC ALPHABET): right after the customer says the "
+        "email, spell the local part using the NATO phonetic alphabet so each letter is "
+        "unambiguous. 'c, y, m, e, e, t' read aloud sounds identical to the customer's own "
+        "speech and they will say yes to a missing letter (live cost: 12-turn loop and a "
+        "delivery to the wrong inbox). NATO ('C as in Charlie, Y as in Yankee, M as in Mike, "
+        "E as in Echo, E as in Echo, T as in Tango at gmail dot com — did I get that right?') "
+        "gives each letter its own word so the customer can catch a single-letter error "
+        "instantly. Common domains can be spoken whole ('at gmail dot com', 'at yahoo dot "
+        "com'). Wait for an explicit yes. If the customer corrects you, capture the new "
+        "spelling and read THAT back in NATO too. Do NOT recite the order or call "
         "create_order until the customer has confirmed the email is correct. "
         "Recite ONCE: 'Confirming [N] [item], [N] [item] "
         "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
@@ -326,15 +328,20 @@ def _has_explicit_modify_intent(user_text: str) -> bool:
 # items. Live: call_05bad4f12f… resp_id=11 'Oh, wait. Wait. Wait. Wait.'
 # (망설임/필러 토큰만으로 구성된 발화 → recital 생략)
 _HESITATION_TOKENS = {
+    # Pure hesitation / filler — these on their own carry no request.
     "wait", "hold", "on", "um", "uh", "oh", "hmm", "ah", "er",
-    "like", "actually", "yeah", "yes", "okay", "ok", "well",
+    "like", "actually", "well",
     "so", "you", "know", "i", "mean",
-    # Added after call_2a3bdd9a… where 'Just wait. Wait. Wait.' slipped
-    # past the gate because 'just' wasn't classified as filler. Same
-    # for 'and', 'please', 'sorry' — when standalone they carry no
-    # request payload and a customer using only these is hesitating.
-    # (call_2a3bdd9a 회귀 — just/and/please/sorry 추가)
     "just", "and", "please", "sorry", "thanks", "thank",
+    # NOTE: 'yes' / 'yeah' / 'okay' / 'ok' were here originally so
+    # AUTO-firing Gemini on a bare ack during cooldown wouldn't recite
+    # again. They're removed after call_24aaed77… where the customer's
+    # genuine 'Yes' to a fresh recital ('updated order is X — is that
+    # right?') was muted with 'Take your time.' because FORCE TOOL
+    # detection had race-lost the recital. Affirmations are now handled
+    # exclusively by detect_force_tool_use + the cooldown branch in the
+    # AUTO-fire gate.
+    # (yes/yeah/okay/ok 제거 — 진짜 affirmation 차단 회귀)
 }
 
 
@@ -644,15 +651,18 @@ async def _stream_gemini_response(
     tool_name = function_call.name
     tool_args = dict(function_call.args) if function_call.args else {}
 
-    # ── Recent-signature dedup (Proposal R) ───────────────────────────────
+    # ── Recent-signature dedup (Proposal R, Fix #2 timing) ────────────────
     # Retell's transcript echo lags behind our yields; that lag lets a
     # FORCE TOOL fire on a stale assistant recital trigger the same tool
     # call with the same items 2-4× in a row, even though the bridge
-    # has already committed. Bridge no-op detection prevents DB churn,
-    # but the customer hears 'I just sent a payment link' / 'Your order
-    # is unchanged' multiple times. Dedupe the exact tool+items signature
-    # within a 5-second window per session.
-    # (5초 내 동일 tool+items signature 차단 — race-safe)
+    # has already committed. Dedupe the exact tool+items signature
+    # within a 5-second window per session. CRITICAL: the signature is
+    # saved ONLY AFTER the bridge actually returns success — saving it
+    # earlier (e.g. on AUTO-fire BLOCKED) made the gate fire 'Got it —
+    # already on it.' on the very NEXT user turn even though nothing
+    # had committed yet (live: call_24aaed77… resp_id 27/28).
+    # (sig 저장은 실제 bridge 성공 후 — false dedup 방지)
+    sig_str = ""
     if session is not None and tool_name in ("create_order", "modify_order"):
         items_for_sig: list[tuple[str, int]] = []
         try:
@@ -678,7 +688,10 @@ async def _stream_gemini_response(
                  tool_name, sig_str[:80])
             yield "Got it — already on it."
             return
-        session["last_tool_sig"] = (tool_name, sig_str, now_ts)
+        # NOTE: do NOT save sig_str yet. Save it only after the bridge
+        # returns success (in the create_order / modify_order success
+        # branches below). That prevents AUTO-fire BLOCKED paths from
+        # poisoning the dedup window for the next turn.
 
     # ── AUTO-FIRE GATE (server-side hardening) ────────────────────────────
     # Reject any create_order / make_reservation that arrives WITHOUT the
@@ -955,6 +968,12 @@ async def _stream_gemini_response(
                 session["last_order_items"] = bridge_result.get("items") or []
                 session["last_order_total"] = int(bridge_result.get("total_cents") or 0)
                 session["closing_emitted"]  = False
+            # Stamp the dedup sig now that the bridge actually committed
+            # (Fix #2). Doing this AFTER the success branch — instead of
+            # before the AUTO-fire gate — prevents false-positive dedups.
+            # (실제 commit 후에만 sig 저장 — false dedup 방지)
+            if session is not None and sig_str:
+                session["last_tool_sig"] = (tool_name, sig_str, time.time())
 
             # Fire-and-forget pay link delivery. Skip on idempotent re-hits —
             # the link was already sent on the first call. Two channels run
@@ -1045,6 +1064,10 @@ async def _stream_gemini_response(
             # A NEW outcome resets the closing flag so a subsequent
             # cooldown period can speak the recap once for the new state.
             session["closing_emitted"] = False
+            # Stamp the dedup sig now that the bridge actually committed
+            # (Fix #2 — see create_order branch above for the same logic).
+            if sig_str:
+                session["last_tool_sig"] = (tool_name, sig_str, time.time())
 
         hint = bridge_result.get("ai_script_hint", "")
         # Modify-specific scripts first; fall back to ORDER_SCRIPT_BY_HINT
