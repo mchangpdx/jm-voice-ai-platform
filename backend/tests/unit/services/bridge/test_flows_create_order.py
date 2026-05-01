@@ -376,3 +376,159 @@ async def test_create_order_idempotent_within_window():
     assert res["transaction_id"] == "tx-existing"
     mock_tx.create_transaction.assert_not_called()
     pos_adapter.create_pending.assert_not_called()
+
+
+# ── Idempotent return-dict completeness (lane=None bug fix) ───────────────────
+# Live: call_770ec863… 22:48:26 — voice_websocket logged 'lane=None' on a
+# successful create_order because the idempotent re-hit branch returned a
+# dict missing 'lane', 'total_cents', 'items'. The script still fired
+# correctly via ai_script_hint, but downstream debug + the modify-cycle
+# session snapshot ('last_order_items', 'last_order_total') saw None,
+# breaking the closing-summary line and confusing log triage. These tests
+# lock the parity with the non-idempotent success branches at lines
+# 563-572 and 578-587 of flows.py.
+# (idempotent return dict 누락 필드 보강 회귀 방지)
+
+
+def _idempotent_setup(state: str, payment_lane: str, total_cents: int,
+                      items_json: list):
+    """Helper — patch context for an idempotent re-hit with the row's actual
+    payment_lane / total_cents / items_json so we can assert they propagate.
+    """
+    from app.services.bridge import flows
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    enriched = [
+        {"name": "Latte", "variant_id": "v", "item_id": "i",
+         "price": 4.00, "quantity": 1, "stock_quantity": 5,
+         "missing": False, "sufficient_stock": True},
+    ]
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock()
+
+    existing_row = {
+        "id":             "tx-existing",
+        "pos_object_id":  "r-9",
+        "state":          state,
+        "payment_lane":   payment_lane,
+        "total_cents":    total_cents,
+        "items_json":     items_json,
+    }
+
+    return patch.multiple(
+        flows,
+        resolve_items_against_menu = AsyncMock(return_value=enriched),
+        decide_lane                = AsyncMock(return_value={
+            "lane": "fire_immediate", "threshold_cents": 2000, "reason": "below"
+        }),
+        _find_recent_duplicate     = AsyncMock(return_value=existing_row),
+        get_pos_adapter_for_store  = AsyncMock(return_value=pos_adapter),
+        transactions               = MagicMock(create_transaction=AsyncMock()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_idempotent_return_includes_lane_field():
+    """Idempotent re-hit must include 'lane' field — pulled from existing
+    row's payment_lane column. Without this, voice_websocket logs lane=None.
+    """
+    from app.services.bridge import flows
+
+    items_json = [{"name": "Latte", "quantity": 1, "price": 4.00}]
+    with _idempotent_setup(state="fired_unpaid", payment_lane="fire_immediate",
+                            total_cents=400, items_json=items_json):
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items": [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+    assert res["idempotent"] is True
+    assert "lane" in res
+    assert res["lane"] == "fire_immediate"
+
+
+@pytest.mark.asyncio
+async def test_idempotent_return_includes_total_cents_field():
+    """Idempotent re-hit must include 'total_cents' field — pulled from
+    existing row. Voice handler's session snapshot uses this for the
+    closing-summary line."""
+    from app.services.bridge import flows
+
+    items_json = [{"name": "Latte", "quantity": 1, "price": 4.00}]
+    with _idempotent_setup(state="pending", payment_lane="pay_first",
+                            total_cents=400, items_json=items_json):
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items": [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+    assert res["idempotent"] is True
+    assert "total_cents" in res
+    assert res["total_cents"] == 400
+    assert isinstance(res["total_cents"], int)
+
+
+@pytest.mark.asyncio
+async def test_idempotent_return_includes_items_field():
+    """Idempotent re-hit must include 'items' list — pulled from existing
+    row's items_json. Voice session uses this to populate
+    last_order_items for the recap line."""
+    from app.services.bridge import flows
+
+    items_json = [
+        {"name": "Latte",     "quantity": 2, "price": 4.00},
+        {"name": "Croissant", "quantity": 1, "price": 3.50},
+    ]
+    with _idempotent_setup(state="pending", payment_lane="pay_first",
+                            total_cents=1150, items_json=items_json):
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items": [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+    assert res["idempotent"] is True
+    assert "items" in res
+    assert isinstance(res["items"], list)
+    assert len(res["items"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_idempotent_return_handles_null_payment_lane_gracefully():
+    """Defensive: an existing row with NULL payment_lane (legacy data) must
+    not crash — return None for 'lane' rather than KeyError."""
+    from app.services.bridge import flows
+
+    items_json = [{"name": "Latte", "quantity": 1, "price": 4.00}]
+    with _idempotent_setup(state="pending", payment_lane=None,
+                            total_cents=400, items_json=items_json):
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items": [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+    assert res["idempotent"] is True
+    assert res["lane"] is None       # explicit None, not missing
+
+
+@pytest.mark.asyncio
+async def test_idempotent_return_handles_missing_total_cents_gracefully():
+    """Defensive: an existing row with NULL total_cents must coerce to 0,
+    not crash on int(None)."""
+    from app.services.bridge import flows
+
+    items_json = [{"name": "Latte", "quantity": 1, "price": 4.00}]
+    with _idempotent_setup(state="pending", payment_lane="pay_first",
+                            total_cents=None, items_json=items_json):
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items": [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+    assert res["idempotent"] is True
+    assert res["total_cents"] == 0
+    assert res["items"] == [{"name": "Latte", "quantity": 1, "price": 4.00}]

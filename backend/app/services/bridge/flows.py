@@ -448,12 +448,24 @@ async def create_order(
     if existing:
         log.info("Idempotent order hit: tx=%s pos_object_id=%s",
                  existing["id"], existing.get("pos_object_id"))
+        # Pull lane/total/items from the existing row so this branch returns
+        # the same shape as the non-idempotent success branches below
+        # (lines ~563 and ~578). Without these, voice_websocket logged
+        # 'lane=None' on every idempotent re-hit and the modify-cycle
+        # session snapshot ('last_order_items', 'last_order_total') saw
+        # None, breaking the closing-summary recap line. Live: call_770ec863…
+        # 22:48:26 created the symptom — the script still fired correctly
+        # via ai_script_hint, but downstream debug + recap broke.
+        # (idempotent return shape를 정상 분기와 일치 — lane/total/items 추가)
         return {
             "success":        True,
             "idempotent":     True,
             "transaction_id": existing["id"],
             "pos_object_id":  existing.get("pos_object_id", ""),
             "state":          existing.get("state", State.PENDING),
+            "lane":           existing.get("payment_lane"),
+            "total_cents":    int(existing.get("total_cents") or 0),
+            "items":          existing.get("items_json") or [],
             "ai_script_hint": "fire_immediate"
                               if existing.get("state") == State.FIRED_UNPAID
                               else "pay_first",

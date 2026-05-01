@@ -362,6 +362,138 @@ def _is_hesitation_only(text: str) -> bool:
     return all(w in _HESITATION_TOKENS for w in words)
 
 
+# ── Recital dedup (Wave 1 P0-1) ───────────────────────────────────────────────
+# Live: call_9b67f4ec… T15→T16 emitted the same 'Just to confirm — your
+# updated order is X — is that right?' twice within 1s because Retell
+# issued partial→final transcript pair for the same user utterance
+# ('Can you remove one garlic bread?'). The bot recited identically and
+# the customer thought it was broken. These two helpers track the most
+# recently yielded recital signature on the session and skip a duplicate
+# emission inside an 8s window — long enough to absorb Retell echo and
+# brief user pauses, short enough that a genuine new attempt later still
+# gets a fresh prompt. The window does NOT slide on skip — original ts
+# is kept so the deadline is deterministic.
+# (recital 재발화 차단 — Retell partial→final echo + 사용자 혼란 흡수)
+def _should_skip_recital(
+    session: Optional[dict],
+    recital_sig: str,
+    now_ts: float,
+    window_s: float = 8.0,
+) -> bool:
+    """True when an identical recital was yielded within window_s seconds.
+    Mutates session to bump count but keeps original ts (no window slide).
+    (같은 sig + 8초 내 → True; ts는 첫 발화 시각 유지)
+    """
+    if session is None:
+        return False
+    prev = session.get("last_recital_sig") or ("", 0.0, 0)
+    prev_sig = prev[0] if len(prev) > 0 else ""
+    prev_ts  = float(prev[1]) if len(prev) > 1 and prev[1] is not None else 0.0
+    prev_cnt = int(prev[2])   if len(prev) > 2 and prev[2] is not None else 0
+    if prev_sig and prev_sig == recital_sig and (now_ts - prev_ts) < window_s:
+        session["last_recital_sig"] = (prev_sig, prev_ts, prev_cnt + 1)
+        return True
+    return False
+
+
+def _remember_recital(
+    session: Optional[dict],
+    recital_sig: str,
+    now_ts: float,
+) -> None:
+    """Record that this recital was just yielded — anchors the dedup window.
+    (recital yield 직후 호출 — dedup window의 anchor)
+    """
+    if session is None:
+        return
+    session["last_recital_sig"] = (recital_sig, now_ts, 0)
+
+
+# ── Tool-result yield dedup (Wave 1 P0-3) ─────────────────────────────────────
+# Third dedup layer, distinct from last_tool_sig (5s tool-call window) and
+# last_recital_sig (8s recital window). Operates on the literal yielded
+# string from the bridge tool roundtrip. Live: call_9b67f4ec… T17/T18 (6s
+# apart) yielded the same noop / clarification line because the upstream
+# tool-call dedup window is 5s and T18 was just past it. Same string back
+# to back makes the bot sound stuck even though every gate did its job.
+# (msg 문자열 자체에 대한 8s 윈도 dedup — 같은 응답 재발화 차단)
+def _should_skip_msg_repeat(
+    session: Optional[dict],
+    msg: str,
+    now_ts: float,
+    window_s: float = 8.0,
+) -> bool:
+    """True when this exact message string was yielded within window_s.
+    Empty msg always returns False so the fallback yield path stays live.
+    Mutates session to bump count but keeps original ts (no window slide).
+    (같은 msg + 8초 내 → True; 빈 msg는 항상 False; ts 첫 발화 시각 유지)
+    """
+    if session is None or not msg:
+        return False
+    prev = session.get("last_msg_sig") or ("", 0.0, 0)
+    prev_msg = prev[0] if len(prev) > 0 else ""
+    prev_ts  = float(prev[1]) if len(prev) > 1 and prev[1] is not None else 0.0
+    prev_cnt = int(prev[2])   if len(prev) > 2 and prev[2] is not None else 0
+    if prev_msg and prev_msg == msg and (now_ts - prev_ts) < window_s:
+        session["last_msg_sig"] = (prev_msg, prev_ts, prev_cnt + 1)
+        return True
+    return False
+
+
+def _remember_msg(
+    session: Optional[dict],
+    msg: str,
+    now_ts: float,
+) -> None:
+    """Record that this msg was just yielded — anchors the dedup window.
+    No-op on None session or empty msg.
+    (msg yield 직후 호출 — 빈 msg/None session은 no-op)
+    """
+    if session is None or not msg:
+        return
+    session["last_msg_sig"] = (msg, now_ts, 0)
+
+
+# ── Modify clarification line (Wave 1 P0-2) ───────────────────────────────────
+# When bridge.modify_order returns ai_script_hint='modify_noop' (items
+# unchanged) AND the customer's last turn carried explicit modify intent
+# (verbs like 'remove', 'add', 'change'), the standard MODIFY_ORDER_SCRIPT
+# line — 'Your order is unchanged — total is still $X' — is misleading:
+# the customer did try to change something, just for an item we couldn't
+# reconcile (often off-menu, e.g. 'garlic bread' at JM Cafe). Live:
+# call_9b67f4ec… T17/T18 said 'remove one garlic bread' twice and the
+# bot kept asserting the order was unchanged without ever telling the
+# customer the item wasn't on the menu. This helper builds an honest
+# clarification that names the current order and asks the customer to
+# specify the exact menu item. Only used when intent is True; the
+# intent=False path keeps the original noop wording so happy-path acks
+# ('okay', 'thanks') don't get nagged.
+# (modify intent + noop → 명시 clarification; intent 없음은 기존 closing 유지)
+def _build_modify_clarification(
+    items: list,
+    total_cents: int,
+) -> str:
+    """Customer-facing clarification when a modify attempt landed on noop.
+    (수정 시도가 noop으로 끝났을 때 명확히 안내)
+    """
+    item_phrases: list[str] = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        nm  = (it.get("name") or "").strip()
+        if not nm:
+            continue
+        qty = int(it.get("quantity") or 1)
+        plural = "" if qty == 1 else "s"
+        item_phrases.append(f"{qty} {nm}{plural}")
+    items_str   = ", ".join(item_phrases) if item_phrases else "your order"
+    total_human = f"${total_cents / 100:.2f}"
+    return (
+        f"Hmm, I didn't catch the change. Your order is still {items_str} "
+        f"for {total_human}. Could you tell me the exact item from our menu?"
+    )
+
+
 def _has_recent_explicit_modify_intent(transcript: list[dict], n_user: int = 3) -> bool:
     """True iff ANY of the last N user turns contains explicit modify
     intent. Kept for back-compat / tests; new code should prefer
@@ -684,9 +816,20 @@ async def _stream_gemini_response(
             and sig_str
             and (now_ts - prev_ts) < 5.0
         ):
-            _mon("TOOL DEDUP tool=%s sig=%s — within 5s, skipping",
-                 tool_name, sig_str[:80])
-            yield "Got it — already on it."
+            elapsed = now_ts - prev_ts
+            _mon("TOOL DEDUP tool=%s sig=%s elapsed=%.1fs — within 5s, skipping",
+                 tool_name, sig_str[:80], elapsed)
+            # Silent skip when the dedup fires within 2s of the prior
+            # commit — that's a Gemini double-trigger / transcript-echo
+            # artifact, NOT a user re-confirmation. The success line is
+            # still mid-flight on the audio path, so adding 'Got it —
+            # already on it.' produces back-to-back voice output ~1s
+            # apart (live: call_2bd477d1… resp_id 18→19, 18:33:34→35).
+            # Beyond 2s the customer has had time to think and re-affirm,
+            # so the verbal ack is the right behavior.
+            # (1초 간격 더블 발화 차단 — 진짜 재확인은 ≥2s 후 들어옴)
+            if elapsed >= 2.0:
+                yield "Got it — already on it."
             return
         # NOTE: do NOT save sig_str yet. Save it only after the bridge
         # returns success (in the create_order / modify_order success
@@ -801,6 +944,21 @@ async def _stream_gemini_response(
         else:
             recital = (f"Just to confirm a reservation for {recital_name} "
                        f"— is that right?")
+        # Recital dedup (Wave 1 P0-1) — same recital sig within 8s is a
+        # Retell partial→final transcript echo or a confused customer
+        # repeating the same out-of-menu request. Repeating the recital
+        # makes the bot sound broken; silent skip lets the prior recital
+        # stand and Retell's reminder cadence (6s x 2) handles any
+        # follow-up nudge. Items_for_recital is the full ordered list,
+        # so any legitimate change in items produces a different sig
+        # and bypasses the skip.
+        # (recital 재발화 차단 — Retell echo + same-utterance 재시도)
+        recital_sig = f"{tool_name}|{','.join(items_for_recital)}"
+        now_ts = time.time()
+        if _should_skip_recital(session, recital_sig, now_ts):
+            _mon("RECITAL DEDUP tool=%s sig=%s — within 8s, silent skip",
+                 tool_name, recital_sig[:80])
+            return
         _mon("AUTO-FIRE BLOCKED tool=%s args_phone=%r args_name=%r args_email=%r "
              "items=%d → recital fallback",
              tool_name,
@@ -808,6 +966,7 @@ async def _stream_gemini_response(
              tool_args.get("customer_name") or "",
              tool_args.get("customer_email") or "",
              len(tool_args.get("items") or []))
+        _remember_recital(session, recital_sig, now_ts)
         yield recital
         return
 
@@ -1106,6 +1265,22 @@ async def _stream_gemini_response(
         except (KeyError, IndexError):
             script = script_template
 
+        # Wave 1 P0-2 — when bridge returns modify_noop AND the customer's
+        # last turn carried explicit modify intent, swap in a clarification
+        # line that names the current order and asks for the exact menu
+        # item. The standard noop line ('Your order is unchanged') is fine
+        # for benign acks ('okay', 'thanks') but actively misleading when
+        # the customer just tried to add or remove something the bridge
+        # couldn't match — usually an off-menu item like 'garlic bread'
+        # (live: call_9b67f4ec… T17/T18). Intent=False path keeps the
+        # original wording untouched so the closing line still works.
+        # (modify intent + noop → clarification; intent 없음은 그대로)
+        if hint == "modify_noop" and user_has_modify_intent:
+            script = _build_modify_clarification(
+                items       = bridge_result.get("items") or [],
+                total_cents = new_total_cents,
+            )
+
         # Issue #1 fix — name the unavailable item on rejected results in
         # the modify path too. Was applied to create_order earlier; the
         # modify branch was getting the generic 'one or more items
@@ -1202,6 +1377,19 @@ async def _stream_gemini_response(
     #  rule 6에서 VERBATIM 명시 — bridge message를 그대로 Retell로 전달)
     msg = result.get("message") or ""
     if msg:
+        # Wave 1 P0-3 — third dedup layer. Even after the tool-call dedup
+        # (last_tool_sig, 5s window) lets a second call through, the bridge
+        # may still produce the identical noop / clarification line. Same
+        # string within 8s = silent skip so the customer doesn't hear the
+        # bot repeat itself. Live: call_9b67f4ec… T17/T18 yielded the same
+        # 'modify_noop' line 6s apart (just past the tool-call window).
+        # (msg 문자열 8s 윈도 dedup — 같은 응답 재발화 차단)
+        msg_now_ts = time.time()
+        if _should_skip_msg_repeat(session, msg, msg_now_ts):
+            _mon("MSG DEDUP tool=%s msg_len=%d — within 8s, silent skip",
+                 tool_name, len(msg))
+            return
+        _remember_msg(session, msg, msg_now_ts)
         yield msg
     else:
         # Last-resort safety: a tool result with no message would leave the
@@ -1248,6 +1436,8 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_order_total":   0,      # latest committed total_cents (Proposal I)
         "closing_emitted":    False,  # one-shot flag for the order-summary closing line
         "last_tool_sig":      ("", "", 0.0),  # (tool_name, items_key_str, ts) — Proposal R dedup
+        "last_recital_sig":   ("", 0.0, 0),   # (recital_sig, ts, skip_count) — Wave 1 P0-1
+        "last_msg_sig":       ("", 0.0, 0),   # (msg, ts, skip_count) — Wave 1 P0-3 yield dedup
     }
     init_done = asyncio.Event()
 
