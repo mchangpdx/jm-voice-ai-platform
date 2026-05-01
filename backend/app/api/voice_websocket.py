@@ -1035,6 +1035,21 @@ async def _stream_gemini_response(
                 "message":     script,
                 "error":       bridge_result.get("error", ""),
             }
+            # Issue #2 fix — stamp the dedup sig on DETERMINISTIC failures
+            # (sold_out / unknown_item) so the same items don't fire again
+            # on the very next confirmation. Same items + same menu +
+            # same store = same answer; re-firing wastes a turn and the
+            # customer hears the same rejection (live: call_b57c581b…
+            # turn 16/17 fired sold_out twice in a row). pos_failure is
+            # NOT included — those are transient network blips, the
+            # customer should be allowed to retry.
+            # (sold_out/unknown_item은 deterministic — sig 저장으로 즉시 dedup)
+            if (
+                session is not None
+                and sig_str
+                and bridge_result.get("reason") in ("sold_out", "unknown_item")
+            ):
+                session["last_tool_sig"] = (tool_name, sig_str, time.time())
     elif tool_name == "modify_order":
         # Phase 2-C.B1 — replace items on an in-flight order. Bridge owns
         # target lookup (caller-id), state-guarding (PENDING / PAYMENT_SENT
@@ -1091,6 +1106,40 @@ async def _stream_gemini_response(
         except (KeyError, IndexError):
             script = script_template
 
+        # Issue #1 fix — name the unavailable item on rejected results in
+        # the modify path too. Was applied to create_order earlier; the
+        # modify branch was getting the generic 'one or more items
+        # aren't available right now' message even when the bridge knew
+        # exactly which item failed (live: call_b57c581b… turn 16, 2x
+        # Americano sold-out).
+        # (modify branch에도 unavailable item naming 적용)
+        if hint == "rejected":
+            unavail = bridge_result.get("unavailable") or []
+            unavail_names: list[str] = []
+            try:
+                for u in unavail:
+                    nm = (u.get("name") if isinstance(u, dict) else "") or ""
+                    if nm and nm not in unavail_names:
+                        unavail_names.append(nm)
+            except Exception:
+                pass
+            if unavail_names:
+                if len(unavail_names) == 1:
+                    naming = unavail_names[0]
+                elif len(unavail_names) == 2:
+                    naming = f"{unavail_names[0]} and {unavail_names[1]}"
+                else:
+                    naming = ", ".join(unavail_names[:-1]) + f", and {unavail_names[-1]}"
+                reason = bridge_result.get("reason") or "unavailable"
+                if reason == "sold_out":
+                    lead = f"Sorry, {naming} just sold out today."
+                else:
+                    lead = f"Sorry, we don't have {naming} on the menu."
+                script = (
+                    f"{lead} Would you like something else? — feel free to ask "
+                    f"what's available."
+                )
+
         if bridge_result.get("success"):
             result = {
                 "success":         True,
@@ -1109,6 +1158,16 @@ async def _stream_gemini_response(
                 "message":     script,
                 "error":       bridge_result.get("error", ""),
             }
+            # Issue #2 fix — same as create_order branch: stamp the dedup
+            # sig on DETERMINISTIC failures so the next bare confirmation
+            # against the same items short-circuits.
+            # (modify branch에도 sold_out/unknown_item dedup 적용)
+            if (
+                session is not None
+                and sig_str
+                and bridge_result.get("reason") in ("sold_out", "unknown_item")
+            ):
+                session["last_tool_sig"] = (tool_name, sig_str, time.time())
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
@@ -1280,13 +1339,29 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
             (t["content"] for t in reversed(transcript) if t["role"] == "user"), ""
         )
 
-        # Dedupe barge-in echo: same user msg within 1.5s → ack and skip
-        # (바지인 에코 차단: 1.5초 내 동일 사용자 발화 → 짧게 종료)
+        # Dedupe barge-in echo: same user msg within 1.5s → ack and skip.
+        # Issue #3 fix — Retell sends mid-utterance partials as separate
+        # response_required messages; the prior exact-match echo dedup
+        # missed them when truncations differed by a few characters
+        # ('Oh, hold on. Hold on. Actually, can I remove one cheese pizza'
+        # vs 'Oh, hold on. Hold on. Actually, can I remove one cheese
+        # pizza a' vs '…cheese pizza and…'). Customer ends up hearing
+        # the same recital 3-4 times. Match on the first 30 stripped
+        # characters within 1.5s instead — same prefix is the same
+        # spoken sentence still in flight.
+        # (1.5초 + prefix 30자 일치 — 부분 발화 중복 차단)
         now = time.time()
+        cur_norm  = last_user.strip().lower()
+        prev_norm = (s.get("last_user_msg") or "").strip().lower()
+        cur_pre   = cur_norm[:30]
+        prev_pre  = prev_norm[:30]
         if (
-            last_user.strip()
-            and last_user.strip() == s.get("last_user_msg", "").strip()
+            cur_norm
             and (now - s.get("last_user_ts", 0)) < 1.5
+            and (
+                cur_norm == prev_norm
+                or (len(cur_pre) >= 10 and cur_pre == prev_pre)
+            )
         ):
             _mon("ECHO SKIP call=%s resp_id=%d user=%r", cid, response_id, last_user[:60])
             await _safe_send({
