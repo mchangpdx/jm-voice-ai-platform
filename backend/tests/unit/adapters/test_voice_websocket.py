@@ -108,6 +108,35 @@ def test_build_system_prompt_has_remove_validation_rule():
     assert "full-order cancel" in prompt
 
 
+def test_build_system_prompt_has_cancel_precondition_guard():
+    """Issue γ fix — cancel_order precondition guard must be in rule 7
+    so Gemini stops reciting cancel confirm when there is no active
+    order or the order is already cancelled. (cancel 환각 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "PRECONDITION GUARD" in prompt
+    assert "cancel_already_canceled" in prompt
+    assert "FULL-ORDER cancel only" in prompt
+    # Single-item cancel routes through rule 6, not rule 7
+    assert "cancel one Cappuccino" in prompt or "single item" in prompt.lower()
+
+
+def test_build_system_prompt_has_nato_domain_rule():
+    """Issue δ fix — NATO email readback must spell EVERY letter of
+    business domains, not just the local part. STT often truncates
+    'jmtech1.com' to 'jm.com' — readback must catch this. (도메인
+    letter-by-letter NATO 강제)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "DOMAIN COVERAGE" in prompt
+    assert "gmail.com" in prompt
+    assert "yahoo.com" in prompt
+    assert "outlook.com" in prompt
+    assert "icloud.com" in prompt
+    # The "ask explicitly when uncertain" escape hatch
+    assert "did I miss part of the domain" in prompt
+
+
 def test_format_transcript_returns_string():
     from app.api.voice_websocket import format_transcript
     transcript = RESPONSE_REQUIRED_MSG["transcript"]
