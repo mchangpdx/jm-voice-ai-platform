@@ -121,20 +121,57 @@ def test_build_system_prompt_has_cancel_precondition_guard():
     assert "cancel one Cappuccino" in prompt or "single item" in prompt.lower()
 
 
-def test_build_system_prompt_has_item_source_invariant():
-    """Issue ξ fix — rule 5 must require items to come from the
-    customer's spoken transcript, not from Gemini's invention.
-    Live observed call_ce589e7a T25-T29: bot recited '1 Chocolate Cake'
-    after a cancel even though the customer never said Chocolate Cake —
-    the order shipped to the kitchen and the customer was charged.
-    (사용자 발화에 없는 항목 환각 차단)"""
+def test_build_system_prompt_has_invariants_block_at_top():
+    """Lost-in-the-middle defense — CORE TRUTHFULNESS INVARIANTS
+    block must appear BEFORE the numbered RULES so the most-violated
+    invariants (items, name, status) sit in the prompt's primacy
+    zone (~first 15-20% of total length). (가장 자주 위반되는
+    invariant들을 primacy zone에 배치 — lost-in-the-middle 방어)"""
     from app.api.voice_websocket import build_system_prompt
     prompt = build_system_prompt(MOCK_STORE)
-    assert "ITEM SOURCE INVARIANT" in prompt
-    assert "EXPLICITLY spoken by the customer" in prompt
-    assert "TRUTHFULNESS INVARIANT" in prompt
-    # The new-order-after-cancel carry-over guard
-    assert "start the items list from EMPTY" in prompt
+    inv_pos = prompt.find("=== CORE TRUTHFULNESS INVARIANTS")
+    rules_pos = prompt.find("=== RULES")
+    assert inv_pos > 0, "INVARIANTS block missing"
+    assert rules_pos > inv_pos, "INVARIANTS must come BEFORE RULES"
+    # Primacy zone — INVARIANTS block must sit in first 25% of prompt
+    assert inv_pos / len(prompt) < 0.25
+
+
+def test_build_system_prompt_invariant_i1_items():
+    """Issue ξ — items must come from the customer's spoken transcript.
+    Live observed call_ce589e7a T25-T29: bot recited '1 Chocolate Cake'
+    after a cancel even though the customer never said Chocolate Cake.
+    (I1 ITEMS — 사용자 발화에 없는 항목 환각 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "I1. ITEMS" in prompt
+    assert "EXPLICITLY spoke" in prompt
+    assert "carry over from a cancelled order" in prompt
+
+
+def test_build_system_prompt_invariant_i2_customer_name():
+    """Issue ρ — customer_name must come from the customer's spoken
+    transcript. Live observed call_061702bb T7-T11: Gemini cycled
+    through 'the customer' / 'Customer' / 'Guest' placeholders, each
+    rejected by bridge — 3 turns wasted. (I2 NAME — placeholder
+    customer_name 무한 시도 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "I2. CUSTOMER NAME" in prompt
+    # All placeholders observed live must be named
+    for placeholder in ["Customer", "Guest", "the customer",
+                        "Valued Customer", "(customer name not provided)"]:
+        assert placeholder in prompt, f"missing placeholder: {placeholder}"
+    assert "May I have your name?" in prompt
+
+
+def test_build_system_prompt_invariant_i3_status():
+    """I3 — never claim cancelled/confirmed/booked without a successful
+    tool result in this call. (I3 STATUS — phantom confirmation 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "I3. STATUS" in prompt
+    assert "tool call returned success" in prompt
 
 
 def test_build_system_prompt_cancel_guard_is_narrow():
