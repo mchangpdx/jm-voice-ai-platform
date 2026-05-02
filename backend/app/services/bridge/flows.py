@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -56,7 +57,23 @@ PLACEHOLDER_NAMES: frozenset[str] = frozenset({
 
 def is_placeholder_name(raw_name: str) -> bool:
     """Return True if raw_name is empty, exactly a placeholder, or any
-    whitespace-separated token matches a placeholder. (placeholder 검사)"""
+    word-token matches a placeholder.
+
+    Token split treats every non-word character (whitespace AND
+    punctuation like parentheses, quotes, hyphens, slashes) as a
+    separator. Without this, Gemini's natural-language placeholders
+    like '(customer name not provided)' bypass the guard because
+    str.split() leaves '(customer' and 'provided)' as tokens that do
+    not match the bare 'customer'/'provided' entries in the set. Live
+    observed in call_0741f688 T9 — bot recited 'for (customer name not
+    provided)' and bridge would have accepted the same value if Gemini
+    had not been re-prompted for a real name on the next turn.
+
+    Legitimate names with internal punctuation (O'Brien, Jean-Luc,
+    Mary-Anne) are unaffected: their tokens (obrien, jean, luc, mary,
+    anne) are not in PLACEHOLDER_NAMES.
+    (placeholder 검사 — punctuation도 separator로 처리, '(customer ...)' 차단)
+    """
     if not raw_name:
         return True
     name_lc = raw_name.strip().lower()
@@ -64,7 +81,17 @@ def is_placeholder_name(raw_name: str) -> bool:
         return True
     if name_lc in PLACEHOLDER_NAMES:
         return True
-    return any(tok in PLACEHOLDER_NAMES for tok in name_lc.split())
+    tokens = [t for t in re.split(r"[\W_]+", name_lc) if t]
+    if not tokens:
+        return True
+    if any(tok in PLACEHOLDER_NAMES for tok in tokens):
+        return True
+    # Reconstructed phrase catches compound entries like 'no name' wrapped
+    # in punctuation ('<no name>', '[no-name]'). Single-token strings are
+    # already handled above; this covers the multi-token compound case.
+    # (compound placeholder — 토큰 재결합으로 'no name' 스타일 매칭)
+    rejoined = " ".join(tokens)
+    return rejoined in PLACEHOLDER_NAMES
 
 log = logging.getLogger(__name__)
 

@@ -92,3 +92,50 @@ def test_placeholder_names_is_frozenset():
 def test_helper_strips_whitespace():
     assert is_placeholder_name("  Customer  ") is True
     assert is_placeholder_name("  Carmen  ") is False
+
+
+# ── T8 (Issue θ): natural-language placeholders with punctuation must be caught
+# Live observed call_0741f688 T9 — Gemini filled customer_name with
+# '(customer name not provided)'. Old str.split() left '(customer' and
+# 'provided)' as tokens that did not match the bare 'customer' entry.
+# Switch to re.split(r'[\W_]+', ...) so punctuation is a separator.
+# (괄호/콤마/슬래시 등 punctuation이 token에 붙어 우회되던 결함 회귀 차단)
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "(customer name not provided)",
+        "(Customer Name Not Provided)",
+        "[unknown]",
+        '"Guest"',
+        "'caller'",
+        "Unknown - Customer",
+        "Unknown / Caller",
+        "Customer.",
+        "(unknown)",
+        "name: customer",
+        "<no name>",
+    ],
+)
+def test_natural_language_placeholders_with_punctuation_rejected(raw: str):
+    assert is_placeholder_name(raw) is True
+
+
+# ── T9 (Issue θ regression guard): legitimate names with internal punctuation
+# still pass — punctuation split must NOT over-block real names. None of
+# their tokens are in PLACEHOLDER_NAMES.
+# (정상 이름의 punctuation 분리는 회귀 0 검증)
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "O'Brien",
+        "O'Connor",
+        "Jean-Luc Picard",
+        "Mary-Anne Smith",
+        "Anne-Marie",
+        "St. John",
+        "D'Angelo",
+        "De La Cruz",
+    ],
+)
+def test_punctuated_legitimate_names_pass(raw: str):
+    assert is_placeholder_name(raw) is False
