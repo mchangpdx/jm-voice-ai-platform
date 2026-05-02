@@ -179,6 +179,50 @@ def test_build_system_prompt_i1_blocks_modify_noop_carry_over():
     assert "DO NOT recite" in prompt or "DO NOT fire create_order" in prompt
 
 
+def test_build_system_prompt_rule4_reservation_time_truthfulness_gate():
+    """Issue ψ — rule 4 must explicitly forbid hallucinated
+    reservation_time values when the customer is changing a different
+    field. Live observed call_1f5901e2 T26: customer asked to change
+    party only, bot fabricated reservation_time='11:24 AM' (current
+    wall-clock time). Bridge rejected via reservation_too_late but the
+    same hallucination on a different code path is dangerous.
+    (reservation_time 환각 차단 — 이전 tool result 값만 사용)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "RESERVATION_TIME TRUTHFULNESS GATE" in prompt
+    assert "EXACT value from the most recent successful" in prompt
+    assert "NEVER use the current wall-clock time" in prompt
+
+
+def test_build_system_prompt_rule4_info_updates_carveout_strengthened():
+    """Issue ω — rule 4 INFO UPDATES carve-out must be promoted to a
+    TRUTHFULNESS INVARIANT (same severity as I1/I2/I3) so Gemini stops
+    firing modify_reservation for email/phone updates. Live observed
+    call_1f5901e2 T18-T19: 3 modify_reservation calls in a row, all
+    noop, 3 turns wasted. (이메일/전화 업데이트로 modify_reservation
+    호출 차단 강화)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "INFO UPDATES ARE NOT MODIFY (TRUTHFULNESS INVARIANT" in prompt
+    assert "do NOT fire ANY tool for the contact-info update" in prompt
+    # The live-observed wasted-turns example
+    assert "three turns wasted" in prompt or "three turns in a row" in prompt
+
+
+def test_build_system_prompt_rule4_no_auto_cancel_after_too_late():
+    """Issue χ — rule 4 must forbid auto-firing cancel tools after
+    reservation_too_late on a bare 'oh, okay' / 'I see' ack. Live
+    observed call_1f5901e2 T28: bot auto-fired cancel_order recital
+    (wrong tool — that's for orders, not reservations). (reservation_
+    too_late 후 자동 cancel 추론 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "AFTER reservation_too_late" in prompt
+    assert "DO NOT auto-fire cancel_order" in prompt
+    # The "bare ack is not cancel intent" guard
+    assert "'oh, okay' or 'I see'" in prompt
+
+
 def test_build_system_prompt_rule6_info_updates_not_modify():
     """Issue τ — rule 6 must explicitly carve out contact-info updates
     (email/phone/name) from modify_order triggers. Live observed
