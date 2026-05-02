@@ -1042,3 +1042,310 @@ async def cancel_order(
                             if prior_state == State.FIRED_UNPAID
                             else "cancel_success"),
     }
+
+
+# ── B3: modify_reservation (Phase 2-C.B3) ─────────────────────────────────────
+# Per spec backend/docs/specs/B3_modify_reservation.md.
+#
+# modify_reservation updates the most-recent confirmed reservation for the
+# same caller. Unlike modify_order (which lives in bridge_transactions), the
+# reservation aggregate lives in the legacy `reservations` table from Phase
+# 2-A make_reservation. v1 modifies that table directly to keep the change
+# footprint small. Future migration to bridge_transactions is out of scope.
+#
+# Customer decisions locked 2026-05-02:
+#   1. 30-minute cutoff for reservation_too_late
+#   2. Full payload contract (Gemini sends all 5 mutable fields)
+#   3. Email fallback only (Twilio TCR pending)
+#   4. Most-recent policy: ORDER BY created_at DESC LIMIT 1
+
+
+_RESERVATION_MODIFY_CUTOFF_MINUTES = 30
+_RESERVATION_PARTY_MAX             = 20
+
+
+async def _find_modifiable_reservation(
+    *,
+    store_id:       str,
+    customer_phone: str,
+) -> Optional[dict[str, Any]]:
+    """Locate the single most-recent confirmed reservation for this caller.
+    (이 caller의 최근 confirmed 예약 1건 조회 — modify 대상 식별)
+
+    Most-recent policy: ORDER BY created_at DESC LIMIT 1. Only status =
+    'confirmed' is targetable; cancelled / fulfilled / no_show are
+    excluded so the bot doesn't accidentally modify a settled booking.
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/reservations",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "store_id":       f"eq.{store_id}",
+                "customer_phone": f"eq.{customer_phone}",
+                "status":         "eq.confirmed",
+                "select":         "id,store_id,customer_name,customer_phone,"
+                                  "party_size,reservation_time,status,notes,"
+                                  "created_at",
+                "order":          "created_at.desc",
+                "limit":          "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_find_modifiable_reservation %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+async def _is_within_business_hours(
+    *,
+    store_id:             str,
+    reservation_time_iso: str,
+) -> bool:
+    """Check whether a target reservation_time falls inside the store's
+    business hours.
+
+    v1 placeholder: returns True. The actual business_hours field on
+    `stores` is free-form text ('Mon-Sat 7am-9pm'), and parsing it
+    deterministically is out of scope for B3 v1 — make_reservation
+    today does not enforce this either. Tests mock this helper, so
+    the bridge contract is preserved when the parser lands in v2.
+    (TODO v2: parse stores.business_hours and compare against
+    reservation_time_iso in store-local TZ.)
+    """
+    return True
+
+
+async def _update_reservation(
+    *,
+    reservation_id: int,
+    diff:           dict[str, dict[str, Any]],
+) -> bool:
+    """Apply the diff'd fields to the reservations row. (변경 필드만 UPDATE)
+
+    diff shape: {<column>: {"old": <prior>, "new": <new>}}. We PATCH only
+    the columns whose new value differs from old — Supabase `.update()`
+    via REST PATCH with `Prefer: return=minimal`.
+    """
+    if not diff:
+        return False
+    payload = {col: change["new"] for col, change in diff.items()}
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.patch(
+            f"{_REST}/reservations",
+            headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params={"id": f"eq.{reservation_id}"},
+            json=payload,
+        )
+    if resp.status_code not in (200, 204):
+        log.warning("_update_reservation %s: %s",
+                    resp.status_code, resp.text[:200])
+        return False
+    return True
+
+
+async def modify_reservation(
+    *,
+    store_id:          str,
+    args:              dict[str, Any],
+    caller_phone_e164: str,
+    call_log_id:       Optional[str] = None,
+) -> dict[str, Any]:
+    """Update the most-recent confirmed reservation for this caller.
+    (이 caller의 가장 최근 confirmed 예약 수정 — Phase 2-C.B3)
+
+    args (Gemini tool args, full payload):
+        customer_name:    str  — same as before if unchanged
+        reservation_date: YYYY-MM-DD
+        reservation_time: HH:MM (24-h)
+        party_size:       int (1-20)
+        notes:            str  (optional, default '')
+        user_explicit_confirmation: bool  (caller-side gate)
+
+    Failure modes (each gets ai_script_hint):
+        no_reservation_to_modify  → reservation_no_target
+        reservation_too_late      → reservation_too_late (< 30 min)
+        outside_business_hours    → outside_business_hours
+        party_too_large           → party_too_large (> 20)
+        validation_failed         → bad name / date / party_size <= 0
+        reservation_noop          → full payload == current row (no diff)
+    """
+    # 1. Validate party_size first (cheap, no DB).
+    try:
+        party = int(args.get("party_size") or 0)
+    except (TypeError, ValueError):
+        return {
+            "success":        False,
+            "reason":         "validation_failed",
+            "error":          "party_size must be an integer",
+            "ai_script_hint": "validation_failed",
+        }
+    if party <= 0:
+        return {
+            "success":        False,
+            "reason":         "validation_failed",
+            "error":          "party_size must be at least 1",
+            "ai_script_hint": "validation_failed",
+        }
+
+    # 2. Reject placeholder customer_name.
+    raw_name = (args.get("customer_name") or "").strip()
+    if is_placeholder_name(raw_name):
+        return {
+            "success":        False,
+            "reason":         "validation_failed",
+            "error":          f"customer_name looks invalid: {raw_name!r}",
+            "ai_script_hint": "validation_failed",
+        }
+
+    # 3. Combine date+time → ISO. Bad format → validation_failed.
+    try:
+        new_time_iso = combine_date_time(
+            args.get("reservation_date") or "",
+            args.get("reservation_time") or "",
+        )
+    except Exception as exc:
+        return {
+            "success":        False,
+            "reason":         "validation_failed",
+            "error":          f"could not parse date/time: {exc}",
+            "ai_script_hint": "validation_failed",
+        }
+
+    # 4. Locate target reservation (most-recent confirmed only).
+    target = await _find_modifiable_reservation(
+        store_id       = store_id,
+        customer_phone = caller_phone_e164,
+    )
+    if not target:
+        return {
+            "success":        False,
+            "reason":         "no_reservation_to_modify",
+            "error":          "no confirmed reservation for this caller",
+            "ai_script_hint": "reservation_no_target",
+        }
+
+    # 5. State guard — < 30 min from now is too late.
+    cutoff = datetime.now(timezone.utc) + timedelta(
+        minutes=_RESERVATION_MODIFY_CUTOFF_MINUTES
+    )
+    try:
+        new_time_dt = datetime.fromisoformat(new_time_iso.replace("Z", "+00:00"))
+    except Exception as exc:
+        return {
+            "success":        False,
+            "reason":         "validation_failed",
+            "error":          f"bad reservation_time iso: {exc}",
+            "ai_script_hint": "validation_failed",
+        }
+    if new_time_dt < cutoff:
+        return {
+            "success":        False,
+            "reason":         "reservation_too_late",
+            "reservation_id": target["id"],
+            "ai_script_hint": "reservation_too_late",
+        }
+
+    # 6. Party-size upper bound — reject before DB UPDATE.
+    if party > _RESERVATION_PARTY_MAX:
+        return {
+            "success":        False,
+            "reason":         "party_too_large",
+            "reservation_id": target["id"],
+            "ai_script_hint": "party_too_large",
+        }
+
+    # 7. Cross-check business hours for the new time.
+    if not await _is_within_business_hours(
+        store_id             = store_id,
+        reservation_time_iso = new_time_iso,
+    ):
+        return {
+            "success":        False,
+            "reason":         "outside_business_hours",
+            "reservation_id": target["id"],
+            "ai_script_hint": "outside_business_hours",
+        }
+
+    # 8. Compute diff. Compare each mutable field against the current row.
+    new_notes = args.get("notes") or ""
+    diff: dict[str, dict[str, Any]] = {}
+    if raw_name != (target.get("customer_name") or ""):
+        diff["customer_name"] = {
+            "old": target.get("customer_name") or "",
+            "new": raw_name,
+        }
+    # ISO string equality is too fragile across timezone-suffix and
+    # microsecond representations (e.g. '2026-05-02T20:11:55.291951+00:00'
+    # vs '2026-05-02T13:11:00-07:00' represent the same instant). Compare
+    # at the datetime level (truncated to minute precision — reservations
+    # are slot-based, sub-minute differences are noise) so a noop
+    # full-payload re-fire is recognized as such regardless of how
+    # Postgres or the client formats the value.
+    # (분 단위 비교 — 같은 슬롯이면 noop으로 처리)
+    cur_time_raw = target.get("reservation_time") or ""
+    try:
+        cur_time_dt = datetime.fromisoformat(cur_time_raw.replace("Z", "+00:00"))
+        cur_minute  = cur_time_dt.replace(second=0, microsecond=0)
+        new_minute  = new_time_dt.replace(second=0, microsecond=0)
+        same_instant = cur_minute == new_minute
+    except Exception:
+        same_instant = (cur_time_raw == new_time_iso)
+    if not same_instant:
+        diff["reservation_time"] = {
+            "old": cur_time_raw,
+            "new": new_time_iso,
+        }
+    if party != int(target.get("party_size") or 0):
+        diff["party_size"] = {
+            "old": int(target.get("party_size") or 0),
+            "new": party,
+        }
+    if new_notes != (target.get("notes") or ""):
+        diff["notes"] = {
+            "old": target.get("notes") or "",
+            "new": new_notes,
+        }
+
+    # 9. Noop short-circuit if nothing actually changed.
+    if not diff:
+        return {
+            "success":        True,
+            "reservation_id": target["id"],
+            "diff":           {},
+            "ai_script_hint": "reservation_noop",
+        }
+
+    # 10. Apply UPDATE.
+    ok = await _update_reservation(
+        reservation_id = target["id"],
+        diff           = diff,
+    )
+    if not ok:
+        return {
+            "success":        False,
+            "reason":         "update_failed",
+            "reservation_id": target["id"],
+            "ai_script_hint": "validation_failed",
+        }
+
+    log.warning("reservation_modified id=%s diff=%s",
+                target["id"], list(diff.keys()))
+
+    # 11. Build new_summary for the customer-facing script.
+    new_party = party
+    new_summary = (
+        f"party of {new_party}, "
+        f"{format_date_human(args['reservation_date'])} at "
+        f"{format_time_12h(args['reservation_time'])}"
+    )
+
+    return {
+        "success":        True,
+        "reservation_id": target["id"],
+        "diff":           diff,
+        "new_summary":    new_summary,
+        "ai_script_hint": "modify_success",
+    }
