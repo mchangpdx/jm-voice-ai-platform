@@ -28,6 +28,8 @@ from app.services.bridge import flows as bridge_flows
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.skills.order.order import (
+    CANCEL_ORDER_SCRIPT_BY_HINT,
+    CANCEL_ORDER_TOOL_DEF,
     MODIFY_ORDER_SCRIPT_BY_HINT,
     MODIFY_ORDER_TOOL_DEF,
     ORDER_SCRIPT_BY_HINT,
@@ -214,11 +216,22 @@ def build_system_prompt(store: dict) -> str:
         "'remove', 'drop', 'change to', 'instead', 'make it', 'cancel the X'. A bare "
         "yes / okay / thanks is NEVER a modify request. If bridge returns modify_too_late, "
         "apologize and offer to cancel + place a fresh order.\n"
-        "7. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
-        "8. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
+        "7. CANCEL ORDER (cancel_order): Call this ONLY when the customer EXPLICITLY "
+        "says 'cancel my order', 'cancel that', 'cancel it', 'never mind cancel it'. "
+        "BEFORE calling, recite ONCE: 'Just to confirm — you want to cancel your order "
+        "for [items] for $[total] — is that right?' using the items and total from this "
+        "call's most recent order. On the explicit verbal yes, call cancel_order with "
+        "user_explicit_confirmation=true. NEVER say 'I've cancelled that for you', "
+        "'cancelled', 'gone ahead and cancelled' UNLESS cancel_order returned success — "
+        "this is a TRUTHFULNESS INVARIANT. If bridge returns cancel_already_paid, "
+        "apologize and offer manager transfer; do NOT promise a refund yourself. After "
+        "cancel_success, the call is essentially over — close with the tool's message "
+        "verbatim and stop.\n"
+        "8. AFTER TOOL SUCCESS: Read the tool's 'message' field VERBATIM. Never substitute wording.\n"
+        "9. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
         "pos_failure → apologize once + STOP, a person will call back.\n"
-        "9. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
-        "10. ESCALATION: 'Let me connect you with our manager right away.'"
+        "10. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
+        "11. ESCALATION: 'Let me connect you with our manager right away.'"
     )
 
     return "\n\n".join(parts)
@@ -285,6 +298,16 @@ _MODIFY_INTENT_TOKENS = {
     "add", "remove", "drop", "change", "instead", "actually",
     "another", "more", "less", "without", "with",
     "make it", "i changed my mind", "switch", "swap",
+    # B2 fix — 'cancel' must clear the modify-cooldown gate so the
+    # AUTO-fire recital fallback can fire and Gemini can pick the
+    # cancel_order tool. Without this, MODIFY COOLDOWN swallowed the
+    # cancel intent and yielded the closing line, leaving cancel_order
+    # uncalled even though the customer explicitly asked to cancel
+    # (live: call_1df4b018… T11/T12). Token only governs the cooldown
+    # gate, not which tool runs — Gemini selects modify vs cancel per
+    # system prompt rules 6/7.
+    # (cancel — cooldown 통과만, 도구 선택은 system prompt가 분리)
+    "cancel",
 }
 
 
@@ -723,6 +746,7 @@ async def _stream_gemini_response(
             RESERVATION_TOOL_DEF,
             ORDER_TOOL_DEF,
             MODIFY_ORDER_TOOL_DEF,
+            CANCEL_ORDER_TOOL_DEF,
         ]
         if force_tool_use:
             kwargs["tool_config"] = {
@@ -850,7 +874,7 @@ async def _stream_gemini_response(
     # hears 'Just to confirm, that's X for Y — is that right?', says yes,
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
-    if tool_name in ("create_order", "make_reservation", "modify_order") and not force_tool_use:
+    if tool_name in ("create_order", "make_reservation", "modify_order", "cancel_order") and not force_tool_use:
         # Hesitation-only short-circuit (Proposal E). When the customer's
         # current turn is filler/hesitation only ('oh wait wait wait'),
         # emit a brief 'Take your time' and stay silent — never recite
@@ -941,6 +965,36 @@ async def _stream_gemini_response(
             phrase = ", ".join(items_for_recital) or "your order"
             recital = (f"Just to confirm — your updated order is {phrase} "
                        f"— is that right?")
+        elif tool_name == "cancel_order":
+            # Cancel tool args carry no items (caller-id lookup only), so
+            # pull the in-flight order summary from the session snapshot
+            # populated by the most recent create/modify success. This
+            # ensures the recital quotes the actual order the customer is
+            # about to lose, not stale or empty data. If no snapshot is
+            # available (cancel attempted without a prior order), fall
+            # back to a generic recital — bridge will return cancel_no_target
+            # right after the FORCE TOOL fires.
+            # (cancel은 args에 items 없음 — session snapshot에서 끌어옴)
+            sess_items = (session or {}).get("last_order_items") or []
+            sess_total = int((session or {}).get("last_order_total") or 0)
+            phrase_parts: list[str] = []
+            for it in sess_items:
+                if not isinstance(it, dict):
+                    continue
+                qty = int(it.get("quantity") or 1)
+                nm  = (it.get("name") or "").strip()
+                if not nm:
+                    continue
+                plural = "" if qty == 1 else "s"
+                phrase_parts.append(f"{qty} {nm}{plural}")
+            if phrase_parts:
+                phrase     = ", ".join(phrase_parts)
+                total_str  = f" for ${sess_total / 100:.2f}" if sess_total else ""
+                recital = (f"Just to confirm — you want to cancel your order "
+                           f"for {phrase}{total_str} — is that right?")
+            else:
+                recital = ("Just to confirm — you want to cancel your order "
+                           "— is that right?")
         else:
             recital = (f"Just to confirm a reservation for {recital_name} "
                        f"— is that right?")
@@ -1343,6 +1397,59 @@ async def _stream_gemini_response(
                 and bridge_result.get("reason") in ("sold_out", "unknown_item")
             ):
                 session["last_tool_sig"] = (tool_name, sig_str, time.time())
+    elif tool_name == "cancel_order":
+        # B2 (Phase 2-C.2) — cancel an in-flight order. Bridge owns
+        # target lookup (caller-id, in-flight states pending/payment_sent/
+        # fired_unpaid), state-machine guard, persistence via advance_state,
+        # audit. No POS-side void in V1 (FIRED_UNPAID hint tells the
+        # customer to flag staff at the counter). Tool args carry only
+        # user_explicit_confirmation — no items, no phone, no name —
+        # so we ignore tool_args here and pass caller_phone_e164 only.
+        # (B2 — args 최소, caller-id로 식별)
+        bridge_result = await bridge_flows.cancel_order(
+            store_id          = store_id,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = call_log_id,
+        )
+
+        hint = bridge_result.get("ai_script_hint", "")
+        # Cancel-specific scripts only — no fallback to ORDER_SCRIPT_BY_HINT
+        # because cancel hints (cancel_success / cancel_no_target / etc.)
+        # are distinct from create / modify hints. Final fallback is a
+        # generic acknowledgment so silence never reaches the caller.
+        # (cancel 전용 스크립트 — 폴백은 generic ack)
+        script = CANCEL_ORDER_SCRIPT_BY_HINT.get(
+            hint,
+            "Got it — let me get someone on the line to help.",
+        )
+
+        if bridge_result.get("success"):
+            result = {
+                "success":         True,
+                "transaction_id":  bridge_result.get("transaction_id"),
+                "lane":            bridge_result.get("lane"),
+                "state":           bridge_result.get("state"),
+                "prior_state":     bridge_result.get("prior_state"),
+                "total_cents":     int(bridge_result.get("total_cents") or 0),
+                "items":           bridge_result.get("items"),
+                "message":         script,
+            }
+            # Snapshot reset — the in-flight order is gone. Closing-summary
+            # line should not recap a cancelled order on the next ack.
+            # (cancel success 후 closing recap 차단)
+            if session is not None:
+                session["last_order_items"] = []
+                session["last_order_total"] = 0
+                session["closing_emitted"]  = True
+        else:
+            result = {
+                "success":         False,
+                "transaction_id":  bridge_result.get("transaction_id"),
+                "state":           bridge_result.get("state"),
+                "reason":          bridge_result.get("reason"),
+                "message":         script,
+                "error":           bridge_result.get("error", ""),
+            }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 

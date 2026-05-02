@@ -28,7 +28,7 @@ from app.services.bridge import transactions
 from app.services.bridge.payments.factory import get_payment_adapter
 from app.services.bridge.pos.factory import get_pos_adapter_for_store
 from app.services.bridge.pos.supabase import SupabasePOSAdapter
-from app.services.bridge.state_machine import State
+from app.services.bridge.state_machine import State, can_transition
 from app.services.menu.match import resolve_items_against_menu          # Phase 2-B.1.8
 from app.services.policy.order_lanes import decide_lane                 # Phase 2-B.1.7b
 from app.skills.scheduler.reservation import (
@@ -660,6 +660,54 @@ async def _find_modifiable_order(
     return rows[0] if rows else None
 
 
+# ── B2 cancel_order: settled-state probe (read-only) ──────────────────────────
+# Sister probe to _find_modifiable_order. Used ONLY by cancel_order, and ONLY
+# when the in-flight probe returned None — gives the bot a precise refusal
+# line ('that order is already cancelled' / 'already paid, transferring to
+# manager') instead of the generic 'no order to cancel'. Adds at most one
+# extra HTTP round-trip on cancel attempts that miss; no extra cost on the
+# happy path.
+# (취소 의도지만 in-flight 없을 때만 호출 — 정확한 거절 멘트용)
+async def _find_recent_settled_order(
+    *,
+    store_id:       str,
+    customer_phone: str,
+    window_minutes: int = 5,
+) -> Optional[dict[str, Any]]:
+    """Locate the single most-recent SETTLED order for this caller within
+    the window. Settled = canceled / paid / fulfilled / refunded / no_show
+    / failed. Returns None when nothing found.
+    (terminal 상태의 최근 주문 1건 조회 — cancel 시 정확 안내용)
+    """
+    since_iso = (
+        datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    ).isoformat()
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/bridge_transactions",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "store_id":        f"eq.{store_id}",
+                "customer_phone":  f"eq.{customer_phone}",
+                "pos_object_type": "eq.order",
+                "state":           "in.(canceled,paid,fulfilled,refunded,no_show,failed)",
+                "created_at":      f"gte.{since_iso}",
+                "select":          "id,store_id,vertical,pos_object_type,"
+                                   "pos_object_id,customer_phone,customer_name,"
+                                   "state,payment_lane,total_cents,items_json,"
+                                   "created_at,updated_at",
+                "order":           "created_at.desc",
+                "limit":           "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_find_recent_settled_order %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
 async def modify_order(
     *,
     store_id:          str,
@@ -822,4 +870,133 @@ async def modify_order(
         "total_cents":     new_total,
         "items":           resolved,
         "ai_script_hint":  "modify_success",
+    }
+
+
+# ── B2: cancel_order (Phase 2-C.2) ────────────────────────────────────────────
+# Per spec backend/docs/specs/B2_cancel_order.md.
+# Transitions the most-recent in-flight transaction (PENDING / PAYMENT_SENT /
+# FIRED_UNPAID) for a given (store_id, caller_phone) to CANCELED, writes one
+# state_transition audit row via transactions.advance_state, and returns a
+# result dict for the Voice Engine. Items / total / lane preserved (we keep
+# the historical record). Pay link route refuses payment for terminal states
+# already (pay_link.py:84 short-circuit), so no extra cleanup needed there.
+# Live: call_faba29762 — without this tool the bot hallucinated 'I've gone
+# ahead and cancelled that for you' on a still-live FIRED_UNPAID order.
+# (B2 — 결제 전 또는 fired_unpaid 주문 취소. 키친 통보는 V1 스크립트로 안내, V2에서 Loyverse void)
+
+
+async def cancel_order(
+    *,
+    store_id:          str,
+    caller_phone_e164: str,
+    call_log_id:       Optional[str] = None,
+) -> dict[str, Any]:
+    """Cancel an in-flight pickup order.
+    (in-flight 주문 취소 — Phase 2-C.B2)
+
+    No args from Gemini beyond user_explicit_confirmation — the order is
+    located via caller-id, and items/phone are not needed (cancel operates
+    on the transaction as a whole). Returns a dict the Voice Engine
+    consumes to choose its TTS reply via CANCEL_ORDER_SCRIPT_BY_HINT.
+    """
+    # 1. Locate the in-flight target (PENDING / PAYMENT_SENT / FIRED_UNPAID).
+    target = await _find_modifiable_order(
+        store_id       = store_id,
+        customer_phone = caller_phone_e164,
+    )
+
+    # 2. Miss — fall back to settled probe so the customer hears a precise
+    #    refusal instead of the generic 'no order to cancel'.
+    if not target:
+        settled = await _find_recent_settled_order(
+            store_id       = store_id,
+            customer_phone = caller_phone_e164,
+        )
+        if settled:
+            sstate = settled.get("state")
+            if sstate == State.CANCELED:
+                return {
+                    "success":         False,
+                    "transaction_id":  settled.get("id"),
+                    "state":           sstate,
+                    "reason":          "cancel_already_canceled",
+                    "ai_script_hint":  "cancel_already_canceled",
+                }
+            if sstate in (State.PAID, State.FULFILLED, State.REFUNDED, State.NO_SHOW):
+                return {
+                    "success":         False,
+                    "transaction_id":  settled.get("id"),
+                    "state":           sstate,
+                    "reason":          "cancel_already_paid",
+                    "ai_script_hint":  "cancel_already_paid",
+                }
+            # FAILED or any other terminal: fall through to no_target.
+        return {
+            "success":         False,
+            "reason":          "cancel_no_target",
+            "ai_script_hint":  "cancel_no_target",
+        }
+
+    # 3. State machine guard. _find_modifiable_order returns one of
+    #    pending/payment_sent/fired_unpaid (all three allow → canceled
+    #    in state_machine), so this branch is defensive — should never
+    #    fire under the current state graph. If a future state is added
+    #    to the SQL filter without updating the state machine, this
+    #    catches it instead of letting advance_state raise.
+    # (방어적 가드 — SQL/state_machine 불일치 발생 시 안전 종료)
+    prior_state = target["state"]
+    if not can_transition(prior_state, State.CANCELED):
+        log.error(
+            "cancel_order: cannot transition tx=%s %s → canceled",
+            target["id"], prior_state,
+        )
+        return {
+            "success":         False,
+            "transaction_id":  target["id"],
+            "state":           prior_state,
+            "reason":          "cancel_failed",
+            "ai_script_hint":  "cancel_failed",
+        }
+
+    # 4. Persist via state machine. transactions.advance_state writes the
+    #    bridge_events audit row. Wrap in try so a DB blip yields a
+    #    customer-facing manager-transfer line instead of crashing the
+    #    voice path (same pattern as modify_order's POS-injection guard).
+    # (DB blip 시 manager transfer로 graceful — 음성 경로 절대 raise 금지)
+    try:
+        await transactions.advance_state(
+            transaction_id = target["id"],
+            to_state       = State.CANCELED,
+            source         = "voice",
+            actor          = "tool_call:cancel_order",
+            extra_fields   = {},
+        )
+    except Exception as exc:
+        log.error("cancel_order: advance_state failed tx=%s: %s",
+                  target["id"], exc)
+        return {
+            "success":         False,
+            "transaction_id":  target["id"],
+            "state":           prior_state,
+            "reason":          "cancel_failed",
+            "ai_script_hint":  "cancel_failed",
+        }
+
+    # 5. Success. Items / total / lane preserved for the voice handler's
+    #    session snapshot. ai_script_hint differs for FIRED_UNPAID — the
+    #    bot tells the customer to notify staff at the counter since V1
+    #    doesn't auto-void Loyverse (deferred to V2).
+    # (kitchen 안내 분기 — V1은 사람이 보완)
+    return {
+        "success":         True,
+        "transaction_id":  target["id"],
+        "lane":            target.get("payment_lane"),
+        "state":           State.CANCELED,
+        "prior_state":     prior_state,
+        "total_cents":     int(target.get("total_cents") or 0),
+        "items":           target.get("items_json") or [],
+        "ai_script_hint":  ("cancel_success_fired"
+                            if prior_state == State.FIRED_UNPAID
+                            else "cancel_success"),
     }

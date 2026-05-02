@@ -237,3 +237,89 @@ MODIFY_ORDER_SCRIPT_BY_HINT: dict[str, str] = {
     # customer hears consistent phrasing. The handler can fall back to
     # ORDER_SCRIPT_BY_HINT when one of those hints comes back.
 }
+
+
+# B2 — cancel_order tool definition (Phase 2-C.2).
+# Customer wants to cancel an in-flight order placed THIS SAME call.
+# Tool args carry only user_explicit_confirmation — the bridge looks the
+# order up via caller-id and items/phone are not needed (cancel operates
+# on the transaction as a whole). This kills phone-hallucination AND
+# prevents Gemini from inventing a fake order to cancel. Live:
+# call_faba29762 — without this tool the bot hallucinated 'I've gone
+# ahead and cancelled that for you' on a still-live FIRED_UNPAID order.
+# (B2 — in-flight 주문 취소 tool. caller-id로 식별, args 최소)
+
+CANCEL_ORDER_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "cancel_order",
+            "description": (
+                "Cancel an in-flight pickup order before it's paid. "
+                "Use ONLY when the customer EXPLICITLY says 'cancel my "
+                "order', 'cancel that', 'never mind, cancel it'. "
+                "PRECONDITIONS: "
+                "(a) the customer has clearly stated cancel intent, "
+                "(b) you have recited 'Just to confirm — you want to cancel "
+                "    your order for [items] for $[total] — is that right?' "
+                "    using the items and total from this call's order, "
+                "(c) the customer has said an explicit verbal yes to that "
+                "    recital. "
+                "Do NOT pass customer_phone, customer_name, customer_email, "
+                "or items — the system identifies the order via the inbound "
+                "caller ID. NEVER say 'I've cancelled that for you' without "
+                "actually calling this tool. If no in-flight order exists, "
+                "the bridge will respond accordingly and you must NOT retry."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_explicit_confirmation": {
+                        "type": "boolean",
+                        "description": (
+                            "Set to true ONLY after the customer has verbally "
+                            "said 'yes' to your cancel recital. False or "
+                            "missing = do not call."
+                        ),
+                    },
+                },
+                "required": ["user_explicit_confirmation"],
+            },
+        }
+    ]
+}
+
+
+# Customer-facing lines for cancel_order outcomes. The voice handler
+# yields these verbatim — no {total} substitution (cancel scripts don't
+# quote the total; the recital does that BEFORE the tool call).
+# (cancel_order 결과별 멘트 — handler가 verbatim yield)
+
+CANCEL_ORDER_SCRIPT_BY_HINT: dict[str, str] = {
+    "cancel_success": (
+        "Got it — your order has been cancelled. No charge will go through. "
+        "Sorry for the trouble!"
+    ),
+    "cancel_success_fired": (
+        # FIRED_UNPAID branch — kitchen has the receipt; staff need a
+        # heads-up since V1 doesn't auto-void Loyverse.
+        "Got it — your order has been cancelled on our side. The kitchen "
+        "had already started, so when you're nearby please let our team "
+        "at the counter know so they can clear it. No charge will go through."
+    ),
+    "cancel_no_target": (
+        "I don't see an active order to cancel. Is there something else I "
+        "can help with?"
+    ),
+    "cancel_already_canceled": (
+        "That order has already been cancelled. Is there anything else I "
+        "can help with?"
+    ),
+    "cancel_already_paid": (
+        "That order has already been paid for. Let me connect you with our "
+        "manager so they can help with a refund."
+    ),
+    "cancel_failed": (
+        "Sorry, I had trouble cancelling that. Let me connect you with our "
+        "manager to sort it out."
+    ),
+}
