@@ -616,11 +616,20 @@ async def _find_modifiable_order(
     """Locate the single most-recent in-flight order for this caller.
     (이 caller의 최근 in-flight 주문 1건 조회 — modify 대상 식별)
 
-    State filter is intentionally narrow: only PENDING and PAYMENT_SENT
-    qualify. FIRED_UNPAID, PAID, FULFILLED already left the modifiable
-    window (kitchen is working / customer paid / pickup happened).
+    State filter widened to also include FIRED_UNPAID. PENDING and
+    PAYMENT_SENT are the truly modifiable states — items are still
+    editable end-to-end. FIRED_UNPAID is included only so the caller
+    (modify_order at the order_too_late branch) can return a precise
+    'modify_too_late' script ('The kitchen has already started that
+    order…') instead of the misleading 'no_order_to_modify' line.
+    PAID and FULFILLED stay excluded — those calls are settled
+    business and should not surface as an active in-flight order.
     Returns full row including items_json + total_cents so the caller
-    can build a 'before' snapshot for the audit payload.
+    can build a 'before' snapshot for the audit payload. Live:
+    call_6b935ab0 16:05 — small order routed fire_immediate, transitioned
+    to FIRED_UNPAID, customer's modify attempt landed on no_order_to_modify
+    instead of the order_too_late explanation.
+    (fired_unpaid 포함 — modify_too_late 정확 안내용; PENDING/PAYMENT_SENT는 그대로 modify 가능)
     """
     since_iso = (
         datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
@@ -633,7 +642,7 @@ async def _find_modifiable_order(
                 "store_id":        f"eq.{store_id}",
                 "customer_phone":  f"eq.{customer_phone}",
                 "pos_object_type": "eq.order",
-                "state":           "in.(pending,payment_sent)",
+                "state":           "in.(pending,payment_sent,fired_unpaid)",
                 "created_at":      f"gte.{since_iso}",
                 "select":          "id,store_id,vertical,pos_object_type,"
                                    "pos_object_id,customer_phone,customer_name,"

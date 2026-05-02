@@ -301,3 +301,120 @@ async def test_modify_order_writes_when_items_actually_change():
     assert res["total_cents"]    == 1198
     txns_mod.update_items_and_total.assert_awaited_once()
     txns_mod.append_audit.assert_awaited_once()
+
+
+# ── _find_modifiable_order SQL filter (live: call_6b935ab0 fix) ───────────────
+# Live: call_6b935ab0 16:05:31 — customer placed a small order ($x < threshold),
+# lane decided fire_immediate, transaction transitioned to FIRED_UNPAID.
+# Customer then asked to add Cafe Latte. _find_modifiable_order's SQL filter
+# only looked at PENDING/PAYMENT_SENT, so it returned None even though a
+# modifiable in-flight order existed (kitchen could still be in the first
+# few seconds of prep). Bridge returned no_order_to_modify, voice yielded
+# 'I don't see an active order to modify' — wrong message: the order
+# DOES exist, it's just past the modify window. The right script
+# (MODIFY_ORDER_SCRIPT_BY_HINT['modify_too_late']) already exists; widen
+# the SQL filter so the existing 'order_too_late' branch in modify_order
+# can fire and pick up the right script.
+# (SQL 필터 확장 — fired_unpaid도 검색해야 modify_too_late 정확 안내)
+
+
+@pytest.mark.asyncio
+async def test_find_modifiable_order_sql_includes_fired_unpaid():
+    """SQL state filter must include 'fired_unpaid' so a fire_immediate
+    order can be located and routed to the 'modify_too_late' script
+    instead of the misleading 'no_order_to_modify' line."""
+    from app.services.bridge import flows
+
+    captured: dict = {}
+
+    class _FakeResp:
+        status_code = 200
+        text = ""
+        def json(self):
+            return []
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, headers=None, params=None):
+            captured["url"]    = url
+            captured["params"] = params
+            return _FakeResp()
+
+    with patch.object(flows.httpx, "AsyncClient", return_value=_FakeClient()):
+        await flows._find_modifiable_order(
+            store_id       = STORE,
+            customer_phone = CALLER,
+        )
+
+    state_filter = captured.get("params", {}).get("state", "")
+    assert "fired_unpaid" in state_filter, (
+        f"state filter must include fired_unpaid; got {state_filter!r}"
+    )
+    # Regression: pending and payment_sent must still be present so existing
+    # modify path doesn't break.
+    assert "pending"      in state_filter
+    assert "payment_sent" in state_filter
+
+
+@pytest.mark.asyncio
+async def test_modify_order_returns_too_late_when_only_fired_unpaid_exists():
+    """End-to-end: when DB only has a FIRED_UNPAID row matching this caller,
+    _find_modifiable_order finds it (with the widened filter), modify_order's
+    state-guard at line ~696 fires, returns ai_script_hint='modify_too_late'.
+    Voice handler then yields the kitchen-already-started script.
+    """
+    from app.services.bridge import flows
+
+    fired_row = _tx(state="fired_unpaid", lane="fire_immediate")
+
+    with patch.object(flows, "_find_modifiable_order",
+                      new=AsyncMock(return_value=fired_row)), \
+         patch.object(flows, "transactions") as txns_mod:
+        res = await flows.modify_order(
+            store_id          = STORE,
+            args              = {"items":[{"name":"Cafe Latte","quantity":1}]},
+            caller_phone_e164 = CALLER,
+            call_log_id       = None,
+        )
+
+    assert res["success"] is False
+    assert res["reason"]          == "order_too_late"
+    assert res["ai_script_hint"]  == "modify_too_late"
+    txns_mod.update_items_and_total.assert_not_called()
+    txns_mod.append_audit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_modifiable_order_pending_row_still_returned():
+    """Regression guard: a pending row must still be returned by the widened
+    filter so the happy-path modify cycle (call_1c77143e shape) keeps working.
+    """
+    from app.services.bridge import flows
+
+    pending_payload = [_tx(state="pending", lane="pay_first")]
+
+    class _FakeResp:
+        status_code = 200
+        text = ""
+        def json(self):
+            return pending_payload
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, headers=None, params=None):
+            return _FakeResp()
+
+    with patch.object(flows.httpx, "AsyncClient", return_value=_FakeClient()):
+        row = await flows._find_modifiable_order(
+            store_id       = STORE,
+            customer_phone = CALLER,
+        )
+
+    assert row is not None
+    assert row["state"] == "pending"
