@@ -220,6 +220,21 @@ def test_build_system_prompt_cancel_guard_is_narrow():
     assert "rule 6's partial-remove guard" in prompt
 
 
+def test_build_system_prompt_rule7_cancel_recital_source():
+    """Issue φ — cancel recital items+total MUST come from the most
+    recent SUCCESSFUL create_order/modify_order tool result, not from
+    a rejected modify (order_too_late) attempt. Live observed
+    call_604df85b T22: bot recited 'cancel your entire order for 1
+    Chocolate Cake and 2 Cheese Pizzas' even though Cheese Pizzas had
+    been rejected by modify_order. (cancel recital은 in-flight only)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "most recent SUCCESSFUL create_order or modify_order tool result" in prompt
+    # The carve-out against rejected modify attempts
+    assert "order_too_late" in prompt
+    assert "rejected modify attempt" in prompt
+
+
 def test_build_system_prompt_has_args_email_truthfulness_gate():
     """Issue σ — args_email must match the NATO readback character-by-
     character, NOT the raw STT value. Live observed twice in one session
