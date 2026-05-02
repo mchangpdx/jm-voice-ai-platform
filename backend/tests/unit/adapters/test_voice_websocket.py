@@ -96,6 +96,18 @@ def test_build_system_prompt_missing_optional_fields():
     assert len(prompt) > 0
 
 
+def test_build_system_prompt_has_remove_validation_rule():
+    """Issue α/β fix — partial-remove confirm validation guard must be in
+    rule 6 so Gemini stops reciting 'remove garlic bread' when garlic
+    bread isn't on the order. (주문에 없는 항목 환각 confirm 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "VALIDATE BEFORE CONFIRMING REMOVE" in prompt
+    assert "I don't see" in prompt
+    # Ensure the carve-out for full-order cancel (rule 7) is preserved
+    assert "full-order cancel" in prompt
+
+
 def test_format_transcript_returns_string():
     from app.api.voice_websocket import format_transcript
     transcript = RESPONSE_REQUIRED_MSG["transcript"]
