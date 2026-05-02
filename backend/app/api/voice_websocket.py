@@ -25,6 +25,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.core.config import settings
 from app.services.bridge import flows as bridge_flows
+from app.services.bridge.flows import is_placeholder_name
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.skills.order.order import (
@@ -956,7 +957,17 @@ async def _stream_gemini_response(
                 items_for_recital.append(f"{qty} {nm}{plural}")
         except Exception:
             pass
-        recital_name = (tool_args.get("customer_name") or "").strip() or "you"
+        # Recital name guard — Gemini sometimes fills customer_name with a
+        # placeholder ('Customer', 'Global', 'unknown', 'Unknown Customer').
+        # The bridge validate path rejects these on the actual create_order,
+        # but the AUTO-FIRE recital fires BEFORE that and would otherwise
+        # say "for unknown — is that right?". Fall back to "you" when the
+        # raw name is empty or any token matches a placeholder. Live
+        # observed: call_6b935ab0 ('Customer'), call_1df4b018 ('Global'),
+        # call_f424f5b86 ('unknown').
+        # (placeholder 이름이면 "you"로 폴백 — bridge가 다음 단계에서 reject)
+        raw_recital_name = (tool_args.get("customer_name") or "").strip()
+        recital_name = "you" if is_placeholder_name(raw_recital_name) else raw_recital_name
         if tool_name == "create_order":
             phrase = ", ".join(items_for_recital) or "your order"
             recital = (f"Just to confirm, that's {phrase} for {recital_name} "

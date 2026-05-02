@@ -39,6 +39,33 @@ from app.skills.scheduler.reservation import (
     validate_reservation_args,
 )
 
+# Module-level constant — placeholder name tokens that Gemini sometimes
+# fills in when it has not actually captured a real customer name. Shared
+# by the bridge validate-and-reject path AND the voice AUTO-FIRE recital
+# builder (so the bot doesn't say "for unknown — is that right?"). Token
+# matching only — substring matching would reject legitimate names that
+# happen to contain a placeholder substring (e.g. 'Carmen' contains
+# 'arme' but is not 'guest'). 'global' added 2026-05-03 after live
+# observation in call_1df4b018.
+# (placeholder 이름 토큰 — bridge + voice recital 양쪽에서 공유)
+PLACEHOLDER_NAMES: frozenset[str] = frozenset({
+    "anonymous", "customer", "guest",  "n/a",    "na",     "unknown",
+    "no name",   "test",     "tester", "caller", "user",   "global",
+})
+
+
+def is_placeholder_name(raw_name: str) -> bool:
+    """Return True if raw_name is empty, exactly a placeholder, or any
+    whitespace-separated token matches a placeholder. (placeholder 검사)"""
+    if not raw_name:
+        return True
+    name_lc = raw_name.strip().lower()
+    if not name_lc:
+        return True
+    if name_lc in PLACEHOLDER_NAMES:
+        return True
+    return any(tok in PLACEHOLDER_NAMES for tok in name_lc.split())
+
 log = logging.getLogger(__name__)
 
 _SUPABASE_HEADERS = {
@@ -366,34 +393,22 @@ async def create_order(
         "10000000000", "0000000000", "1111111111", "5555555555",
         "1234567890",  "12345678901","9999999999", "9876543210",
     }
-    _PLACEHOLDER_NAMES = {
-        "anonymous", "customer", "guest", "n/a", "na", "unknown",
-        "no name",   "test",     "tester","caller", "user",
-    }
     if digits_only in _PLACEHOLDER_DIGITS or len(digits_only) < 10:
         return {"success":         False,
                 "status":          "rejected",
                 "reason":          "validation_failed",
                 "error":           f"customer_phone looks invalid: {raw_phone!r}",
                 "ai_script_hint":  "validation_failed"}
-    # Reject the name when:
-    #   (a) it is empty,
-    #   (b) the whole string matches a placeholder (e.g. 'Anonymous'),
-    #   (c) ANY whitespace-separated token matches a placeholder
-    #       (e.g. 'Unknown Customer' → tokens ['unknown','customer'] →
-    #       both in set → reject). Live observed in call_838fa514…
-    #       where 'Unknown Customer' slipped past the exact-match check.
-    # We explicitly do NOT use substring matching — that would reject
-    # legitimate names that happen to contain a placeholder substring
-    # ('Carmen' contains 'arme' but not the token 'guest').
-    # (이름 placeholder 차단 강화 — 토큰 단위 매칭으로 'Unknown Customer' 차단)
-    name_lc = raw_name.lower()
-    name_tokens = [t for t in name_lc.split() if t]
-    if (
-        not raw_name
-        or name_lc in _PLACEHOLDER_NAMES
-        or any(tok in _PLACEHOLDER_NAMES for tok in name_tokens)
-    ):
+    # Reject the name when it is empty, the whole string matches a
+    # placeholder, or ANY whitespace-separated token matches a
+    # placeholder (e.g. 'Unknown Customer' → tokens ['unknown',
+    # 'customer'] → both in set → reject). Live observed in
+    # call_838fa514 where 'Unknown Customer' slipped past the
+    # exact-match check. Module-level PLACEHOLDER_NAMES is shared
+    # with voice_websocket recital builder so the bot doesn't say
+    # "for unknown — is that right?" before this validate fires.
+    # (이름 placeholder 차단 — voice recital과 공유, 토큰 단위)
+    if is_placeholder_name(raw_name):
         return {"success":         False,
                 "status":          "rejected",
                 "reason":          "validation_failed",
