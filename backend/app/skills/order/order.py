@@ -323,3 +323,40 @@ CANCEL_ORDER_SCRIPT_BY_HINT: dict[str, str] = {
         "manager to sort it out."
     ),
 }
+
+
+# ── B3 modify_reservation: customer-facing scripts ────────────────────────────
+# Per spec backend/docs/specs/B3_modify_reservation.md section 7.
+# Hints from flows.modify_reservation are looked up in this map by the
+# voice handler. Templates with {new_summary} / {original_summary} are
+# .format()'d in the dispatcher using bridge_result fields.
+# (modify_reservation 결과별 멘트 — handler가 format 후 yield)
+
+MODIFY_RESERVATION_SCRIPT_BY_HINT: dict[str, str] = {
+    "modify_success": (
+        "Got it — your reservation is updated to {new_summary}. We'll see "
+        "you then."
+    ),
+    "reservation_no_target": (
+        "I don't see an active reservation under your number — would you "
+        "like to make one?"
+    ),
+    "reservation_too_late": (
+        "That reservation starts in less than 30 minutes — I can't change "
+        "it now. I can cancel it and we can rebook?"
+    ),
+    "reservation_noop": (
+        "Your reservation is unchanged. What would you like to change?"
+    ),
+    "outside_business_hours": (
+        "Sorry, that time is outside our hours. Want to try another time?"
+    ),
+    "party_too_large": (
+        "We don't seat parties over 20 by phone — let me connect you with "
+        "our manager."
+    ),
+    "validation_failed": (
+        "I'm missing something — could you tell me the new date, time, "
+        "and party size?"
+    ),
+}

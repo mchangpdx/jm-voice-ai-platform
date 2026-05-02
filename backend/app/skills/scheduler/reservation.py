@@ -103,6 +103,86 @@ RESERVATION_TOOL_DEF: dict = {
 }
 
 
+# ── B3 modify_reservation — Function Calling tool def ────────────────────────
+# Full-payload contract: Gemini sends ALL 5 mutable fields as a complete
+# snapshot. The bridge computes a diff against the current row and updates
+# only changed columns. caller-id (Retell from_number) locates the most-
+# recent confirmed reservation; DO NOT include reservation_id or
+# customer_phone in args.
+# (전체 payload 계약 — 5 필드 모두 전송, bridge가 diff 계산)
+
+MODIFY_RESERVATION_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "modify_reservation",
+            "description": (
+                "Update a customer's just-made reservation. "
+                "FULL-PAYLOAD CONTRACT: send ALL five mutable fields as a "
+                "complete snapshot — for fields the customer is NOT changing, "
+                "send the original value (which you recited earlier). "
+                "Caller-id locates the most-recent confirmed reservation; "
+                "DO NOT include reservation_id or customer_phone in args. "
+                "INVARIANTS I1-I3 apply: every value MUST come from THIS "
+                "call's transcript; no placeholders for customer_name. "
+                "Only call AFTER the customer has verbally confirmed the "
+                "updated reservation summary with an explicit 'yes'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_explicit_confirmation": {
+                        "type": "boolean",
+                        "description": (
+                            "Set true ONLY after the customer says yes to your "
+                            "updated reservation summary."
+                        ),
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "description": (
+                            "Full name on the reservation. Send the SAME value "
+                            "as the existing reservation if unchanged."
+                        ),
+                    },
+                    "reservation_date": {
+                        "type": "string",
+                        "description": (
+                            "YYYY-MM-DD. Send the SAME value as before if unchanged."
+                        ),
+                    },
+                    "reservation_time": {
+                        "type": "string",
+                        "description": (
+                            "24-hour HH:MM. Send the SAME value as before if unchanged."
+                        ),
+                    },
+                    "party_size": {
+                        "type": "integer",
+                        "description": (
+                            "Party size 1-20. Send the SAME value as before if unchanged."
+                        ),
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": (
+                            "Special requests. Send the SAME value as before if "
+                            "unchanged; empty string if none."
+                        ),
+                    },
+                },
+                "required": [
+                    "user_explicit_confirmation",
+                    "customer_name",
+                    "reservation_date",
+                    "reservation_time",
+                    "party_size",
+                ],
+            },
+        }
+    ]
+}
+
+
 # ── Pure validators (no I/O, fully unit-tested) ─────────────────────────────
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

@@ -33,10 +33,12 @@ from app.skills.order.order import (
     CANCEL_ORDER_TOOL_DEF,
     MODIFY_ORDER_SCRIPT_BY_HINT,
     MODIFY_ORDER_TOOL_DEF,
+    MODIFY_RESERVATION_SCRIPT_BY_HINT,
     ORDER_SCRIPT_BY_HINT,
     ORDER_TOOL_DEF,
 )
 from app.skills.scheduler.reservation import (
+    MODIFY_RESERVATION_TOOL_DEF,
     RESERVATION_TOOL_DEF,
     format_date_human,
     format_time_12h,
@@ -188,13 +190,26 @@ def build_system_prompt(store: dict) -> str:
         "If the customer speaks anything else, briefly apologize in their language and offer English or Spanish.\n"
         "3. UNCLEAR / SILENT: Stay in YOUR previous language and say 'Sorry, could you repeat that?'. "
         "Never switch language on an empty turn.\n"
-        "4. RESERVATIONS (make_reservation): Collect name, 10-digit US phone (re-ask if fewer digits), "
+        "4. RESERVATIONS — make_reservation / modify_reservation: "
+        "MAKE: Collect name, 10-digit US phone (re-ask if fewer digits), "
         "date (YYYY-MM-DD from CURRENT DATE anchor), time (pass 24-h to the tool, SPEAK 12-h with AM/PM), "
         "party size. Cross-check the time against business_hours — if outside, decline and offer the "
         "nearest available slot; do NOT call the tool. Recite ONCE: 'Confirming a reservation for "
         "[name], party of [N], [day, Month D] at [12-h time] — is that right?'. "
         "On verbal yes, CALL make_reservation with user_explicit_confirmation=true. After success the "
-        "booking is FINAL — never re-call. On error, apologize once + 'a manager will call you back' + STOP.\n"
+        "booking is FINAL — never re-call. On error, apologize once + 'a manager will call you back' + STOP. "
+        "MODIFY: when the customer EXPLICITLY says they want to change a JUST-made reservation "
+        "('change the time to 7 PM', 'make it 6 people instead', 'move it to tomorrow', 'add my husband"
+        " — make it 4'), call modify_reservation with the FULL UPDATED PAYLOAD — send ALL five mutable "
+        "fields (customer_name, reservation_date, reservation_time, party_size, notes); for fields the "
+        "customer is NOT changing, send the original value (which you recited earlier). The bridge "
+        "computes the diff and updates only changed columns. Recite ONCE: 'Just to confirm — your "
+        "updated reservation is for [name], party of [N], on [day, Month D] at [12-h time] — is that "
+        "right?'. On verbal yes, call modify_reservation with user_explicit_confirmation=true. AFTER "
+        "modify success the booking is FINAL — do NOT call modify_reservation again, do NOT recite "
+        "again. Hesitation alone ('wait', 'hold on', 'um') is NOT a modify request. INFO UPDATES ARE "
+        "NOT MODIFY: same carve-out as rule 6 — when the customer asks to add/change their email, "
+        "phone, or correct a name spelling, do NOT trigger modify_reservation. Acknowledge and move on.\n"
         "5. ORDERS (create_order): Use ONLY items from the menu above. Collect name + items+quantity. "
         "Items and customer_name MUST come from THIS call's transcript — see "
         "INVARIANTS I1 and I2 above. After a cancel, start a new order with "
@@ -624,6 +639,29 @@ def _build_modify_clarification(
     )
 
 
+def _build_modify_reservation_recital(args: dict) -> str:
+    """Build the AUTO-FIRE recital for modify_reservation.
+
+    Pulls the four mutable fields out of tool_args (full payload) and
+    falls back to 'you' on a placeholder customer_name (INVARIANT I2).
+    Speaks the time in 12-h with AM/PM and the date in human form.
+    (예약 수정 recital — placeholder name이면 'you' 폴백)
+    """
+    raw_name = (args.get("customer_name") or "").strip()
+    name = "you" if is_placeholder_name(raw_name) else raw_name
+    date_human = format_date_human(args.get("reservation_date") or "")
+    time_human = format_time_12h(args.get("reservation_time") or "")
+    try:
+        party = int(args.get("party_size") or 0)
+    except (TypeError, ValueError):
+        party = 0
+    return (
+        f"Just to confirm — your updated reservation is for {name}, "
+        f"party of {party}, on {date_human} at {time_human} "
+        f"— is that right?"
+    )
+
+
 def _has_recent_explicit_modify_intent(transcript: list[dict], n_user: int = 3) -> bool:
     """True iff ANY of the last N user turns contains explicit modify
     intent. Kept for back-compat / tests; new code should prefer
@@ -851,6 +889,7 @@ async def _stream_gemini_response(
         # (예약 + 주문 도구를 모두 Gemini에 노출 — 프롬프트가 한 번에 하나만 선택)
         kwargs["tools"] = [
             RESERVATION_TOOL_DEF,
+            MODIFY_RESERVATION_TOOL_DEF,
             ORDER_TOOL_DEF,
             MODIFY_ORDER_TOOL_DEF,
             CANCEL_ORDER_TOOL_DEF,
@@ -981,7 +1020,7 @@ async def _stream_gemini_response(
     # hears 'Just to confirm, that's X for Y — is that right?', says yes,
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
-    if tool_name in ("create_order", "make_reservation", "modify_order", "cancel_order") and not force_tool_use:
+    if tool_name in ("create_order", "make_reservation", "modify_order", "cancel_order", "modify_reservation") and not force_tool_use:
         # Hesitation-only short-circuit (Proposal E). When the customer's
         # current turn is filler/hesitation only ('oh wait wait wait'),
         # emit a brief 'Take your time' and stay silent — never recite
@@ -1112,6 +1151,10 @@ async def _stream_gemini_response(
             else:
                 recital = ("Just to confirm — you want to cancel your order "
                            "— is that right?")
+        elif tool_name == "modify_reservation":
+            # B3 — full payload, all 5 mutable fields in tool_args. Helper
+            # builds the recital with placeholder-name fallback.
+            recital = _build_modify_reservation_recital(tool_args)
         else:
             recital = (f"Just to confirm a reservation for {recital_name} "
                        f"— is that right?")
@@ -1567,6 +1610,40 @@ async def _stream_gemini_response(
                 "message":         script,
                 "error":           bridge_result.get("error", ""),
             }
+    elif tool_name == "modify_reservation":
+        # B3 (Phase 2-C.B3) — update the most-recent confirmed reservation
+        # for this caller. Full-payload contract: Gemini sends all 5
+        # mutable fields (name/date/time/party/notes); bridge computes the
+        # diff and patches only changed columns. caller-id locates the
+        # target via _find_modifiable_reservation. v1 stores reservations
+        # in the legacy `reservations` table (not bridge_transactions).
+        # (B3 — 최근 confirmed 예약 수정, full-payload + diff)
+        bridge_result = await bridge_flows.modify_reservation(
+            store_id          = store_id,
+            args              = tool_args,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = call_log_id,
+        )
+        hint = bridge_result.get("ai_script_hint", "validation_failed")
+        template = MODIFY_RESERVATION_SCRIPT_BY_HINT.get(
+            hint,
+            "Sorry, I had trouble changing that. Let me connect you with our manager.",
+        )
+        # Format any {new_summary} placeholder if the bridge produced one.
+        try:
+            script = template.format(
+                new_summary=bridge_result.get("new_summary", "your reservation"),
+            )
+        except (KeyError, IndexError):
+            script = template
+        result = {
+            "success":        bool(bridge_result.get("success")),
+            "reservation_id": bridge_result.get("reservation_id"),
+            "diff":           bridge_result.get("diff", {}),
+            "reason":         bridge_result.get("reason"),
+            "message":        script,
+            "error":          bridge_result.get("error", ""),
+        }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
