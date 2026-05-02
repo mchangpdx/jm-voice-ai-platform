@@ -165,6 +165,36 @@ def test_build_system_prompt_invariant_i2_customer_name():
     assert "May I have your name?" in prompt
 
 
+def test_build_system_prompt_i1_blocks_modify_noop_carry_over():
+    """Issue ξ re-occurrence (call_0279951409 T26, T30) — INVARIANTS I1
+    must explicitly block carry-over of items from a modify_noop or
+    contact-info-update phase. (modify_noop 후 / 이메일 변경 phase에서
+    이전 items carry-over 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "modify_noop" in prompt
+    assert "carry-over" in prompt or "carry over" in prompt
+    # Contact-info-update phases must not trigger order recital
+    assert "contact info" in prompt
+    assert "DO NOT recite" in prompt or "DO NOT fire create_order" in prompt
+
+
+def test_build_system_prompt_rule6_info_updates_not_modify():
+    """Issue τ — rule 6 must explicitly carve out contact-info updates
+    (email/phone/name) from modify_order triggers. Live observed
+    call_0279951409 T22-T26: customer asked to add an email after the
+    order was placed; bot fired modify_order with the same items, hit
+    modify_noop, then created a phantom new order. (이메일/전화/이름
+    추가는 modify_order 트리거 아님)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "INFO UPDATES ARE NOT MODIFY" in prompt
+    assert "EMAIL ADDRESS" in prompt
+    assert "PHONE NUMBER" in prompt
+    # The pay link must NOT prompt a tool call
+    assert "you don't need to fire any tool" in prompt
+
+
 def test_build_system_prompt_invariant_i3_status():
     """I3 — never claim cancelled/confirmed/booked without a successful
     tool result in this call. (I3 STATUS — phantom confirmation 차단)"""
@@ -188,6 +218,23 @@ def test_build_system_prompt_cancel_guard_is_narrow():
     assert "Do NOT skip the cancel confirm based on assistant utterances alone" in prompt
     # Carve-out for partial-remove guard explanation
     assert "rule 6's partial-remove guard" in prompt
+
+
+def test_build_system_prompt_has_args_email_truthfulness_gate():
+    """Issue σ — args_email must match the NATO readback character-by-
+    character, NOT the raw STT value. Live observed twice in one session
+    (call_0279951409 T6 'mchain@jmtech1.com' vs intended 'mchang@...';
+    T26 'cymeeet@gmail.com' vs intended 'cymeet@...'). Pay link to wrong
+    inbox = customer trust cost. (NATO readback과 args_email 일치 강제)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "ARGS-EMAIL TRUTHFULNESS GATE" in prompt
+    assert "EXACT character sequence" in prompt
+    # Live-observed STT substitutions that must be guarded against
+    assert "mchang" in prompt
+    assert "cymeet" in prompt
+    # The "re-derive from NATO not from raw STT" instruction
+    assert "Re-derive the value from your own NATO readback" in prompt
 
 
 def test_build_system_prompt_has_nato_domain_rule():
