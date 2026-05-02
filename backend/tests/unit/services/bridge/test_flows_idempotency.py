@@ -52,9 +52,15 @@ async def test_idempotent_call_returns_existing_transaction_no_new_pos_create():
         "state":         "fulfilled",
     })
 
+    # Issue Ω fix — probe hit must verify the linked reservation is still
+    # 'confirmed'. Mock the helper so the original short-circuit behavior
+    # under test is preserved.
+    fake_status = AsyncMock(return_value="confirmed")
+
     with patch("app.services.bridge.flows.transactions.create_transaction", new=fake_create), \
          patch("app.services.bridge.flows.transactions.advance_state",      new=fake_advance), \
          patch("app.services.bridge.flows._find_recent_duplicate", new=fake_probe), \
+         patch("app.services.bridge.flows._fetch_reservation_status", new=fake_status), \
          patch("app.services.bridge.flows.get_pos_adapter",     return_value=pos_adapter), \
          patch("app.services.bridge.flows.get_payment_adapter", return_value=payment_adapter):
 

@@ -21,6 +21,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -123,6 +124,99 @@ def get_pos_adapter():
 # every vertical inherits it, not just reservations.
 # (8차 통화에서 노출된 회귀 — Bridge 레벨로 끌어올려 모든 버티컬에 적용)
 
+async def _fetch_reservation_status(
+    *,
+    reservation_id: int,
+) -> Optional[str]:
+    """Fetch the current status of a single reservations row by id.
+    (reservations 단일 row의 현재 상태 조회)
+
+    Used by create_reservation's idempotency probe to verify that a
+    matched bridge_transaction's linked reservation hasn't been
+    cancelled out from under it. Returns the status string or None
+    when the row is missing / probe fails.
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/reservations",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "id":     f"eq.{reservation_id}",
+                "select": "status",
+                "limit":  "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_fetch_reservation_status %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    if not rows:
+        return None
+    return (rows[0].get("status") or "").strip() or None
+
+
+async def _fetch_reservation(
+    *,
+    reservation_id: int,
+) -> Optional[dict[str, Any]]:
+    """Fetch a single reservations row by id.
+    (reservations 단일 row 조회 — name/party/time까지 포함)
+
+    Used by create_reservation's idempotent return path so the
+    customer-facing success message reflects the ACTUAL booking (Issue
+    Π fix), not the new tool args that may differ from what's stored.
+    Returns None when the row is missing / probe fails so callers can
+    fall back gracefully.
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/reservations",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "id":     f"eq.{reservation_id}",
+                "select": "id,customer_name,customer_phone,party_size,"
+                          "reservation_time,status,notes",
+                "limit":  "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_fetch_reservation %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+def _success_message_from_row(row: dict[str, Any]) -> str:
+    """Build the customer-facing confirmation string from an existing
+    reservations row (source of truth) instead of from new tool args.
+    (실제 DB row에서 confirmation 멘트 생성 — idempotent return 시 사용)
+
+    Used by the idempotent return path so the spoken confirmation
+    matches what's actually in the DB (Issue Π fix from
+    call_ebdc036d11951a04336d44c8856 T13). Falls back to a minimal
+    message when the row is missing required fields.
+    """
+    customer = (row.get("customer_name") or "").strip() or "you"
+    try:
+        party = int(row.get("party_size") or 0)
+    except (TypeError, ValueError):
+        party = 0
+    raw_iso = row.get("reservation_time") or ""
+    try:
+        dt = datetime.fromisoformat(raw_iso.replace("Z", "+00:00"))
+        local = dt.astimezone(ZoneInfo("America/Los_Angeles"))
+        date_str = local.strftime("%A, %B %-d")
+        hour = local.hour % 12 or 12
+        ampm = "AM" if local.hour < 12 else "PM"
+        time_str = f"{hour}:{local.minute:02d} {ampm}"
+        return (f"Reservation confirmed for {customer}, "
+                f"party of {party}, on {date_str} at {time_str}.")
+    except Exception:
+        return f"Reservation confirmed for {customer}, party of {party}."
+
+
 async def _find_recent_duplicate(
     *,
     store_id:        str,
@@ -215,14 +309,54 @@ async def create_reservation(
         unique_key      = res_iso,
     )
     if existing:
+        # Issue Ω fix — verify the linked reservation is still 'confirmed'
+        # before honoring the idempotency hit. cancel_reservation can flip
+        # reservations.status to 'cancelled' while bridge_transactions.state
+        # stays 'fulfilled' (state_machine has no FULFILLED→CANCELED edge).
+        # Without this guard, a second make_reservation in the same call
+        # silently dedupes to the cancelled tx and never inserts a new
+        # reservations row. Live observed in call_bd9ad08677aecaefe028934ca58
+        # T23 (2026-05-02 12:40 PT) — Michael's reservation was reported
+        # confirmed but never persisted; T28 cancel then targeted a stale
+        # leftover row instead of Michael's.
+        # (취소된 예약의 idempotency hit 회피 — bridge_transactions.state는
+        #  fulfilled로 남지만 reservations.status가 cancelled면 신규로 진행)
+        pos_obj_id_str = (existing.get("pos_object_id") or "").strip()
+        try:
+            pos_obj_id = int(pos_obj_id_str) if pos_obj_id_str else None
+        except ValueError:
+            pos_obj_id = None
+        linked_row: Optional[dict[str, Any]] = None
+        if pos_obj_id is not None:
+            linked_status = await _fetch_reservation_status(reservation_id=pos_obj_id)
+            if linked_status is None or linked_status.lower() != "confirmed":
+                log.info("Idempotency bypass — bridge_tx=%s linked reservation %s status=%s",
+                         existing["id"], pos_obj_id, linked_status)
+                existing = None
+            else:
+                # Issue Π fix — fetch the full row so the success message
+                # reflects what's ACTUALLY booked, not the new tool args
+                # which may differ (live: call_ebdc036d T13 — Gemini retried
+                # with different name/party/time and the bot read those out
+                # as if confirmed, while DB row was untouched).
+                # (실제 DB row 데이터로 멘트 빌드 — args와 다르면 args가 거짓)
+                linked_row = await _fetch_reservation(reservation_id=pos_obj_id)
+    if existing:
         log.info("Idempotent hit: reusing transaction=%s pos_object_id=%s",
                  existing["id"], existing.get("pos_object_id"))
+        if linked_row:
+            message = _success_message_from_row(linked_row)
+        else:
+            # Defensive — row fetch failed (network blip / race). Fall back
+            # to the args-based message so the call doesn't go silent.
+            # (row fetch 실패 시 args fallback — 무음 방지)
+            message = _success_message(args, customer, party_size)
         return {
             "success":        True,
             "transaction_id": existing["id"],
             "pos_object_id":  existing.get("pos_object_id", ""),
             "state":          existing.get("state", State.FULFILLED),
-            "message":        _success_message(args, customer, party_size),
+            "message":        message,
             "idempotent":     True,
         }
 
@@ -1348,4 +1482,176 @@ async def modify_reservation(
         "diff":           diff,
         "new_summary":    new_summary,
         "ai_script_hint": "modify_success",
+    }
+
+
+# ── B4: cancel_reservation (Phase 2-C.B4) ─────────────────────────────────────
+# Per spec backend/docs/specs/B4_cancel_reservation.md.
+#
+# cancel_reservation transitions a confirmed reservation to status='cancelled'
+# for the most-recent row matching the caller-id. Reuses _find_modifiable_reservation
+# (status='confirmed' filter) and adds two helpers:
+#   - _find_recent_reservation_any_status: returns the most recent row regardless
+#     of status, used to detect already-cancelled rows for a precise error hint.
+#   - _update_reservation_status: minimal single-column PATCH (vs B3's diff helper).
+#
+# Customer decisions locked 2026-05-02:
+#   1. Option α — always allow cancel (no 30-min cutoff). Reservations have no
+#      kitchen-fire-style irreversible side effect; freeing the slot is a win.
+#   2. Caller-id only schema — no phone/name/id in args; kills hallucination class.
+#   3. fulfilled / no_show collapse into cancel_reservation_no_target in V1.
+# (취소는 30분 컷오프 없음 — 슬롯 회수가 우선)
+
+
+async def _find_recent_reservation_any_status(
+    *,
+    store_id:       str,
+    customer_phone: str,
+) -> Optional[dict[str, Any]]:
+    """Locate the single most-recent reservation regardless of status.
+    (이 caller의 가장 최근 예약 1건 조회 — 상태 무관)
+
+    Used as a secondary probe when _find_modifiable_reservation returns
+    None, so the bridge can return cancel_reservation_already_canceled
+    instead of the generic no_target hint.
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.get(
+            f"{_REST}/reservations",
+            headers=_SUPABASE_HEADERS,
+            params={
+                "store_id":       f"eq.{store_id}",
+                "customer_phone": f"eq.{customer_phone}",
+                "select":         "id,store_id,customer_name,customer_phone,"
+                                  "party_size,reservation_time,status,notes,"
+                                  "created_at",
+                "order":          "created_at.desc",
+                "limit":          "1",
+            },
+        )
+    if resp.status_code != 200:
+        log.warning("_find_recent_reservation_any_status %s: %s",
+                    resp.status_code, resp.text[:200])
+        return None
+    rows = resp.json()
+    return rows[0] if rows else None
+
+
+async def _update_reservation_status(
+    *,
+    reservation_id: int,
+    new_status:     str,
+) -> bool:
+    """Patch a single status column on a reservations row. (status만 PATCH)
+
+    Distinct from _update_reservation (which takes a diff dict shaped
+    like {col: {old, new}}) so cancel callers don't have to construct a
+    fake diff. Same Supabase REST shape and headers.
+    """
+    async with httpx.AsyncClient(timeout=8) as client:
+        resp = await client.patch(
+            f"{_REST}/reservations",
+            headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+            params={"id": f"eq.{reservation_id}"},
+            json={"status": new_status},
+        )
+    if resp.status_code not in (200, 204):
+        log.warning("_update_reservation_status %s: %s",
+                    resp.status_code, resp.text[:200])
+        return False
+    return True
+
+
+def _format_reservation_summary(row: dict[str, Any]) -> str:
+    """Build the human-readable cancelled summary from a reservations row.
+    (취소된 예약 요약 — party of N on <date> at <time>)
+
+    Pulled from the row (not from tool args) because cancel_reservation
+    has no payload — the source of truth is the row the bridge looked up.
+    """
+    party = int(row.get("party_size") or 0)
+    raw_iso = row.get("reservation_time") or ""
+    try:
+        dt = datetime.fromisoformat(raw_iso.replace("Z", "+00:00"))
+        # Convert to store-local TZ for human display. v1 follows the
+        # same default the rest of the project uses.
+        local = dt.astimezone(ZoneInfo("America/Los_Angeles"))
+        date_str = local.strftime("%A, %B %-d")
+        hour = local.hour % 12 or 12
+        ampm = "AM" if local.hour < 12 else "PM"
+        time_str = f"{hour}:{local.minute:02d} {ampm}"
+        return f"party of {party} on {date_str} at {time_str}"
+    except Exception:
+        return f"party of {party}"
+
+
+async def cancel_reservation(
+    *,
+    store_id:          str,
+    caller_phone_e164: str,
+    call_log_id:       Optional[str] = None,
+) -> dict[str, Any]:
+    """Cancel the most-recent confirmed reservation for this caller.
+    (이 caller의 가장 최근 confirmed 예약 취소 — Phase 2-C.B4)
+
+    No too-late guard (Option α): the 30-min cutoff that B3
+    modify_reservation enforces does NOT apply here — a reservation
+    that can no longer be modified should still be cancellable so the
+    customer is not stranded and the restaurant can reclaim the slot.
+
+    Failure modes (each gets ai_script_hint):
+        cancel_reservation_no_target          → no row at all
+        cancel_reservation_already_canceled   → row exists with status='cancelled'
+        cancel_reservation_failed             → DB PATCH failed
+    """
+    # 1. Locate target — most-recent confirmed only.
+    target = await _find_modifiable_reservation(
+        store_id       = store_id,
+        customer_phone = caller_phone_e164,
+    )
+
+    # 2. Secondary probe — when no confirmed row exists, look for any
+    #    recent row to give a precise 'already cancelled' hint.
+    if not target:
+        recent = await _find_recent_reservation_any_status(
+            store_id       = store_id,
+            customer_phone = caller_phone_e164,
+        )
+        if recent and (recent.get("status") or "").lower() == "cancelled":
+            return {
+                "success":        False,
+                "reason":         "cancel_reservation_already_canceled",
+                "reservation_id": recent["id"],
+                "ai_script_hint": "cancel_reservation_already_canceled",
+            }
+        # fulfilled / no_show / nothing-at-all all collapse here in V1.
+        return {
+            "success":        False,
+            "reason":         "cancel_reservation_no_target",
+            "ai_script_hint": "cancel_reservation_no_target",
+        }
+
+    # 3. PATCH status → 'cancelled'.
+    ok = await _update_reservation_status(
+        reservation_id = target["id"],
+        new_status     = "cancelled",
+    )
+    if not ok:
+        log.error("cancel_reservation: PATCH failed id=%s", target["id"])
+        return {
+            "success":        False,
+            "reason":         "cancel_reservation_failed",
+            "reservation_id": target["id"],
+            "ai_script_hint": "cancel_reservation_failed",
+        }
+
+    log.warning("reservation_cancelled id=%s prior_status=%s",
+                target["id"], target.get("status"))
+
+    return {
+        "success":           True,
+        "reservation_id":    target["id"],
+        "prior_status":      target.get("status"),
+        "cancelled_summary": _format_reservation_summary(target),
+        "ai_script_hint":    "cancel_reservation_success",
     }

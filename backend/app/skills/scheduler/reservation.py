@@ -88,6 +88,15 @@ RESERVATION_TOOL_DEF: dict = {
                         "type": "string",
                         "description": "Optional special requests (allergies, seating, etc.).",
                     },
+                    "customer_email": {
+                        "type": "string",
+                        "description": (
+                            "Optional email address for the reservation confirmation. "
+                            "Used as the TCR-fallback delivery channel while SMS is "
+                            "pending carrier approval. Pass exactly what the customer "
+                            "confirmed via NATO readback — letter-by-letter."
+                        ),
+                    },
                 },
                 "required": [
                     "user_explicit_confirmation",
@@ -169,6 +178,15 @@ MODIFY_RESERVATION_TOOL_DEF: dict = {
                             "unchanged; empty string if none."
                         ),
                     },
+                    "customer_email": {
+                        "type": "string",
+                        "description": (
+                            "Optional email address for the updated reservation "
+                            "confirmation. Send the SAME value as before if "
+                            "unchanged. Empty / omitted = use the email captured "
+                            "at make_reservation in this call."
+                        ),
+                    },
                 },
                 "required": [
                     "user_explicit_confirmation",
@@ -177,6 +195,63 @@ MODIFY_RESERVATION_TOOL_DEF: dict = {
                     "reservation_time",
                     "party_size",
                 ],
+            },
+        }
+    ]
+}
+
+
+# ── B4 cancel_reservation — Function Calling tool def ────────────────────────
+# Caller-id only schema: ONLY user_explicit_confirmation in args. The bridge
+# locates the most-recent confirmed reservation via Retell's from_number and
+# patches status='cancelled'. No phone/name/id payload — kills the
+# phone-hallucination class at the schema level (same shape as B2 cancel_order).
+# Recital is sourced from session["last_reservation_summary"], populated by
+# the most recent successful make_reservation / modify_reservation.
+# (caller-id only — args에 식별 정보 없음)
+
+CANCEL_RESERVATION_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "cancel_reservation",
+            "description": (
+                "Cancel a customer's just-made reservation. "
+                "Use ONLY when the customer EXPLICITLY says 'cancel my "
+                "reservation', 'cancel that reservation', 'cancel the "
+                "booking', or accepts a cancel offer after "
+                "reservation_too_late ('yes, cancel it'). "
+                "PRECONDITIONS: "
+                "(a) the customer has clearly stated cancel intent for "
+                "    the RESERVATION (not an order), "
+                "(b) you have recited 'Just to confirm — you want to "
+                "    cancel your reservation for [party of N on day "
+                "    Month D at HH:MM] — is that right?' using the "
+                "    reservation summary from this call's most recent "
+                "    successful make_reservation or modify_reservation, "
+                "(c) the customer has said an explicit verbal yes to "
+                "    that recital. "
+                "Do NOT pass customer_phone, customer_name, "
+                "reservation_id, or any other field — the system "
+                "identifies the target via the inbound caller ID. "
+                "NEVER say 'I've cancelled that for you' without "
+                "actually calling this tool. If no active reservation "
+                "exists, the bridge will respond accordingly and you "
+                "must NOT retry."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_explicit_confirmation": {
+                        "type": "boolean",
+                        "description": (
+                            "Set to true ONLY after the customer has "
+                            "verbally said 'yes' to your "
+                            "cancel-reservation recital. False or "
+                            "missing = do not call."
+                        ),
+                    },
+                },
+                "required": ["user_explicit_confirmation"],
             },
         }
     ]

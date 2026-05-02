@@ -28,9 +28,11 @@ from app.services.bridge import flows as bridge_flows
 from app.services.bridge.flows import is_placeholder_name
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
+from app.services.bridge.reservation_email import send_reservation_email
 from app.skills.order.order import (
     CANCEL_ORDER_SCRIPT_BY_HINT,
     CANCEL_ORDER_TOOL_DEF,
+    CANCEL_RESERVATION_SCRIPT_BY_HINT,
     MODIFY_ORDER_SCRIPT_BY_HINT,
     MODIFY_ORDER_TOOL_DEF,
     MODIFY_RESERVATION_SCRIPT_BY_HINT,
@@ -38,6 +40,7 @@ from app.skills.order.order import (
     ORDER_TOOL_DEF,
 )
 from app.skills.scheduler.reservation import (
+    CANCEL_RESERVATION_TOOL_DEF,
     MODIFY_RESERVATION_TOOL_DEF,
     RESERVATION_TOOL_DEF,
     format_date_human,
@@ -194,7 +197,26 @@ def build_system_prompt(store: dict) -> str:
         "MAKE: Collect name, 10-digit US phone (re-ask if fewer digits), "
         "date (YYYY-MM-DD from CURRENT DATE anchor), time (pass 24-h to the tool, SPEAK 12-h with AM/PM), "
         "party size. Cross-check the time against business_hours — if outside, decline and offer the "
-        "nearest available slot; do NOT call the tool. Recite ONCE: 'Confirming a reservation for "
+        "nearest available slot; do NOT call the tool. "
+        "RESERVATION_TIME TRUTHFULNESS GATE (mandatory, same severity as I1/I2/I3): the "
+        "reservation_date and reservation_time you pass to make_reservation MUST be the EXACT date "
+        "and time the customer explicitly stated in this call's transcript. NEVER guess. NEVER use "
+        "the current wall-clock time as a default for reservation_time when the customer hasn't said "
+        "a time yet. NEVER use today's date as a default for reservation_date when the customer "
+        "hasn't said a day yet. If you don't have BOTH a date AND a time from the customer's words, "
+        "ASK for the missing piece — do NOT call make_reservation with a hallucinated default. Live "
+        "observed: caller's transcript had only 'I'd like to make a reservation' followed by name+email "
+        "fragments; bot fired make_reservation with reservation_date=today and reservation_time= "
+        "current time, producing a 'Reservation confirmed for [name], party of 1, on Saturday, May 2 "
+        "at 2:19 PM' that the customer never agreed to. "
+        "EMAIL (REQUIRED while SMS delivery is being verified — same rule as orders in rule 5): "
+        "after collecting name + party + date + time but BEFORE you recite the reservation summary, "
+        "ask 'What's the best email to send the reservation confirmation to?' and pass it as "
+        "customer_email. Read the local part back letter-by-letter using the NATO phonetic "
+        "alphabet (same protocol as rule 5 EMAIL READBACK). Only call the tool after the customer "
+        "confirms the email is correct. ARGS-EMAIL TRUTHFULNESS GATE applies — pass the EXACT "
+        "character sequence the customer confirmed via NATO readback, not raw STT. "
+        "Recite ONCE: 'Confirming a reservation for "
         "[name], party of [N], [day, Month D] at [12-h time] — is that right?'. "
         "On verbal yes, CALL make_reservation with user_explicit_confirmation=true. After success the "
         "booking is FINAL — never re-call. On error, apologize once + 'a manager will call you back' + STOP. "
@@ -229,11 +251,23 @@ def build_system_prompt(store: dict) -> str:
         "all returned reservation_noop, three turns wasted. Phone/email updates flow through the "
         "system's contact-info path, not through the tool. "
         "AFTER reservation_too_late: when the bridge returns reservation_too_late, your message must "
-        "OFFER cancel as an option — DO NOT auto-fire cancel_order (that's the order tool, NOT for "
-        "reservations) and DO NOT auto-fire any cancel tool until the customer EXPLICITLY says 'yes, "
-        "cancel the reservation' or equivalent. A bare 'oh, okay' or 'I see' after a too-late "
-        "rejection is NOT a cancel intent. cancel_reservation tool does not exist yet (B4 pending); "
-        "until it lands, just acknowledge and offer to transfer to a manager.\n"
+        "OFFER cancel as an option ('I can cancel it for you instead — would you like that?'). DO NOT "
+        "auto-fire cancel_reservation. Wait for the customer's EXPLICIT verbal yes ('yes, cancel it', "
+        "'cancel the reservation', 'go ahead and cancel'). A bare 'oh, okay' or 'I see' or 'hmm' after "
+        "a too-late rejection is NOT a cancel intent. ALSO: cancel_order applies ONLY to pickup orders "
+        "— never use cancel_order for a reservation. Use cancel_reservation. "
+        "CANCEL RESERVATION (cancel_reservation): Call this ONLY when the customer EXPLICITLY says "
+        "'cancel my reservation', 'cancel that reservation', 'cancel the booking', or 'yes, cancel it' "
+        "in response to a too-late offer. BEFORE calling, recite ONCE: 'Just to confirm — you want to "
+        "cancel your reservation for [party of N on day Month D at HH:MM] — is that right?' using the "
+        "reservation summary from this call's most recent successful make_reservation or "
+        "modify_reservation tool result — NOT from any rejected attempt. On the explicit verbal yes, "
+        "call cancel_reservation with user_explicit_confirmation=true. NEVER say 'I've cancelled that "
+        "for you', 'cancelled', 'gone ahead and cancelled' UNLESS cancel_reservation returned success "
+        "— this is a TRUTHFULNESS INVARIANT (same severity as I1/I2/I3). After "
+        "cancel_reservation_success, the call is essentially over — close with the tool's message "
+        "verbatim and stop. cancel_reservation does NOT cancel pickup orders; cancel_order does NOT "
+        "cancel reservations — pick the right tool by which one was just made.\n"
         "5. ORDERS (create_order): Use ONLY items from the menu above. Collect name + items+quantity. "
         "Items and customer_name MUST come from THIS call's transcript — see "
         "INVARIANTS I1 and I2 above. After a cancel, start a new order with "
@@ -663,6 +697,31 @@ def _build_modify_clarification(
     )
 
 
+def _build_make_reservation_recital(args: dict) -> str:
+    """Build the AUTO-FIRE recital for make_reservation.
+
+    Speaks the FULL reservation summary so the customer can actually
+    confirm what they're agreeing to. Earlier the fallback was just
+    "Just to confirm a reservation for {name} — is that right?" which
+    omitted party/date/time — customer says "yes" without knowing what
+    they confirmed (live: call_ebdc036d T2). Issue Σ fix mirrors B3's
+    _build_modify_reservation_recital wording.
+    (예약 생성 recital — 전체 요약 발화로 무지성 confirm 차단)
+    """
+    raw_name = (args.get("customer_name") or "").strip()
+    name = "you" if is_placeholder_name(raw_name) else raw_name
+    date_human = format_date_human(args.get("reservation_date") or "")
+    time_human = format_time_12h(args.get("reservation_time") or "")
+    try:
+        party = int(args.get("party_size") or 0)
+    except (TypeError, ValueError):
+        party = 0
+    return (
+        f"Confirming a reservation for {name}, party of {party}, "
+        f"on {date_human} at {time_human} — is that right?"
+    )
+
+
 def _build_modify_reservation_recital(args: dict) -> str:
     """Build the AUTO-FIRE recital for modify_reservation.
 
@@ -683,6 +742,103 @@ def _build_modify_reservation_recital(args: dict) -> str:
         f"Just to confirm — your updated reservation is for {name}, "
         f"party of {party}, on {date_human} at {time_human} "
         f"— is that right?"
+    )
+
+
+def _format_reservation_summary_for_session(
+    *,
+    party_size:       int,
+    reservation_date: str,
+    reservation_time: str,
+) -> str:
+    """Build the human-readable session summary for a successful
+    make_reservation / modify_reservation. Used to seed
+    session['last_reservation_summary'] which the cancel recital reads.
+    (세션 요약 빌더 — make/modify 성공 후 cancel recital용)
+    """
+    date_human = format_date_human(reservation_date or "")
+    time_human = format_time_12h(reservation_time or "")
+    try:
+        party = int(party_size or 0)
+    except (TypeError, ValueError):
+        party = 0
+    return f"party of {party} on {date_human} at {time_human}"
+
+
+def _build_pending_reservation_email_payload(
+    *,
+    args:           dict,
+    reservation_id: int,
+    store_name:     str,
+    prior_payload:  Optional[dict],
+) -> Optional[dict]:
+    """Build (or refresh) the pending reservation email payload from
+    tool_args after a successful make_reservation / modify_reservation.
+
+    The voice handler stashes the result on session['pending_reservation_email']
+    and the WS disconnect path fires it. Returning None means there's no
+    way to email this customer (no email in args AND no prior payload to
+    carry over) — caller skips the snapshot.
+
+    Email carry-over rule: modify_reservation often omits customer_email
+    (full payload contract makes it optional and Gemini frequently drops
+    optional fields). When that happens, we keep the email captured at
+    the original make_reservation so the FINAL state still gets emailed.
+    (modify에서 email 없으면 prior에서 carry-over)
+    """
+    args_email = (args.get("customer_email") or "").strip()
+    prior_email = ""
+    if prior_payload and isinstance(prior_payload, dict):
+        prior_email = (prior_payload.get("to") or "").strip()
+    to_addr = args_email or prior_email
+    if not to_addr:
+        return None
+
+    raw_name = (args.get("customer_name") or "").strip()
+    name = "" if is_placeholder_name(raw_name) else raw_name
+    date_human = format_date_human(args.get("reservation_date") or "")
+    time_human = format_time_12h(args.get("reservation_time") or "")
+    try:
+        party = int(args.get("party_size") or 0)
+    except (TypeError, ValueError):
+        party = 0
+    notes = (args.get("notes") or "").strip()
+
+    return {
+        "to":             to_addr,
+        "customer_name":  name,
+        "store_name":     store_name or "the restaurant",
+        "party_size":     party,
+        "date_human":     date_human,
+        "time_12h":       time_human,
+        "notes":          notes,
+        "reservation_id": int(reservation_id) if reservation_id is not None else 0,
+    }
+
+
+def _build_cancel_reservation_recital(session: Optional[dict]) -> str:
+    """Build the AUTO-FIRE recital for cancel_reservation.
+
+    Cancel tool args carry NO reservation data (caller-id only), so the
+    recital is sourced from session['last_reservation_summary'] which
+    was populated by the most recent successful make_reservation /
+    modify_reservation. When the session has no summary (cancel
+    attempted before any make/modify in this call), fall back to a
+    generic 'your reservation' phrase — the bridge will then return
+    cancel_reservation_no_target right after the FORCE TOOL fires, but
+    the recital still serves as an explicit confirmation gate so a
+    misheard 'cancel' never silently triggers a cancel attempt.
+    (cancel recital — session summary에서 끌어옴, 없으면 generic 폴백)
+    """
+    summary = ((session or {}).get("last_reservation_summary") or "").strip()
+    if summary:
+        return (
+            f"Just to confirm — you want to cancel your reservation "
+            f"for {summary} — is that right?"
+        )
+    return (
+        "Just to confirm — you want to cancel your reservation "
+        "— is that right?"
     )
 
 
@@ -914,6 +1070,7 @@ async def _stream_gemini_response(
         kwargs["tools"] = [
             RESERVATION_TOOL_DEF,
             MODIFY_RESERVATION_TOOL_DEF,
+            CANCEL_RESERVATION_TOOL_DEF,
             ORDER_TOOL_DEF,
             MODIFY_ORDER_TOOL_DEF,
             CANCEL_ORDER_TOOL_DEF,
@@ -1044,7 +1201,7 @@ async def _stream_gemini_response(
     # hears 'Just to confirm, that's X for Y — is that right?', says yes,
     # detect_force_tool_use fires next turn, and we run the real tool.
     # (AUTO-fire 차단 — recite-and-yes 사이클로 강제 환원)
-    if tool_name in ("create_order", "make_reservation", "modify_order", "cancel_order", "modify_reservation") and not force_tool_use:
+    if tool_name in ("create_order", "make_reservation", "modify_order", "cancel_order", "modify_reservation", "cancel_reservation") and not force_tool_use:
         # Hesitation-only short-circuit (Proposal E). When the customer's
         # current turn is filler/hesitation only ('oh wait wait wait'),
         # emit a brief 'Take your time' and stay silent — never recite
@@ -1179,6 +1336,20 @@ async def _stream_gemini_response(
             # B3 — full payload, all 5 mutable fields in tool_args. Helper
             # builds the recital with placeholder-name fallback.
             recital = _build_modify_reservation_recital(tool_args)
+        elif tool_name == "cancel_reservation":
+            # B4 — caller-id only schema, no payload. Recital sources the
+            # reservation summary from session['last_reservation_summary'],
+            # populated by the most recent make/modify success. Empty
+            # snapshot → generic 'your reservation' fallback (bridge will
+            # then return cancel_reservation_no_target after FORCE TOOL).
+            recital = _build_cancel_reservation_recital(session)
+        elif tool_name == "make_reservation":
+            # Issue Σ — full reservation summary so the customer can
+            # actually confirm party/date/time. Stub fallback below was
+            # only emitted before this branch existed (live regression
+            # call_ebdc036d T2: "Just to confirm a reservation for Sofia
+            # Chang — is that right?" with no party/date/time).
+            recital = _build_make_reservation_recital(tool_args)
         else:
             recital = (f"Just to confirm a reservation for {recital_name} "
                        f"— is that right?")
@@ -1270,6 +1441,44 @@ async def _stream_gemini_response(
                 "message":        bridge_result.get("message", ""),
                 "idempotent":     False,
             }
+
+            # Snapshot the reservation summary so a subsequent
+            # cancel_reservation recital can quote the actual booking
+            # the customer is about to lose. Mirrors last_order_items
+            # for orders. (B4 — make_reservation success path)
+            # (cancel recital용 summary 스냅샷)
+            if session is not None:
+                try:
+                    session["last_reservation_summary"] = (
+                        _format_reservation_summary_for_session(
+                            party_size       = int(tool_args.get("party_size") or 0),
+                            reservation_date = tool_args.get("reservation_date", ""),
+                            reservation_time = tool_args.get("reservation_time", ""),
+                        )
+                    )
+                except Exception as exc:
+                    _mon("last_reservation_summary snapshot error (make): %s", exc)
+
+            # Snapshot pending reservation email payload — TCR-fallback
+            # delivery channel. Single email per call: this overwrites any
+            # earlier draft, modify_reservation will refresh it, and the
+            # WS disconnect handler fires the FINAL state exactly once.
+            # Cancellation wipes the snapshot so nothing goes out.
+            # (B4 — defer-and-fire-on-end semantic; Twilio TCR 펜딩 우회)
+            if session is not None:
+                try:
+                    pending = _build_pending_reservation_email_payload(
+                        args            = tool_args,
+                        reservation_id  = bridge_result.get("pos_object_id") or 0,
+                        store_name      = store_name or "",
+                        prior_payload   = session.get("pending_reservation_email"),
+                    )
+                    session["pending_reservation_email"] = pending
+                    _mon("RES EMAIL PENDING set make to=%s party=%s",
+                         (pending or {}).get("to") or "",
+                         (pending or {}).get("party_size") or "")
+                except Exception as exc:
+                    _mon("pending_reservation_email snapshot error (make): %s", exc)
 
             # Fire-and-forget SMS confirmation
             try:
@@ -1668,6 +1877,90 @@ async def _stream_gemini_response(
             "message":        script,
             "error":          bridge_result.get("error", ""),
         }
+        # Refresh session reservation summary on a real diff success
+        # so a follow-up cancel_reservation recital quotes the NEW
+        # values. modify_noop is treated as success but doesn't change
+        # the row — leave the prior summary in place. (B4)
+        # (modify success → cancel recital용 summary 갱신)
+        if (
+            session is not None
+            and bridge_result.get("success")
+            and bridge_result.get("ai_script_hint") == "modify_success"
+        ):
+            try:
+                session["last_reservation_summary"] = (
+                    _format_reservation_summary_for_session(
+                        party_size       = int(tool_args.get("party_size") or 0),
+                        reservation_date = tool_args.get("reservation_date", ""),
+                        reservation_time = tool_args.get("reservation_time", ""),
+                    )
+                )
+            except Exception as exc:
+                _mon("last_reservation_summary refresh error (modify): %s", exc)
+            # Refresh pending email payload — modify_reservation often
+            # omits customer_email, so the helper carries it over from
+            # the original make_reservation snapshot. (B4 supersede)
+            try:
+                pending = _build_pending_reservation_email_payload(
+                    args            = tool_args,
+                    reservation_id  = bridge_result.get("reservation_id") or 0,
+                    store_name      = store_name or "",
+                    prior_payload   = session.get("pending_reservation_email"),
+                )
+                session["pending_reservation_email"] = pending
+                _mon("RES EMAIL PENDING refresh modify to=%s party=%s",
+                     (pending or {}).get("to") or "",
+                     (pending or {}).get("party_size") or "")
+            except Exception as exc:
+                _mon("pending_reservation_email refresh error (modify): %s", exc)
+    elif tool_name == "cancel_reservation":
+        # B4 (Phase 2-C.B4) — cancel the most-recent confirmed reservation
+        # for this caller. Bridge owns target lookup (caller-id, status=
+        # 'confirmed' filter), already-cancelled probe, status PATCH,
+        # logging. Tool args carry only user_explicit_confirmation — no
+        # phone/name/id/date — so we ignore tool_args here and pass
+        # caller_phone_e164 only. Option α: no too-late guard (cancel is
+        # always allowed once a row exists).
+        # (B4 — args 최소, caller-id로 식별, 컷오프 없음)
+        bridge_result = await bridge_flows.cancel_reservation(
+            store_id          = store_id,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = call_log_id,
+        )
+        hint = bridge_result.get("ai_script_hint", "cancel_reservation_failed")
+        template = CANCEL_RESERVATION_SCRIPT_BY_HINT.get(
+            hint,
+            "Sorry, I had trouble cancelling that. Let me connect you with our manager.",
+        )
+        try:
+            script = template.format(
+                cancelled_summary=bridge_result.get(
+                    "cancelled_summary", "your reservation"
+                ),
+            )
+        except (KeyError, IndexError):
+            script = template
+
+        result = {
+            "success":        bool(bridge_result.get("success")),
+            "reservation_id": bridge_result.get("reservation_id"),
+            "prior_status":   bridge_result.get("prior_status"),
+            "reason":         bridge_result.get("reason"),
+            "message":        script,
+            "error":          bridge_result.get("error", ""),
+        }
+        # Wipe the snapshot on success — the reservation is gone, so a
+        # follow-up cancel attempt should hit the no_target / already_
+        # canceled path with a generic recital, not re-quote a stale
+        # summary the customer no longer has. (mirrors B2 behavior)
+        # (cancel success → snapshot clear)
+        if session is not None and bridge_result.get("success"):
+            session["last_reservation_summary"] = ""
+            # Wipe the pending email payload — the cancelled reservation
+            # must NOT result in a confirmation email at WS disconnect.
+            # (B4 — cancel suppresses the deferred email)
+            session["pending_reservation_email"] = None
+            _mon("RES EMAIL PENDING cleared cancel")
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 
@@ -1763,6 +2056,8 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_tool_sig":      ("", "", 0.0),  # (tool_name, items_key_str, ts) — Proposal R dedup
         "last_recital_sig":   ("", 0.0, 0),   # (recital_sig, ts, skip_count) — Wave 1 P0-1
         "last_msg_sig":       ("", 0.0, 0),   # (msg, ts, skip_count) — Wave 1 P0-3 yield dedup
+        "last_reservation_summary": "",       # B4 — cancel_reservation recital source (party of N on <date> at <time>)
+        "pending_reservation_email": None,    # B4 — defer-and-fire-on-end. Set by make/modify success, cleared by cancel success, fired on WS disconnect.
     }
     init_done = asyncio.Event()
 
@@ -2055,6 +2350,23 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
              call_id, turn_count, elapsed, store_name)
     except Exception as exc:
         _mon("ERROR call=%s: %s", call_id, exc)
+    finally:
+        # B4 — fire the FINAL pending reservation confirmation email
+        # exactly once on call end. make_reservation set the payload,
+        # modify_reservation refreshed it, cancel_reservation wiped it.
+        # If a payload survives to here, it represents the customer's
+        # final intended reservation state.
+        # (call 종료 — 최종 1통만 발송, 취소되었으면 None이라 스킵)
+        try:
+            pending = sess.get("pending_reservation_email")
+            if pending and pending.get("to"):
+                asyncio.create_task(send_reservation_email(**pending))
+                _mon("RES EMAIL queued (fire-and-forget) call=%s to=%s party=%s",
+                     call_id, pending.get("to"),
+                     pending.get("party_size"))
+                sess["pending_reservation_email"] = None
+        except Exception as exc:
+            _mon("RES EMAIL dispatch error call=%s: %s", call_id, exc)
 
 
 # ── Retell Webhook — POST /api/retell/webhook ─────────────────────────────────

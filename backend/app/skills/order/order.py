@@ -360,3 +360,30 @@ MODIFY_RESERVATION_SCRIPT_BY_HINT: dict[str, str] = {
         "and party size?"
     ),
 }
+
+
+# ── B4 cancel_reservation: customer-facing scripts ────────────────────────────
+# Per spec backend/docs/specs/B4_cancel_reservation.md section 7.
+# Hints from flows.cancel_reservation are looked up in this map by the voice
+# handler. The success template carries a {cancelled_summary} placeholder that
+# the dispatcher .format()'s with the bridge result.
+# (cancel_reservation 결과별 멘트 — handler가 format 후 yield)
+
+CANCEL_RESERVATION_SCRIPT_BY_HINT: dict[str, str] = {
+    "cancel_reservation_success": (
+        "Got it — your reservation for {cancelled_summary} has been "
+        "cancelled. Hope to see you another time!"
+    ),
+    "cancel_reservation_no_target": (
+        "I don't see an active reservation under your number. Is there "
+        "something else I can help with?"
+    ),
+    "cancel_reservation_already_canceled": (
+        "That reservation has already been cancelled. Anything else I "
+        "can help with?"
+    ),
+    "cancel_reservation_failed": (
+        "Sorry, I had trouble cancelling that. Let me connect you with "
+        "our manager to sort it out."
+    ),
+}
