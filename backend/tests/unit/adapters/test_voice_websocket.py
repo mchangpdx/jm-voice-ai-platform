@@ -121,6 +121,38 @@ def test_build_system_prompt_has_cancel_precondition_guard():
     assert "cancel one Cappuccino" in prompt or "single item" in prompt.lower()
 
 
+def test_build_system_prompt_has_item_source_invariant():
+    """Issue ξ fix — rule 5 must require items to come from the
+    customer's spoken transcript, not from Gemini's invention.
+    Live observed call_ce589e7a T25-T29: bot recited '1 Chocolate Cake'
+    after a cancel even though the customer never said Chocolate Cake —
+    the order shipped to the kitchen and the customer was charged.
+    (사용자 발화에 없는 항목 환각 차단)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "ITEM SOURCE INVARIANT" in prompt
+    assert "EXPLICITLY spoken by the customer" in prompt
+    assert "TRUTHFULNESS INVARIANT" in prompt
+    # The new-order-after-cancel carry-over guard
+    assert "start the items list from EMPTY" in prompt
+
+
+def test_build_system_prompt_cancel_guard_is_narrow():
+    """Issue ν fix — rule 7 PRECONDITION GUARD must trigger only on
+    explicit tool-result conditions, NOT on lexical transcript matching
+    (e.g. earlier 'I don't see X' utterances from rule 6 partial-remove
+    guard). Live observed call_ce589e7a T15: in-flight order alive but
+    bot wrongly replied 'I don't see an active order to cancel'.
+    (transcript 패턴이 아닌 tool-result 기반으로만 guard 트리거)"""
+    from app.api.voice_websocket import build_system_prompt
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "PRECONDITION GUARD (NARROW)" in prompt
+    assert "tool-result conditions" in prompt
+    assert "Do NOT skip the cancel confirm based on assistant utterances alone" in prompt
+    # Carve-out for partial-remove guard explanation
+    assert "rule 6's partial-remove guard" in prompt
+
+
 def test_build_system_prompt_has_nato_domain_rule():
     """Issue δ fix — NATO email readback must spell EVERY letter of
     business domains, not just the local part. STT often truncates
