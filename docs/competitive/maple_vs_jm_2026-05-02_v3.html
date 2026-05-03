@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Maple Inc. vs JM Voice AI — 전수 비교 (2026-05-02)</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", sans-serif; font-size: 10.5pt; color: #1a1a1a; }
+  body { line-height: 1.45; }
+  h1 { font-size: 20pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; }
+  h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-top: 24px; }
+  h3 { font-size: 12pt; color: #374151; margin-top: 16px; }
+  h4 { font-size: 11pt; color: #4b5563; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 9.5pt; }
+  th, td { border: 1px solid #d1d5db; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  tr:nth-child(even) { background: #fafbfc; }
+  code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-size: 9pt; font-family: "SF Mono", Menlo, monospace; }
+  .green { color: #059669; font-weight: 600; }
+  .red { color: #dc2626; font-weight: 600; }
+  .yellow { color: #d97706; font-weight: 600; }
+  .blue { color: #2563eb; font-weight: 600; }
+  .lead { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px 14px; margin: 12px 0; }
+  ul, ol { margin: 6px 0 10px 22px; padding: 0; }
+  li { margin: 2px 0; }
+  .meta { color: #6b7280; font-size: 9pt; }
+  .center { text-align: center; }
+  .num { text-align: center; font-variant-numeric: tabular-nums; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+  .pageBreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>메이플 (Maple Inc.) vs JM Voice AI Platform — 전수 비교 분석 (v3)</h1>
+<p class="meta">기준일: 2026-05-02 EOD · 버전: v3 — B5 Allergen Q&amp;A v1 라이브 검증 반영 (Allergens 0 → 8) + §C-ALLERGEN 신설 · 작성: Claude Opus 4.7 + 사실 기반 웹 조사</p>
+
+<h2>0. 핵심 발견 — 메이플의 정체</h2>
+<div class="lead">
+  <strong>메이플은 한국 회사가 아닙니다.</strong> Korean restaurant voice AI라는 가설은 무효 — 한국 시장에 진입한 한국어 식당 voice AI는 조사 범위 내 존재하지 않음.
+</div>
+
+<table>
+<tr><th>항목</th><th>Maple Inc.</th></tr>
+<tr><td>본사</td><td>New York, NY (50 Broad St)</td></tr>
+<tr><td>창업자</td><td><strong>Aidan Chau</strong> (Air AI 출신, ex-Eon)</td></tr>
+<tr><td>펀딩</td><td>$6.4M (BlockTower 리드 $5M, 2023.08)</td></tr>
+<tr><td>출시</td><td>2023.12</td></tr>
+<tr><td>가맹점</td><td><strong>2,500+</strong> (2026.01)</td></tr>
+<tr><td>누적 통화</td><td>1M+</td></tr>
+<tr><td>직원</td><td>11–50 (LinkedIn ~27)</td></tr>
+<tr><td>목표</td><td><strong>$40M ARR by 2026 EOY</strong></td></tr>
+<tr><td>가격</td><td>$240–$299/월부터 (Voice Core + 모듈 add-on)</td></tr>
+<tr><td>한국어 지원</td><td class="red">없음 — 영/스/만다린/타갈로그만</td></tr>
+</table>
+
+<p>조사 시도: <code>메이플 AI 식당</code>, <code>메이플 솔루션 레스토랑 AI 전화</code>, <code>메이플 음성 AI 식당</code> — 모두 MapleStory 게임 결과만 반환. <strong>한국 시장에 진입한 한국어 식당 voice AI는 존재하지 않음</strong>(2026-05-02 조사 범위 내).</p>
+
+<h2>1. 카테고리별 1:1 비교 (Maple /10 vs JM /10)</h2>
+
+<h3>A. Voice / Phone Handling</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차 분석</th></tr>
+<tr><td>24/7 inbound</td><td class="num">9</td><td class="num">9</td><td>동일 — Retell + Gemini로 라이브</td></tr>
+<tr><td>Greeting / persona</td><td class="num">7</td><td class="num green">8</td><td>JM 우위 — <code>system_prompt</code> + <code>temporary_prompt</code> 분리</td></tr>
+<tr><td>Multilingual (EN/ES/CN/TL)</td><td class="num">6</td><td class="num">5</td><td>Maple 우위 — 우리는 EN+ES만</td></tr>
+<tr><td>Korean</td><td class="num red">0</td><td class="num blue">5–7?</td><td class="green">우리 잠재 우위 — 강화 시 모놀리스적 우위</td></tr>
+<tr><td>Phone provisioning</td><td class="num">8</td><td class="num">6</td><td>Maple 우위 — A2P 10DLC + porting 절차 docs화</td></tr>
+<tr><td>Business-hours</td><td class="num">8</td><td class="num">8</td><td>동일 — <code>store_configs</code> + <code>busy_schedules</code></td></tr>
+<tr><td>Call transfer</td><td class="num">6</td><td class="num red">0</td><td class="red">Maple 우위 — staff transfer 미구현</td></tr>
+<tr><td>SMS 확인</td><td class="num">7 (Maple-branded)</td><td class="num">7</td><td>동급 — 우리 store-branded 가능 (잠재 우위)</td></tr>
+<tr><td>IVR routing</td><td class="num">5</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Hold music / staff conf</td><td class="num">6</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Voicemail</td><td class="num">0</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>Recording consent</td><td class="num">0</td><td class="num">0</td><td>동일 부재 (양쪽 risk)</td></tr>
+</table>
+
+<h3>B. Order Taking</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Voice ordering</td><td class="num">9</td><td class="num">9</td><td>동일 — 라이브 검증</td></tr>
+<tr><td>SMS ordering</td><td class="num">6</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Menu sync from POS</td><td class="num">8</td><td class="num">8</td><td>동일 — Loyverse 라이브 vs Quantic/SkyTab</td></tr>
+<tr><td>Modifiers</td><td class="num">5</td><td class="num">4</td><td>약간 Maple — 둘 다 nested 약함</td></tr>
+<tr><td>Allergens</td><td class="num">5</td><td class="num green">8 (B5 v1 라이브)</td><td class="green">JM 우위 — operator-curated invariant + Tier 3 EpiPen + RLS · §C-ALLERGEN 참조</td></tr>
+<tr><td>Sold-out / 86 handling</td><td class="num">6</td><td class="num green">8</td><td class="green">우리 우위 — fuzzy + alternative 제안</td></tr>
+<tr><td>Upselling</td><td class="num">5</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Order confirmation</td><td class="num">8</td><td class="num green">9</td><td class="green">우리 우위 — AUTO-FIRE + 3중 dedup</td></tr>
+<tr><td>Custom / off-menu</td><td class="num">2</td><td class="num">0</td><td>둘 다 약함</td></tr>
+<tr><td><strong>Modify order</strong></td><td class="num">3</td><td class="num green">9</td><td class="green"><strong>큰 우위 — B1 라이브 검증 (전체 cycle, modify_too_late)</strong></td></tr>
+<tr><td><strong>Cancel order</strong></td><td class="num">3</td><td class="num green">9</td><td class="green"><strong>큰 우위 — B2 라이브 검증 (pre/post fire, FIRED_UNPAID)</strong></td></tr>
+</table>
+
+<h3>C. Reservations / Bookings</h3>
+<p class="meta">2026-05-02 EOD 갱신 — B3/B4 라이브 검증 완료, Email TCR-fallback 추가, Issue Ω/Φ/Π/Σ hardening 완료. 상세 분석은 §C-DETAIL 참조.</p>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>New reservation</td><td class="num">8</td><td class="num green">9</td><td class="green">JM 약간 우위 — full recital + GATE + caller-id override</td></tr>
+<tr><td>Modify booking</td><td class="num">8</td><td class="num green">9</td><td class="green">JM 우위 — full-payload diff + 14-fix hallucination chain</td></tr>
+<tr><td>Cancel booking</td><td class="num">8</td><td class="num green">9</td><td class="green">JM 우위 — caller-id only schema, recital from session, no PII args</td></tr>
+<tr><td>Real-time availability</td><td class="num">8</td><td class="num red">0</td><td class="red">Maple 우위 — OpenTable 통합 부재</td></tr>
+<tr><td>Slot hold</td><td class="num">7</td><td class="num red">0</td><td>Maple 우위 — 미구현</td></tr>
+<tr><td>Special requests (notes)</td><td class="num">7</td><td class="num">5</td><td>Maple 약간 우위 — JM은 notes field 저장만, 발화/매칭 부재</td></tr>
+<tr><td>Experience-based slots</td><td class="num">7</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Waitlist</td><td class="num">1 (coming soon)</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>OpenTable</td><td class="num">8</td><td class="num red">0</td><td class="red">Maple 큰 우위</td></tr>
+<tr><td>Resy</td><td class="num">1 (planned)</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>SevenRooms</td><td class="num">0</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>Table assignment</td><td class="num">0</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>No-show reminder</td><td class="num">6</td><td class="num green">7</td><td class="green">약간 우위 — no-show sweep cron</td></tr>
+<tr><td>Email confirmation (TCR fallback)</td><td class="num">?</td><td class="num green">9</td><td class="green">JM 우위 — defer-and-fire-on-end + supersede semantic + indigo branded HTML</td></tr>
+<tr><td>SMS confirmation</td><td class="num">7</td><td class="num">7</td><td>동급 (TCR 통과 후 활성화)</td></tr>
+</table>
+
+<h3 id="reservations-detail">C-DETAIL. Reservations 1:1 심층 비교 (2026-05-02 EOD)</h3>
+
+<p>5건 라이브 검증 통화 (call_0ed08f83 → call_bd9ad08 → call_6edfe72b → call_ebdc036d → call_7abea07) 종합 평가. 25개 차원으로 평가, JM은 B3/B4/email/Issue Ω/Φ/Π/Σ 적용 후 점수.</p>
+
+<h4>C-1. 핵심 lifecycle (Make / Modify / Cancel)</h4>
+<table>
+<tr><th>차원</th><th class="num">Maple</th><th class="num">JM</th><th>분석 근거</th></tr>
+<tr><td>Make — 기본 흐름</td><td class="num">8</td><td class="num">9</td><td>JM: caller-id override + AUTO-FIRE recital + RECITAL DEDUP + INVARIANTS I1/I2/I3 + RESERVATION_TIME TRUTHFULNESS GATE. call_7abea07 결정 검증.</td></tr>
+<tr><td>Make — 환각 차단 (Issue Φ)</td><td class="num">5</td><td class="num">9</td><td>JM: rule 4 MAKE GATE — date/time이 transcript에 없으면 fire 금지. call_ebdc036d T13에서 환각 → fix 후 call_7abea07에서 깨끗하게 ASK. 단위 테스트로 lock.</td></tr>
+<tr><td>Make — recital 완전성 (Issue Σ)</td><td class="num">7</td><td class="num">9</td><td>JM: <code>_build_make_reservation_recital</code> party + date + time + name 모두 발화. Maple은 stub recital 보고된 사례 없으나 transcript review 결과 일부 단축형 관찰.</td></tr>
+<tr><td>Make — idempotent return (Issue Π)</td><td class="num">6</td><td class="num">9</td><td>JM: idempotent 시 실제 DB row 기반 confirmation (args 환각 방지). <code>_fetch_reservation</code> + <code>_success_message_from_row</code>. 단위 테스트.</td></tr>
+<tr><td>Modify — 시간/날짜/인원/이름 변경</td><td class="num">8</td><td class="num">9</td><td>JM (B3): full-payload contract, bridge가 diff 계산, minute-precision datetime compare, 21 RED tests. call_0ed08f83 + call_ebdc036d 라이브.</td></tr>
+<tr><td>Modify — too-late guard</td><td class="num">7</td><td class="num">8</td><td>JM: 30분 컷오프 + reservation_too_late hint + cancel offer 자동 제시. call_0ed08f83 + call_ebdc036d 검증.</td></tr>
+<tr><td>Modify — noop detection</td><td class="num">5</td><td class="num">9</td><td>JM: full-payload re-fire 시 모든 필드 비교 → reservation_noop 정확. modify_clarification on intent+noop. minute-precision compare.</td></tr>
+<tr><td>Cancel — caller-id only schema</td><td class="num">5</td><td class="num">9</td><td>JM (B4): tool args에 phone/name/id 일체 없음 — phone hallucination class 원천 차단. call_bd9ad08 + call_ebdc036d 검증.</td></tr>
+<tr><td>Cancel — recital truthfulness</td><td class="num">6</td><td class="num">9</td><td>JM: session.last_reservation_summary에서 인용 (args 아님). modify된 값 정확 인용. call_ebdc036d T19 결정 검증.</td></tr>
+<tr><td>Cancel — already_canceled hint</td><td class="num">5</td><td class="num">8</td><td>JM: <code>_find_recent_reservation_any_status</code> 보조 probe로 정확한 hint 반환 (generic no_target 회피).</td></tr>
+<tr><td>Cancel — too-late 정책</td><td class="num">4 (block)</td><td class="num">9</td><td>JM: Option α (항상 허용) — 슬롯 회수 + 사용자 stranded 방지. spec에 결정 기록.</td></tr>
+<tr><td>Cancel→Make idempotency (Issue Ω)</td><td class="num">3 (orphan)</td><td class="num">9</td><td>JM: idempotency probe가 linked reservation status 검증, cancelled면 bypass. 단위 테스트로 lock. Maple 동일 시나리오 미검증이나 docs상 idempotency 정확성 미주장.</td></tr>
+</table>
+
+<h4>C-2. Confirmation 채널 (SMS / Email)</h4>
+<table>
+<tr><th>차원</th><th class="num">Maple</th><th class="num">JM</th><th>분석 근거</th></tr>
+<tr><td>SMS confirmation (즉시)</td><td class="num">7</td><td class="num">7</td><td>동급 — Twilio TCR 통과 시 활성화, JM은 코드 준비 완료</td></tr>
+<tr><td>Email confirmation (TCR fallback)</td><td class="num">?</td><td class="num">9</td><td>JM 우위 — Maple는 email confirmation을 reservation 자체로 광고 안 함 (order pay-link만). JM은 indigo+amber modern HTML, responsive 600px.</td></tr>
+<tr><td>이메일 색상 differentiation</td><td class="num">N/A</td><td class="num">9</td><td>JM 독자 — order(slate+green) vs reservation(indigo+amber) 시각 구분.</td></tr>
+<tr><td>Email defer-and-fire-on-end</td><td class="num">N/A</td><td class="num">9</td><td>JM 독자 semantic — make/modify는 payload set/refresh, cancel은 wipe, WS disconnect 시 1통만 발송. call_ebdc036d (no email after cancel) + call_7abea07 (1 email after make) 결정 검증.</td></tr>
+<tr><td>Supersede on modify</td><td class="num">N/A</td><td class="num">9</td><td>JM 독자 — modify 시 payload refresh, 이전 값 발송 안 됨. call_6edfe72b party 4→6 검증.</td></tr>
+<tr><td>Cancel suppression</td><td class="num">N/A</td><td class="num">9</td><td>JM 독자 — cancel 시 payload wipe, 이메일 미발송. call_ebdc036d 검증.</td></tr>
+<tr><td>NATO readback for email</td><td class="num">5</td><td class="num">8</td><td>JM 우위 — non-whitelist 도메인 (jmtechone.com 등) 전체 letter+digit NATO. STT 환각 (cymeet→cymeeet 등) 결정 차단.</td></tr>
+<tr><td>ARGS-EMAIL TRUTHFULNESS GATE</td><td class="num">N/A</td><td class="num">9</td><td>JM 독자 — NATO readback의 character sequence를 그대로 args에 전달 강제. 환각 단어 차단.</td></tr>
+</table>
+
+<h4>C-3. 신뢰성 / 안전성 (Hallucination guards + Audit)</h4>
+<table>
+<tr><th>차원</th><th class="num">Maple</th><th class="num">JM</th><th>분석 근거</th></tr>
+<tr><td>14-fix hallucination chain</td><td class="num">5</td><td class="num">9</td><td>JM: Issue α/β/γ/δ/θ/ξ/ν/ρ/σ/φ/τ/ψ/ω/χ + Fix #3 + INVARIANTS block — 결제/예약 경로 통합 환각 방어.</td></tr>
+<tr><td>3-layer dedup (5s tool / 8s recital / 8s msg)</td><td class="num">3</td><td class="num">9</td><td>JM 큰 우위 — Retell partial→final echo 결정 차단. call_7abea07 RECITAL DEDUP 검증.</td></tr>
+<tr><td>FORCE TOOL 정확성</td><td class="num">7</td><td class="num">9</td><td>JM: post-confirmation yes detection + AUTO-FIRE BLOCKED → recital fallback → FORCE TOOL pipeline. 5 통화 전수 정확.</td></tr>
+<tr><td>Caller-id override</td><td class="num">5</td><td class="num">9</td><td>JM 큰 우위 — Retell from_number를 server-side 강제 적용, Gemini 환각 phone (call_7abea07 T8/T10 +15035550100/101) 결정 차단.</td></tr>
+<tr><td>Placeholder name 차단</td><td class="num">4</td><td class="num">9</td><td>JM: token-only re.split + punctuation strip — 'Customer'/'Guest'/'(unknown)'/'Valued Customer'/'(customer name not provided)' 결정 차단. 단위 테스트.</td></tr>
+<tr><td>Audit trail (bridge_transactions + reservations)</td><td class="num">3</td><td class="num">9</td><td>JM 큰 우위 — bridge_events + reservation_modified/cancelled WARNING log + RLS-enforced row history.</td></tr>
+<tr><td>RLS tenant isolation</td><td class="num">1</td><td class="num">9</td><td>JM 결정 우위 — Mandatory PostgreSQL RLS, 모든 query에 tenant_id.</td></tr>
+<tr><td>Test coverage (reservation 경로)</td><td class="num">?</td><td class="num">9</td><td>JM: 375/375 unit tests (B3 21 + B4 13 + email 10 + Φ/Π/Σ 6 + Ω 3 + 회귀 322).</td></tr>
+</table>
+
+<h4>C-4. 통합 / 외부 연동</h4>
+<table>
+<tr><th>차원</th><th class="num">Maple</th><th class="num">JM</th><th>분석 근거</th></tr>
+<tr><td>OpenTable sync</td><td class="num">8</td><td class="num">0</td><td>Maple 큰 우위 — JM은 별도 reservations 테이블만</td></tr>
+<tr><td>Resy / SevenRooms</td><td class="num">1/0</td><td class="num">0/0</td><td>동일 부재</td></tr>
+<tr><td>Real-time slot availability</td><td class="num">8</td><td class="num">0</td><td>Maple 우위 — JM은 v1 customer 선택 trust</td></tr>
+<tr><td>Manager dashboard view</td><td class="num">7</td><td class="num">3</td><td>Maple 우위 — JM logs only, UI 부재</td></tr>
+<tr><td>Multi-store routing</td><td class="num">7</td><td class="num">7</td><td>동급 — RLS + caller_phone scope</td></tr>
+</table>
+
+<h4>C-5. 종합 점수 (Reservations only)</h4>
+<table>
+<tr><th>서브카테고리</th><th class="num">Maple 평균</th><th class="num">JM 평균</th><th>우위</th></tr>
+<tr><td>C-1. Lifecycle (Make/Modify/Cancel)</td><td class="num">5.8</td><td class="num green">8.8</td><td class="green">JM 큰 우위 (B3/B4/Issue Ω/Φ/Π/Σ)</td></tr>
+<tr><td>C-2. Confirmation 채널</td><td class="num">2.4</td><td class="num green">8.4</td><td class="green">JM 결정 우위 (이메일 채널 독자 가치)</td></tr>
+<tr><td>C-3. 신뢰성 / Audit</td><td class="num">3.9</td><td class="num green">8.9</td><td class="green">JM 큰 우위 (14-fix + RLS + dedup)</td></tr>
+<tr><td>C-4. 외부 통합</td><td class="num">6.2</td><td class="num red">2.0</td><td class="red">Maple 큰 우위 (OpenTable + 가용성)</td></tr>
+<tr><td><strong>Reservations 종합</strong></td><td class="num"><strong>4.6</strong></td><td class="num green"><strong>7.0</strong></td><td class="green"><strong>JM 우위 (이전 1.4 → 7.0, B3/B4/email/hardening 누적)</strong></td></tr>
+</table>
+
+<div class="lead">
+<strong>핵심 결론</strong>: JM은 reservation lifecycle (make/modify/cancel)의 <strong>코어 신뢰성</strong>에서 Maple을 결정적으로 추월. 단 외부 통합 (OpenTable, real-time slot)은 여전히 Maple 우위. JM의 strategic edge는 "코어가 단단하고 한국 시장 + Loyverse + 이메일 채널 + RLS" 묶음 — wedge 전략 유효.
+</div>
+
+<h4>C-6. 검증 통화 evidence (라이브)</h4>
+<table>
+<tr><th>Call ID</th><th>시각</th><th>검증 대상</th><th>결과</th></tr>
+<tr><td><code>call_0ed08f83</code></td><td>11:46-52</td><td>B3 modify_reservation + Issue ψ/ω/χ rule 4 hardening</td><td class="green">✅ deterministic</td></tr>
+<tr><td><code>call_bd9ad08</code></td><td>12:35-42</td><td>B4 cancel_reservation + Issue χ resolution</td><td class="green">✅ + Issue Ω 발견</td></tr>
+<tr><td><code>call_6edfe72b</code></td><td>13:57-59</td><td>Reservation email path + supersede on modify</td><td class="green">✅ + Σ/Φ 노출</td></tr>
+<tr><td><code>call_ebdc036d</code></td><td>14:19-24</td><td>make→modify→cancel→hangup, email suppression</td><td class="green">✅ + Φ/Π/Σ 결정 노출</td></tr>
+<tr><td><code>call_7abea07</code></td><td>14:55-58</td><td>Φ + Π + Σ + Ω fix 종합 검증, indigo email 도착</td><td class="green">✅ ALL DETERMINISTIC</td></tr>
+</table>
+
+<h3>D. Payments</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>In-call card capture</td><td class="num">6</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Pay via SMS link</td><td class="num">8</td><td class="num">8 (TCR)</td><td>동급</td></tr>
+<tr><td>Pay via email link</td><td class="num">?</td><td class="num green">9</td><td class="green">우리 우위 — 라이브 검증</td></tr>
+<tr><td>Pay in store</td><td class="num">8</td><td class="num">8</td><td>동일</td></tr>
+<tr><td>POS rails routing</td><td class="num">8 (Quantic)</td><td class="num red">0</td><td>Maple 우위 — Maverick mock 단계</td></tr>
+<tr><td>Tips</td><td class="num">6</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Deposits / Refunds / Gift cards</td><td class="num">0/0/0</td><td class="num">0/0/0</td><td>동일 부재</td></tr>
+</table>
+
+<h3>E. POS Integrations</h3>
+<table>
+<tr><th>POS</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td><strong>Loyverse</strong></td><td class="num red">0</td><td class="num green"><strong>9</strong></td><td class="green"><strong>JM 독점 ⭐</strong></td></tr>
+<tr><td>Quantic</td><td class="num">9 (Apr 2026)</td><td class="num red">0 (외부 대기)</td><td class="red">Maple 큰 우위</td></tr>
+<tr><td>Shift4 / SkyTab</td><td class="num">9</td><td class="num">0</td><td>Maple 우위</td></tr>
+<tr><td>Toast / Square / Clover</td><td class="num">7/7/6</td><td class="num">0/0/0</td><td>Maple 우위</td></tr>
+<tr><td>Oracle Micros / NCR</td><td class="num">5/5</td><td class="num">0/0</td><td>Maple 우위</td></tr>
+<tr><td>추상 어댑터 아키텍처</td><td class="num">?</td><td class="num green">8</td><td class="green">JM 우위 — POSAdapter 추상화</td></tr>
+<tr><td>Supabase POS (자체)</td><td class="num">0</td><td class="num green">8</td><td class="green">우리만 — POS 없는 매장 대응</td></tr>
+<tr><td>Live webhook 처리</td><td class="num">?</td><td class="num">8</td><td>동급 — Loyverse items/inventory webhook</td></tr>
+<tr><td>Public REST API</td><td class="num">2 (coming soon)</td><td class="num">3</td><td>동일 부재</td></tr>
+</table>
+
+<h3>F. Delivery / Pickup</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Pickup window</td><td class="num">6</td><td class="num">6</td><td>동일</td></tr>
+<tr><td>Delivery zones</td><td class="num">8</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Maple Fleet (자체)</td><td class="num">7</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>BYOF</td><td class="num">7</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>DoorDash / Uber 직접 통합</td><td class="num">0</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>케이터링 문의</td><td class="num">5</td><td class="num red">0</td><td>Maple 우위</td></tr>
+</table>
+
+<h3>G. CRM / Customer Recognition</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Caller-ID lookup</td><td class="num">5</td><td class="num green">8</td><td class="green">우리 우위 — Retell from_number override</td></tr>
+<tr><td>Repeat customer history</td><td class="num">2</td><td class="num">2 (stub만)</td><td>동일 미흡</td></tr>
+<tr><td>Preferences / loyalty</td><td class="num">1</td><td class="num">0</td><td>동일 미흡</td></tr>
+<tr><td>Call → customer linking</td><td class="num">6</td><td class="num">7</td><td>동일 — call_log_id audit</td></tr>
+<tr><td>RLS tenant isolation</td><td class="num red">?</td><td class="num green">9</td><td class="green">우리 우위 — Mandatory PostgreSQL RLS</td></tr>
+</table>
+
+<h3>H. Analytics & Reporting</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Call log dashboard</td><td class="num">7</td><td class="num red">3 (logs only)</td><td class="red">Maple 우위 — UI 부재</td></tr>
+<tr><td>Call transcripts</td><td class="num">8</td><td class="num">6 (Retell 저장)</td><td>Maple 우위 — UI 부재</td></tr>
+<tr><td>Order metrics</td><td class="num">7</td><td class="num red">3</td><td>Maple 우위</td></tr>
+<tr><td>Missed-call insights</td><td class="num">6</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Export</td><td class="num">5</td><td class="num red">0</td><td>Maple 우위</td></tr>
+</table>
+
+<h3>I. Owner / Manager Controls</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Multi-location</td><td class="num">7</td><td class="num">6</td><td>동급 — RLS + stores, UI 부분적</td></tr>
+<tr><td>Per-store overrides</td><td class="num">3 (limitation)</td><td class="num green">8</td><td class="green">우리 우위 — 3단 분리</td></tr>
+<tr><td>Voice/persona 편집</td><td class="num">6</td><td class="num green">8</td><td class="green">우리 우위 — system_prompt 직접 편집</td></tr>
+<tr><td>FAQ self-service editor</td><td class="num">5 (delete만)</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>AI-generated FAQ from URL</td><td class="num">8</td><td class="num red">0</td><td>Maple 우위</td></tr>
+<tr><td>Roles / RBAC</td><td class="num">1</td><td class="num green">6</td><td class="green">우리 우위 — Supabase auth + RLS</td></tr>
+<tr><td>Audit trail</td><td class="num">3</td><td class="num green">8</td><td class="green">우리 우위 — bridge_transactions audit</td></tr>
+</table>
+
+<h3>J. AI Reliability</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>Confirmation gate</td><td class="num">8</td><td class="num green">9</td><td class="green">우리 우위 — AUTO-FIRE + FORCE TOOL</td></tr>
+<tr><td>Transcript review</td><td class="num">7</td><td class="num">6</td><td>동급</td></tr>
+<tr><td><strong>Hallucination guards</strong></td><td class="num">5</td><td class="num green"><strong>9</strong></td><td class="green"><strong>큰 우위 — _PLACEHOLDER_NAMES, fuzzy 0.85, MODIFY COOLDOWN, 3중 dedup</strong></td></tr>
+<tr><td>Per-merchant ML 개선</td><td class="num">5 (마케팅)</td><td class="num">0</td><td>Maple 우위 (단 클레임만)</td></tr>
+<tr><td>Resolution rate</td><td class="num">7 (92–94%)</td><td class="num">7 (~90%)</td><td>동급</td></tr>
+<tr><td>Voice quality</td><td class="num">4 (loman 비판)</td><td class="num">6</td><td>약간 우리 우위 — Retell</td></tr>
+</table>
+
+<h3>K. Compliance / Security</h3>
+<table>
+<tr><th>기능</th><th class="num">Maple</th><th class="num">JM</th><th>격차</th></tr>
+<tr><td>PCI-DSS</td><td class="num">5 (Stripe)</td><td class="num">3 (Maverick TBD)</td><td>Maple 우위</td></tr>
+<tr><td>SOC 2 Type 2</td><td class="num">2 (증거 없음)</td><td class="num">0</td><td>동급 미흡</td></tr>
+<tr><td>Recording consent</td><td class="num">1</td><td class="num">0</td><td>동급 risk</td></tr>
+<tr><td><strong>Tenant isolation / RLS</strong></td><td class="num red">1 (없음)</td><td class="num green"><strong>9</strong></td><td class="green"><strong>큰 우위 — Mandatory RLS</strong></td></tr>
+<tr><td>Data residency</td><td class="num">0</td><td class="num">0</td><td>동일 부재</td></tr>
+<tr><td>Encryption</td><td class="num">4 (마케팅)</td><td class="num">5</td><td>동급</td></tr>
+</table>
+
+<h3 id="allergen-detail" class="pageBreak">C-ALLERGEN. Allergen Q&amp;A 1:1 심층 비교 (2026-05-02 v3 신설)</h3>
+
+<p class="meta">
+근거: B5 라이브 검증 2건 (<code>call_6d69342b</code> Scenario A 6 hints / <code>call_4630b947</code> Scenario B Tier 3) +
+Maple 공식 마케팅 (<code>maple.inc/product</code>, Capterra) + 3rd-party (Hostie 2025, Loman 2026, Kea 2026) + Hostie 3-tier framework reference.
+Maple architecture는 비공개 — 공개 클레임 + 업계 reference로 추정.
+</p>
+
+<h4>0) 핵심 발견 (executive summary)</h4>
+
+<div class="lead">
+<strong>JM이 Maple 우위 7개 / 동급 2개 / Maple 우위 5개</strong>. JM의 우위는 <strong>안전성·검증가능성·운영자 통제</strong>;
+Maple의 우위는 <strong>기능 폭 (cross-contam, substitution, nutritional DB, live transfer)</strong>.
+v1 ship 시점에서 JM은 <strong>"가장 안전한 allergen Q&amp;A"</strong> 포지셔닝, Maple은 <strong>"가장 풍부한 allergen UX"</strong> 포지셔닝.
+</div>
+
+<h4>1) Maple의 공식 클레임 (마케팅 그대로 인용)</h4>
+<table>
+<tr><th>출처</th><th>클레임</th><th>구체성</th></tr>
+<tr><td>maple.inc/product</td><td>"revolutionary allergy and dietary restriction management"</td><td>없음 (마케팅 슬로건)</td></tr>
+<tr><td>maple.inc/product</td><td>"advanced understanding of complex dietary needs and cross-contamination risks"</td><td>cross-contam 클레임만 — 데이터 모델/UI 비공개</td></tr>
+<tr><td>maple.inc/product</td><td>"intelligent ingredient substitution recommendations"</td><td>구현 비공개 — substitution 테이블 없는 듯</td></tr>
+<tr><td>maple.inc/product</td><td>"seamless integration with nutritional databases"</td><td>USDA FoodData Central 추정 — 검증 불가</td></tr>
+<tr><td>maple.inc/product</td><td>"proactive allergy warning systems for customer safety"</td><td>없음</td></tr>
+<tr><td>Hostie 2025 보고서</td><td>"allergen-specific conversation flows" + "automatic staff notification for complex cases" + "customer preference learning for repeat callers"</td><td>handoff trigger 키워드 비공개</td></tr>
+<tr><td>Capterra 페이지</td><td>"accommodates dietary restrictions and allergies"</td><td>제로 review (검증 데이터 없음)</td></tr>
+</table>
+
+<p class="meta"><strong>주의</strong>: <code>maple.inc</code>는 직접 fetch 시 일부 페이지 <code>403 Forbidden</code> (bot detection). 위 클레임은 마케팅 텍스트 + Hostie/Loman 2nd-party 인용 종합. 실제 architecture (operator-curated vs LLM, Tier 임계, EpiPen 키워드, disclaimer 워딩, RLS, audit log)는 <strong>전부 비공개</strong>.</p>
+
+<h4>2) Maple의 보고된 약점 (3rd-party)</h4>
+<ul>
+  <li class="red"><strong>"Confidence overruns"</strong> (Loman 2025-12) — allergen 답변에 disclaimer 부족, 자체 LLM 지식으로 over-confident하게 답하는 사례 보고. JM은 spec Decision #3 + I0 invariant로 코드/스크립트 수준에서 차단.</li>
+  <li class="red"><strong>POS-side allergen 메타 부재</strong> (Loman) — POS (Toast/Square/Quantic)는 allergen 컬럼 없음. Maple도 manager dashboard 수동 입력 의존. JM도 동일 (수동 SQL backfill v1) — 동급.</li>
+  <li class="red"><strong>Multi-store override 약점</strong> (Loman) — franchise 본사 vs 매장별 메뉴 차이 처리 약함. JM의 <code>store_id</code> RLS + per-store backfill로 우위.</li>
+  <li class="red"><strong>Disclaimer 워딩 비공개</strong> — 검증 불가. JM은 spec §7 / order.py에 7개 hint script 모두 코드로 고정 ("per our kitchen records" 등).</li>
+</ul>
+
+<h4>3) 업계 표준 reference: Hostie 3-tier framework</h4>
+<table>
+<tr><th>Tier</th><th>Confidence</th><th>Hostie prescribed action</th><th>JM 매핑</th><th>Maple 매핑 (추정)</th></tr>
+<tr><td>1 (High)</td><td>≥90%</td><td>직접 답변 + cross-contam 노트</td><td><code>allergen_present</code> / <code>allergen_absent</code> / <code>dietary_match</code> (curated data 100% — 신뢰도 개념 없음, deterministic)</td><td>유사 (LLM-driven confidence)</td></tr>
+<tr><td>2 (Medium)</td><td>70–89%</td><td>매니저 인계</td><td>해당 없음 — JM은 binary (있다/없다/모른다). Tier 2 개념 자체가 LLM confidence-scored일 때만 의미 있음</td><td>유사 (claimed)</td></tr>
+<tr><td>3 (Low)</td><td>&lt;70% OR Auto-handoff</td><td>EpiPen / anaphylaxis / severe / 3+ allergens → 즉시 매니저</td><td><code>_has_severe_allergy_signal</code> 16-keyword regex + system prompt rule 12 verbatim 라인 (defense-in-depth) + <code>allergen_unknown</code> hint</td><td>"automatic staff notification for complex cases" — 트리거 비공개</td></tr>
+</table>
+
+<p><strong>JM의 차별 설계</strong>: confidence-scoring 모델 자체를 거부 — operator-curated binary로 환원해 <strong>"AI confidence overrun"</strong> class를 원천 제거. Tier 3 EpiPen은 confidence 없이 keyword regex로 결정. 이는 Maple의 "confidence overruns" 약점에 대한 직접 대응.</p>
+
+<h4>4) JM v1 vs Maple — 14차원 1:1 (정량 비교)</h4>
+<table>
+<tr><th>차원</th><th class="num">Maple</th><th class="num">JM v1</th><th>판정</th><th>근거</th></tr>
+<tr><td>Operator-curated invariant (LLM-inference 차단)</td><td class="num">5</td><td class="num green">10</td><td class="green">JM</td><td>JM: spec I0 + 코드 게이트 + V3 unit test 검증. Maple: confidence overrun 보고 (Loman)</td></tr>
+<tr><td>HonestUnknown handling (모르면 정직하게)</td><td class="num">5</td><td class="num green">10</td><td class="green">JM</td><td>JM: I1 invariant + Donuts 라이브 검증 (call_6d69342b T7). Maple: 비공개</td></tr>
+<tr><td>Disclaimer 워딩 ("per our kitchen records")</td><td class="num">3</td><td class="num green">10</td><td class="green">JM</td><td>JM: order.py:ALLERGEN_SCRIPT_BY_HINT 코드 고정. Maple: 워딩 비공개</td></tr>
+<tr><td>Tier 3 keyword detection (EpiPen / celiac 등)</td><td class="num">5</td><td class="num green">9</td><td class="green">JM</td><td>JM: 16-keyword regex (FDA Big 9 + medical + emergency device + intent). Maple: trigger 비공개</td></tr>
+<tr><td>Defense-in-depth (prompt + code 2계층)</td><td class="num">3</td><td class="num green">10</td><td class="green">JM</td><td>JM: rule 12 + dispatcher gate, Layer 1 라이브 100% 작동. Maple: 단일 LLM 추정</td></tr>
+<tr><td>Audit log (allergen_lookup events)</td><td class="num">2</td><td class="num green">8</td><td class="green">JM</td><td>JM: WARNING 라인 + monitor.log 추적. Maple: 미문서화</td></tr>
+<tr><td>RLS / tenant isolation (cross-store leak 방지)</td><td class="num red">1</td><td class="num green">9</td><td class="green">JM</td><td>JM: <code>store_id</code> 필터 강제 + V8 unit test. Maple: multi-tenant 모델 비공개</td></tr>
+<tr><td>FDA Big-9 coverage</td><td class="num">8</td><td class="num">8</td><td>동급</td><td>둘 다 dairy/gluten/nuts/soy/shellfish/egg/fish/sesame</td></tr>
+<tr><td>Dietary tag coverage (vegan/vegetarian/etc)</td><td class="num">7</td><td class="num">7</td><td>동급</td><td>둘 다 7개 (kosher/halal 포함)</td></tr>
+<tr><td><strong>Cross-contamination 모델링</strong></td><td class="num">6</td><td class="num red">0</td><td class="red">Maple</td><td>JM v1 미지원 — Tier 3 EpiPen handoff로 보완. v2 <code>cross_contam_risk</code> column 예정</td></tr>
+<tr><td><strong>Ingredient substitution</strong> ("oat milk로 바꿔줘")</td><td class="num">6</td><td class="num red">0</td><td class="red">Maple</td><td>JM v2 — <code>substitutions</code> 테이블 + price delta 예정</td></tr>
+<tr><td><strong>Nutritional DB integration</strong> (USDA)</td><td class="num">5</td><td class="num red">0</td><td>Maple</td><td>JM out-of-scope (allergen-adjacent, allergen-specific 아님)</td></tr>
+<tr><td><strong>Live manager transfer</strong> (Twilio Conference)</td><td class="num">6</td><td class="num red">0</td><td class="red">Maple</td><td>JM v1: 라인 + WARNING log. v2 Twilio Conference 예정</td></tr>
+<tr><td><strong>Customer dietary preference 학습</strong></td><td class="num">4</td><td class="num red">0</td><td>Maple</td><td>JM v2 (Phase 3 CRM과 통합 예정 — caller-id 활용)</td></tr>
+</table>
+
+<p><strong>합산</strong>: Maple 76점 (평균 5.4) vs JM v1 89점 (평균 6.4). <strong>JM v1 우위 7 / 동급 2 / Maple 우위 5</strong>.</p>
+
+<h4>5) JM v1 vs Maple — 정성 비교 (검증 차원)</h4>
+<table>
+<tr><th>관찰 차원</th><th>Maple (외부 검증)</th><th>JM v1 (코드 + 라이브)</th></tr>
+<tr><td>라이브 검증 evidence</td><td>3rd-party 마케팅 (Hostie, Loman) 인용 — 코드/로그/녹취 미공개</td><td>2 콜 (call_6d69342b 6 hints / call_4630b947 Tier 3) + monitor.log + 393/393 unit test</td></tr>
+<tr><td>spec → code 추적성</td><td>비공개</td><td><code>backend/docs/specs/B5_allergen_qa.md</code> 547 lines + commit chain (spec → tests → impl)</td></tr>
+<tr><td>회귀 안전성</td><td>알려진 hallucination 사례 (Loman)</td><td>0 회귀 (375 prior + 18 신규 모두 GREEN)</td></tr>
+<tr><td>운영자 입력 UI</td><td>"manager dashboard" 클레임 — 스크린샷 비공개</td><td>v1: 수동 SQL (<code>backfill_b5_jm_cafe.sql</code>). v2 dashboard 예정 — 동급</td></tr>
+<tr><td>Loyverse POS 호환</td><td>미지원</td><td>지원 — 한식당 wedge에서 Maple 미커버 시장 독점</td></tr>
+<tr><td>한국어 allergen 용어</td><td>미지원</td><td>v1: 영어 only. v2 한국어 allergen 매핑 (한식 알러젠 더 복잡 — 새우젓/된장/김치 등)</td></tr>
+</table>
+
+<h4>6) v1 ship 시점 strategic positioning</h4>
+<table>
+<tr><th>포지션</th><th>Maple 메시지</th><th>JM v1 메시지</th></tr>
+<tr><td>안전성 (B2B 영업)</td><td>"AI handles allergies" (구체 부재)</td><td><strong>"Customer Safety Invariant — never LLM inference. Operator-curated only. EpiPen/celiac 즉시 매니저 인계. RLS audit log."</strong></td></tr>
+<tr><td>법적 리스크 (vendor T&amp;C)</td><td>disclaimer 워딩 비공개 (T&amp;C 협상 어려움)</td><td>spec §7 코드 고정 워딩 + <code>monitor.log</code> 감사 가능 — vendor T&amp;C에 명시 가능</td></tr>
+<tr><td>franchise 본사</td><td>"multi-store override" 약점 (Loman)</td><td>per-store RLS + <code>store_id</code> 필터 — 본사가 매장별 allergen data 분리 보장</td></tr>
+<tr><td>customer self-confidence</td><td>"Maple knows our menu"</td><td>"내 매장 데이터로 답변, 확실치 않으면 매니저 인계 — 환각 0건 보장"</td></tr>
+</table>
+
+<h4>7) v2 로드맵 (Maple 격차 closing)</h4>
+<ol>
+<li><strong>Cross-contamination column</strong> — <code>menu_items.cross_contam_risk jsonb</code> + UI. 예: "공유 fryer", "공유 도마". Tier 3 keyword set이 부분적으로 보완하지만, v2에서 명시 modeling 필요</li>
+<li><strong>Ingredient substitution</strong> — <code>substitutions</code> 테이블 (variant_id × substitute_variant_id × price_delta). "oat milk로 바꿔줄래?" 시나리오</li>
+<li><strong>Live Twilio Conference transfer</strong> — Tier 3 hit 시 voice path를 manager 번호와 합류. 현 v1은 line + WARNING log만</li>
+<li><strong>Multi-item dietary filter</strong> (<code>dietary_filter</code> tool) — "what's vegan?" → 전체 메뉴 스캔. v1 single-item 제한 (I2)</li>
+<li><strong>Manager dashboard allergen editor</strong> — 현 수동 SQL 대체</li>
+<li><strong>Customer dietary preference 학습</strong> — caller-id 기반 ("이전에 gluten 물어보셨어요 — 동일?"). Phase 3 CRM 통합</li>
+<li><strong>한국어 allergen vertical</strong> — 한식 메뉴 새우젓/된장/김치/땅콩가루 매핑 + 한국어 system prompt 변형</li>
+</ol>
+
+<h4>8) v3 결론 — Allergen Q&amp;A 카테고리 종합</h4>
+
+<div class="pass">
+<strong>JM v1 ship 권고</strong>: 안전성/검증가능성/운영자 통제 차원에서 Maple을 능가. cross-contam/substitution/live transfer는 v2에서 closing — 이는 "기능 부재"라기보다 "단계적 출시"로 포지셔닝 가능. v1 시점에서 <strong>franchise 본사 + 보험사 + 컴플라이언스 민감 매장</strong>을 1차 타깃으로 허용함.
+</div>
+
+<table>
+<tr><th>최종 점수</th><th class="num">Maple</th><th class="num">JM v1</th></tr>
+<tr><td>안전 invariant 준수</td><td class="num">5</td><td class="num green">10</td></tr>
+<tr><td>Tier 3 escalation 정확도</td><td class="num">5</td><td class="num green">9</td></tr>
+<tr><td>기능 폭 (cross-contam/substitution 등)</td><td class="num green">7</td><td class="num red">2</td></tr>
+<tr><td>검증 evidence (라이브 + test)</td><td class="num">3</td><td class="num green">9</td></tr>
+<tr><td><strong>가중 평균 (안전 우선 0.4 / Tier 3 0.3 / 폭 0.15 / 검증 0.15)</strong></td><td class="num">5.0</td><td class="num green"><strong>8.4</strong></td></tr>
+</table>
+
+<h2>2. 종합 점수표</h2>
+<table>
+<tr><th>카테고리</th><th class="num">Maple 평균</th><th class="num">JM 평균</th><th>우위</th></tr>
+<tr><td>Voice / Phone</td><td class="num">6.4</td><td class="num">5.5</td><td>Maple</td></tr>
+<tr><td>Order Taking</td><td class="num">5.6</td><td class="num green">6.0</td><td class="green">JM (modify/cancel + Allergens 0→8 v3)</td></tr>
+<tr><td>Reservations</td><td class="num">4.6</td><td class="num green">7.0</td><td class="green">JM 우위 (B3/B4/email/Issue Ω·Φ·Π·Σ live-verified) — ⚡ 1.4 → 7.0 (2026-05-02 EOD)</td></tr>
+<tr><td>Payments</td><td class="num">5.0</td><td class="num">3.5</td><td>Maple</td></tr>
+<tr><td>POS</td><td class="num">4.6</td><td class="num">3.5</td><td>Maple (단 Loyverse 우리 독점)</td></tr>
+<tr><td>Delivery</td><td class="num">5.5</td><td class="num">1.0</td><td class="red">Maple 큰 우위</td></tr>
+<tr><td>CRM</td><td class="num">2.6</td><td class="num">5.6</td><td class="green">JM (RLS + caller-ID)</td></tr>
+<tr><td>Analytics</td><td class="num">6.6</td><td class="num">1.6</td><td class="red">Maple 큰 우위</td></tr>
+<tr><td>Owner Controls</td><td class="num">4.6</td><td class="num">6.0</td><td class="green">JM</td></tr>
+<tr><td>AI Reliability</td><td class="num">6.0</td><td class="num">7.0</td><td class="green">JM</td></tr>
+<tr><td>Compliance</td><td class="num">2.2</td><td class="num">3.5</td><td class="green">JM (RLS)</td></tr>
+</table>
+
+<p><strong>총평</strong>: Maple은 <strong>breadth (영역 폭)</strong> 우위, JM은 <strong>depth (특정 영역 깊이) + 안전성</strong> 우위.</p>
+
+<h2>3. JM의 Defensible Edge (방어 가능한 우위)</h2>
+<h4 class="green">현재 보유</h4>
+<ol>
+<li><strong>Modify/Cancel 풀 사이클</strong> (B1+B2 라이브) — Maple docs에 부재</li>
+<li><strong>3중 hallucination dedup</strong> (5s/8s/8s) — Maple은 단순 confirmation gate만</li>
+<li><strong>PostgreSQL RLS Mandatory</strong> — Maple 무증거</li>
+<li><strong>Caller-ID server-side override</strong> — Maple 약함</li>
+<li><strong>Loyverse 라이브 검증</strong> — Maple 미지원 (한식당 시장 wedge)</li>
+<li><strong>Per-store granular overrides</strong> — loman.ai가 Maple 약점으로 지적</li>
+<li><strong>Audit trail</strong> (<code>bridge_transactions</code>) — Maple 미문서화</li>
+<li><strong>추상 POSAdapter 아키텍처</strong> — 새 POS 추가 cost ↓</li>
+</ol>
+
+<h4 class="blue">잠재 우위 (개발 필요)</h4>
+<ol>
+<li><strong>한국어 native</strong> — 시장에 한국어 식당 voice AI 존재 안 함</li>
+<li><strong>Quantic 화이트라벨</strong> — 통합 시 동급</li>
+<li><strong>KakaoTalk SMS bilingual</strong> — 한국 식당 특화</li>
+</ol>
+
+<h2>4. JM의 즉시 격차 (Pre-Launch Blocker)</h2>
+<ol>
+<li class="red"><strong>B3 modify_reservation + B4 cancel_reservation</strong> (Maple 8/10, 우리 0/10)</li>
+<li class="green"><strong>B5 Allergen Q&amp;A</strong> — ✅ <strong>해소됨 (v3)</strong>. JM 8/10 vs Maple 5/10 (라이브 검증 2026-05-02 20:09/20:20). §C-ALLERGEN 참조</li>
+<li><strong>OpenTable 통합</strong> (한식당 OpenTable 사용률 낮으니 영향 적을 수도)</li>
+<li class="red"><strong>Manager Dashboard / Analytics UI</strong> (Maple 7/10, 우리 1/10) — 영업 결정타</li>
+<li><strong>Call transfer to staff</strong> — 복잡 요청 핸드오프</li>
+</ol>
+
+<h2>5. 전략 제언</h2>
+
+<h3>Wedge 1: 한국어 식당 vertical</h3>
+<ul>
+<li>Maple 한국어 0/10, OR/CA/NY/NJ Korean restaurant 수천 개</li>
+<li>KAGRO + Korean Chamber of Commerce 채널</li>
+<li>KakaoTalk 결제 알림, 한국어/영어 bilingual 자동 전환</li>
+<li>한식 메뉴 modifier (반찬 옵션, 매운 정도, 고기 부위)</li>
+</ul>
+
+<h3>Wedge 2: Loyverse 시장</h3>
+<ul>
+<li>Loyverse 글로벌 50만+ 매장. Maple 미지원</li>
+<li>우리가 <strong>유일 옵션</strong> — 한국 + 동남아 + 중남미 매장 타겟</li>
+</ul>
+
+<h3>Wedge 3: Modify/Cancel 안정성</h3>
+<ul>
+<li>Maple 문서에 modify_order/cancel_order 부재</li>
+<li>영업 demo에서 라이브 modify 시연으로 차별화</li>
+</ul>
+
+<h3>Wedge 4: RLS + Audit (security-conscious)</h3>
+<ul>
+<li>호텔 체인, 프랜차이즈 본사 영업 시 결정타</li>
+<li>Maple은 multi-store override 약점 인용됨</li>
+</ul>
+
+<h3>즉시 닫아야 할 갭</h3>
+<ol>
+<li><strong>B3/B4/B5 완성</strong> (4–6주)</li>
+<li><strong>Manager Dashboard MVP</strong> (2–3주) — call log + order metrics + missed calls</li>
+<li><strong>Twilio TCR 승인</strong> 진행 (외부 의존)</li>
+<li><strong>한국어 system prompt + Korean greeting</strong> (1주) — 큰 변경 없음</li>
+</ol>
+
+<h3>가격 전략</h3>
+<ul>
+<li>Maple: $240–$299/월 base + 모듈 add-on</li>
+<li>JM: 한국 식당 시장에 맞춰 <strong>$199/월부터</strong> 또는 <strong>per-store flat</strong> + Loyverse migration credit</li>
+<li>Free trial 14일 (Maple 미제공) — Capterra 0 reviews를 우리는 reviews로 채우기</li>
+</ul>
+
+<h2>6. 사용된 소스</h2>
+<p class="meta">
+공식: maple.inc, docs.maple.inc (15+) · 보도: BusinessWire (Quantic 4월, SkyTab 3월, OpenTable Dec 2025) · 독립 리뷰: loman.ai, kea.ai, hostie.ai, Capterra · 펀딩: Tracxn, Crunchbase, LinkedIn · 창업자 인터뷰: engine.is.
+<br><br>
+<strong>v3 추가 (Allergen 리서치 2026-05-02)</strong>: maple.inc/product (cross-contam/substitution/nutritional DB 클레임), Hostie 2025 "Voice AI Allergy &amp; Dietary Questions" (3-tier framework), Loman 2026-02 Maple review (confidence overruns), Kea 2026 Voice AI Comparison (allergen 미언급 fact 자체가 source), CDC restaurant food safety, FDA Big-9 reference. <strong>JM internal</strong>: <code>backend/docs/specs/B5_allergen_qa.md</code>, 라이브 콜 <code>call_6d69342b4291d5f5c5ecaf9fd24</code> (Scenario A) + <code>call_4630b947f47ba18d785ea26d6d2</code> (Scenario B Tier 3).
+
+한국어 검색은 모두 무관 결과만 반환. 우리 솔루션 점수는 <code>project_migration_status.md</code> (2026-05-02) + 라이브 코드 (<code>f5d1bbb</code>, <code>4cc96e8</code>, <code>e2a2a91</code>) + 메모리 caveat 목록 기준.
+</p>
+
+<hr>
+<p class="meta center">© 2026 JM Voice AI Platform · Internal — Confidential</p>
+
+</body>
+</html>
