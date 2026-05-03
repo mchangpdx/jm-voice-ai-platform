@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
@@ -29,7 +30,12 @@ from app.services.bridge.flows import is_placeholder_name
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.skills.menu.allergen import (  # Phase 2-C.B5
+    ALLERGEN_LOOKUP_TOOL_DEF,
+    allergen_lookup,
+)
 from app.skills.order.order import (
+    ALLERGEN_SCRIPT_BY_HINT,                 # Phase 2-C.B5
     CANCEL_ORDER_SCRIPT_BY_HINT,
     CANCEL_ORDER_TOOL_DEF,
     CANCEL_RESERVATION_SCRIPT_BY_HINT,
@@ -411,7 +417,24 @@ def build_system_prompt(store: dict) -> str:
         "9. TOOL ERRORS: sold_out / unknown_item → offer alternatives, do not retry with same items. "
         "pos_failure → apologize once + STOP, a person will call back.\n"
         "10. NO PHANTOM BOOKINGS: Never claim confirmed without a successful tool result. No invented numbers.\n"
-        "11. ESCALATION: 'Let me connect you with our manager right away.'"
+        "11. ESCALATION: 'Let me connect you with our manager right away.'\n"
+        "12. ALLERGEN / DIETARY QUESTIONS (allergen_lookup): When the customer asks ANYTHING about "
+        "ingredients, allergens, or dietary suitability ('does the X have dairy?', 'is the Y vegan?', "
+        "'what's gluten-free?', 'is there nuts in Z?'), call allergen_lookup with the menu item they "
+        "named + the allergen or dietary_tag they asked about. NEVER answer from your own knowledge — "
+        "operator-curated data is the only source of truth. If the tool returns allergen_unknown, "
+        "speak the 'I don't have allergen info on hand' line VERBATIM and OFFER to transfer to a "
+        "manager. If the customer asks generically ('what's in your croissant?'), pass empty allergen "
+        "+ empty dietary_tag and let the tool return the full allergens list. NEVER claim an item is "
+        "'free of X' unless the tool explicitly returned allergen_absent. This is a CUSTOMER SAFETY "
+        "INVARIANT — the wrong answer can cause anaphylactic reactions. "
+        "SEVERE-ALLERGY ESCALATION (Tier 3): if the customer says any of 'EpiPen', 'anaphylaxis', "
+        "'anaphylactic', 'life-threatening', 'deathly allergic', 'severely allergic', 'celiac', "
+        "'coeliac', 'hospitalized', 'react badly' — DO NOT call allergen_lookup. Reply ONCE: 'I want "
+        "to make sure we get this exactly right — let me connect you with our manager who can verify "
+        "directly with the kitchen. One moment please.' Then stop. Even our curated data carries "
+        "trace-amount and cross-contamination uncertainty that is not safe to communicate for "
+        "severe cases."
     )
 
     return "\n\n".join(parts)
@@ -563,6 +586,58 @@ def _is_hesitation_only(text: str) -> bool:
     if not words:
         return True
     return all(w in _HESITATION_TOKENS for w in words)
+
+
+# ── Phase 2-C.B5 — Tier 3 severe-allergy / EpiPen signal detection ───────────
+# (Phase 2-C.B5 — Tier 3 중증 알레르기 / EpiPen 신호 감지)
+#
+# Spec: backend/docs/specs/B5_allergen_qa.md §6d
+# Compiled once at import; case-insensitive whole-word match (multi-word
+# phrases are checked as substrings on a normalized space-bounded text).
+# False-positive bias is intentional (Decision §10, risk-register row).
+
+_SEVERE_ALLERGY_KEYWORDS: tuple[str, ...] = (
+    "epipen",
+    "epi pen",
+    "epi-pen",
+    "anaphylaxis",
+    "anaphylactic",
+    "life-threatening",
+    "life threatening",
+    "deathly allergic",
+    "severely allergic",
+    "severe allergy",
+    "celiac",
+    "coeliac",
+    "hospitalized",
+    "hospital",
+    "react badly",
+    "kill me",
+)
+
+# Pre-compile a single regex with each keyword wrapped in word boundaries.
+# Hyphens are inside \b on most regex flavours but a leading/trailing word
+# boundary on 'epi-pen' still matches the start/end of the phrase. For
+# multi-word phrases ('react badly') the inner space is literal whitespace.
+# (정규식 1회 컴파일 — 모든 키워드 word-boundary 매칭)
+_SEVERE_ALLERGY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(kw) for kw in _SEVERE_ALLERGY_KEYWORDS) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _has_severe_allergy_signal(transcript_user_turn: str) -> bool:
+    """True iff the customer's most recent turn contains a Tier 3
+    severe-allergy keyword (EpiPen, anaphylaxis, celiac, etc.). The
+    voice dispatcher uses this BEFORE allergen_lookup fires to bypass
+    even the curated answer and hand off to a manager — trace amounts
+    and cross-contamination risk make even our operator data unsafe
+    for severe cases. False-positive bias is intentional.
+    (Tier 3 키워드 감지 — 양성 우선 보수 편향)
+    """
+    if not transcript_user_turn:
+        return False
+    return bool(_SEVERE_ALLERGY_RE.search(transcript_user_turn))
 
 
 # ── Recital dedup (Wave 1 P0-1) ───────────────────────────────────────────────
@@ -1074,6 +1149,7 @@ async def _stream_gemini_response(
             ORDER_TOOL_DEF,
             MODIFY_ORDER_TOOL_DEF,
             CANCEL_ORDER_TOOL_DEF,
+            ALLERGEN_LOOKUP_TOOL_DEF,        # Phase 2-C.B5
         ]
         if force_tool_use:
             kwargs["tool_config"] = {
@@ -1961,6 +2037,68 @@ async def _stream_gemini_response(
             # (B4 — cancel suppresses the deferred email)
             session["pending_reservation_email"] = None
             _mon("RES EMAIL PENDING cleared cancel")
+    elif tool_name == "allergen_lookup":
+        # Phase 2-C.B5 — read-only allergen / dietary Q&A.
+        # (Phase 2-C.B5 — 읽기 전용 알레르겐/식이 조회)
+        #
+        # Tier 3 intercept (spec §6d): if the customer's last turn carries
+        # a severe-allergy keyword (EpiPen, anaphylaxis, celiac, etc.),
+        # SKIP the curated lookup entirely and offer manager handoff —
+        # trace amounts + cross-contamination risk make even our data
+        # unsafe to communicate for severe cases. False-positive bias is
+        # intentional (Decision §10).
+        # (Tier 3 — 중증 알레르기 신호 시 lookup 우회 + 매니저 인계)
+        if _has_severe_allergy_signal(last_user_text):
+            _mon("ALLERGEN TIER3 intercept user=%r — skipping allergen_lookup",
+                 (last_user_text or "")[:80])
+            result = {
+                "success":      True,
+                "matched_name": None,
+                "allergens":    None,
+                "dietary_tags": None,
+                "reason":       "severe_allergy_handoff",
+                "message": (
+                    "I want to make sure we get this exactly right — let "
+                    "me connect you with our manager who can verify "
+                    "directly with the kitchen. One moment please."
+                ),
+                "error":        "",
+            }
+        else:
+            skill_result = await allergen_lookup(
+                store_id        = store_id,
+                menu_item_name  = tool_args.get("menu_item_name", ""),
+                allergen        = tool_args.get("allergen", ""),
+                dietary_tag     = tool_args.get("dietary_tag", ""),
+            )
+            hint = skill_result.get("ai_script_hint", "item_not_found")
+            template = ALLERGEN_SCRIPT_BY_HINT.get(
+                hint,
+                "Let me transfer you to a manager.",
+            )
+            # Render dietary tag as a human-readable string
+            # ('gluten_free' → 'gluten-free') for the customer line.
+            # (식이 태그 사람-친화 표기 — underscore → hyphen)
+            tag_human = (skill_result.get("queried_dietary") or "").replace("_", "-")
+            try:
+                script = template.format(
+                    item        = skill_result.get("matched_name", "that item"),
+                    allergen    = skill_result.get("queried_allergen", ""),
+                    allergens   = ", ".join(skill_result.get("allergens") or [])
+                                  or "no listed allergens",
+                    tag         = tag_human,
+                )
+            except (KeyError, IndexError):
+                script = template
+            result = {
+                "success":      bool(skill_result.get("success")),
+                "matched_name": skill_result.get("matched_name"),
+                "allergens":    skill_result.get("allergens"),
+                "dietary_tags": skill_result.get("dietary_tags"),
+                "reason":       hint,
+                "message":      script,
+                "error":        "",
+            }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 

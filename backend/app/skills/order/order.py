@@ -387,3 +387,40 @@ CANCEL_RESERVATION_SCRIPT_BY_HINT: dict[str, str] = {
         "our manager to sort it out."
     ),
 }
+
+
+# ── Phase 2-C.B5 — allergen / dietary Q&A scripts ────────────────────────────
+# (Phase 2-C.B5 — 알레르겐/식이 질문 응답 스크립트)
+#
+# Spec: backend/docs/specs/B5_allergen_qa.md §7
+# Operator-curated only (CUSTOMER SAFETY INVARIANT) — wording is intentionally
+# conservative ("per our kitchen records" qualifier on every absent claim,
+# manager-transfer offer on every unknown).
+
+ALLERGEN_SCRIPT_BY_HINT: dict[str, str] = {
+    "item_not_found": (
+        "I don't see {item} on our menu — could you say it again, or "
+        "would you like me to read what we have?"
+    ),
+    "allergen_unknown": (
+        "I don't have allergen info on hand for the {item}. Want me to "
+        "transfer you to a manager?"
+    ),
+    "allergen_present": (
+        "Yes, our {item} contains {allergen}."
+    ),
+    "allergen_absent": (
+        "Our {item} is {allergen}-free per our kitchen records."
+    ),
+    "dietary_match": (
+        "Yes, our {item} is {tag}."
+    ),
+    "dietary_no_match": (
+        "Our {item} isn't tagged {tag} — let me have the team "
+        "double-check. Want me to transfer?"
+    ),
+    "generic": (
+        "Our {item} contains {allergens}. Anything specific you'd "
+        "like to know?"
+    ),
+}
