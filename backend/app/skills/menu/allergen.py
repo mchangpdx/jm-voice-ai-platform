@@ -67,9 +67,12 @@ ALLERGEN_LOOKUP_TOOL_DEF: dict = {
                         "type": "string",
                         "description": (
                             "Specific allergen category if asked (one of: "
-                            "dairy, gluten, nuts, soy, shellfish, egg, "
-                            "fish, sesame). Empty string for generic "
-                            "'what's in this' or for dietary tag queries."
+                            "dairy, gluten, wheat, nuts, peanuts, soy, "
+                            "shellfish, egg, fish, sesame). Empty string "
+                            "for generic 'what's in this' or for dietary "
+                            "tag queries. Pass exactly what the customer "
+                            "said — the tool aliases 'wheat' against "
+                            "'gluten' data conservatively."
                         ),
                     },
                     "dietary_tag": {
@@ -179,6 +182,21 @@ async def allergen_lookup(
     # (양쪽 모두 비어있으면 honest-unknown — 매니저 인계)
     if not allergens and not dietary_tags:
         hint = "allergen_unknown"
+    elif queried_allergen == "wheat":
+        # FDA major allergen but not a curated category in our data — gluten
+        # is the closest marker (wheat is a gluten source). Safety asymmetry:
+        #   gluten present  → wheat likely present  → PRESENT
+        #   gluten absent   → wheat absence NOT guaranteed (barley/rye-only
+        #                     items exist) → escalate to UNKNOWN, never absent
+        # Operator can override by adding 'wheat' to the row explicitly.
+        # Live trigger: Phase 5 scenario 4 (CA0f91961) — Japanese caller asked
+        # about wheat in croissant, bot hallucinated allergen='nuts' because
+        # 'wheat' was missing from the tool enum.
+        # (wheat 별도 카테고리 미사용 — gluten 함유원으로 alias. absent 방향은 안전 차단)
+        if "wheat" in allergens or "gluten" in allergens:
+            hint = "allergen_present"
+        else:
+            hint = "allergen_unknown"
     elif queried_allergen:
         hint = "allergen_present" if queried_allergen in allergens else "allergen_absent"
     elif queried_dietary:

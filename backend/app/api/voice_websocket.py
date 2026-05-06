@@ -451,7 +451,15 @@ def build_system_prompt(store: dict) -> str:
         "12. ALLERGEN / DIETARY QUESTIONS (allergen_lookup): When the customer asks ANYTHING about "
         "ingredients, allergens, or dietary suitability ('does the X have dairy?', 'is the Y vegan?', "
         "'what's gluten-free?', 'is there nuts in Z?'), call allergen_lookup with the menu item they "
-        "named + the allergen or dietary_tag they asked about. NEVER answer from your own knowledge — "
+        "named + the allergen or dietary_tag they asked about. "
+        # Phase 5 scenario 4 (CA0f91961): Japanese caller asked about wheat
+        # (小麦) in croissant, bot hallucinated allergen='nuts' and replied
+        # "no nuts" — wrong-allergen confirmation is a CUSTOMER SAFETY breach.
+        # (사용자 발화 그대로 송신 — 환각 방지)
+        "PASS THE ALLERGEN THE CUSTOMER ACTUALLY SAID — never substitute (e.g. 'wheat' / "
+        "'小麦' / '밀' → pass 'wheat', NEVER 'gluten' / 'nuts' / anything else). The tool "
+        "handles aliases conservatively. "
+        "NEVER answer from your own knowledge — "
         "operator-curated data is the only source of truth. If the tool returns allergen_unknown, "
         "speak the 'I don't have allergen info on hand' line VERBATIM and OFFER to transfer to a "
         "manager. If the customer asks generically ('what's in your croissant?'), pass empty allergen "

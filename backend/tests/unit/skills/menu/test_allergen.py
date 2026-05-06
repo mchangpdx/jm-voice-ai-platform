@@ -198,3 +198,56 @@ async def test_t10_allergen_wins_over_dietary():
     assert result["ai_script_hint"] == "allergen_present"
     # queried_dietary should have been zeroed out by mutual-exclusion
     assert result["queried_dietary"] == ""
+
+
+# ── T11: wheat alias — gluten present → wheat present (FDA conservative) ─────
+# Phase 5 scenario 4 (CA0f91961): caller asked about wheat in croissant; bot
+# hallucinated allergen='nuts' because 'wheat' was missing from the tool enum.
+# Fix: enum now includes 'wheat'; tool aliases wheat against gluten data.
+# (wheat alias 검증 — gluten 함유 시 wheat present 응답)
+
+@pytest.mark.asyncio
+async def test_t11_wheat_alias_gluten_present_implies_wheat_present():
+    client = _patched_get(_jm_cafe_rows())
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id        = _STORE_ID,
+            menu_item_name  = "Croissant",
+            allergen        = "wheat",
+        )
+    assert result["ai_script_hint"] == "allergen_present"
+    assert result["queried_allergen"] == "wheat"
+
+
+# ── T12: wheat alias — gluten absent → escalate to UNKNOWN, NOT absent ───────
+# Safety asymmetry: gluten-free does NOT guarantee wheat-free (barley/rye-only
+# items exist). Saying 'wheat-free' on a row that's only marked gluten-free
+# is the same class of failure as scenario 4 — never go that route.
+# (gluten-free ≠ wheat-free 100% — absent 대신 unknown으로 escalate)
+
+@pytest.mark.asyncio
+async def test_t12_wheat_alias_no_gluten_marker_returns_unknown():
+    client = _patched_get(_jm_cafe_rows())
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id        = _STORE_ID,
+            menu_item_name  = "Cafe Latte",  # ['dairy'] — no gluten, no wheat
+            allergen        = "wheat",
+        )
+    assert result["ai_script_hint"] == "allergen_unknown"
+
+
+# ── T13: wheat alias — explicit 'wheat' marker takes priority ────────────────
+# Operator can override the alias by tagging a row with 'wheat' directly.
+
+@pytest.mark.asyncio
+async def test_t13_wheat_explicit_marker_returns_present():
+    rows = _jm_cafe_rows() + [_row("Whole-Wheat Bagel", ["wheat", "gluten"], [])]
+    client = _patched_get(rows)
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id        = _STORE_ID,
+            menu_item_name  = "Whole-Wheat Bagel",
+            allergen        = "wheat",
+        )
+    assert result["ai_script_hint"] == "allergen_present"
