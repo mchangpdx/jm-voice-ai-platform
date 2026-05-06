@@ -255,6 +255,14 @@ def build_system_prompt(store: dict) -> str:
         "customer is NOT changing, send the EXACT value from the most recent successful "
         "make_reservation or modify_reservation tool result in THIS call (the values you recited "
         "earlier). The bridge computes the diff and updates only changed columns. "
+        # Cross-call modify guard — added after Phase 5 scenario 7 where the bot
+        # invented customer_name='Robert' on a modify with no prior tool result
+        # in-call, and the placeholder filter only blocks 'Customer'/'Guest'-class
+        # names — plausible-looking hallucinations slip through.
+        # (이전 통화 예약 modify 시 환각 방지 — 사전 질의로 정확한 값 확보)
+        "NO PRIOR TOOL RESULT THIS CALL (cross-call modify): do NOT invent customer_name or "
+        "party_size — ASK 'May I confirm the name and party size on the booking?' BEFORE "
+        "firing modify_reservation. "
         "RESERVATION_TIME TRUTHFULNESS GATE (mandatory, same severity as I1/I2/I3): the "
         "reservation_date and reservation_time you pass MUST be either (a) the time the customer "
         "explicitly said in this turn, or (b) the EXACT date/time from the prior successful tool "
@@ -465,7 +473,13 @@ def build_system_prompt(store: dict) -> str:
         "Do NOT call this tool reflexively right after a successful create_order or "
         "modify_order — those have their own confirmation copy. Live trigger: "
         "call_7d7ef130 T25-T26 — bot answered 'no active order' even though session held a "
-        "pending pay_first order; this rule + tool eliminate that hallucination class."
+        "pending pay_first order; this rule + tool eliminate that hallucination class. "
+        # Cross-call history guard — added after live call CA985db1 where the bot called
+        # recall_order for "what was my last order?" and read the empty-snapshot line.
+        # (이전 통화 주문 조회 시 recall_order 호출 거절 — 같은 통화 snapshot 전용 도구)
+        "CROSS-CALL HISTORY ('last order', 'yesterday', 'previous order') = DO NOT call "
+        "recall_order. Reply: 'I can only see orders from this current call — want to "
+        "place a new one?' and stop."
     )
 
     return "\n\n".join(parts)

@@ -1266,6 +1266,11 @@ async def _update_reservation(
     if not diff:
         return False
     payload = {col: change["new"] for col, change in diff.items()}
+    # Touch updated_at so audit/dashboards see the modify (DB has no trigger).
+    # Live: Phase 5 scenario 7 — modify succeeded but row's updated_at stayed
+    # equal to created_at, masking the change in saas-platform views.
+    # (B3 modify 후 updated_at 명시 갱신 — DB trigger 없음)
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     async with httpx.AsyncClient(timeout=8) as client:
         resp = await client.patch(
             f"{_REST}/reservations",
