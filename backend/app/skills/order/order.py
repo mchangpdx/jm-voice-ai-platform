@@ -424,3 +424,89 @@ ALLERGEN_SCRIPT_BY_HINT: dict[str, str] = {
         "like to know?"
     ),
 }
+
+
+# B6 — recall_order tool definition (Phase 2-C.B6).
+# Read-only recap of the in-flight order placed THIS SAME call. Bridge
+# session keeps last_order_items + last_order_total snapshot whenever
+# create_order / modify_order succeeds; this tool surfaces that snapshot
+# back to the customer so the bot doesn't hallucinate "no active order"
+# mid-call. Live trigger: call_7d7ef130ad839e9a2c3c68816a7 T25-T26.
+# (B6 — 통화 중 주문 재요약. session 스냅샷 그대로 노출)
+
+RECALL_ORDER_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "recall_order",
+            "description": (
+                "Recap the customer's current in-flight order placed in "
+                "THIS SAME call. Use when the customer asks anything like "
+                "'what's my order', 'did you send it', 'order info', "
+                "'is it confirmed', 'how much was it', 'the total'. "
+                "Read-only — does NOT modify, place, or cancel anything. "
+                "Do NOT call reflexively right after a successful "
+                "create_order / modify_order — those have their own "
+                "confirmation copy. Pass NO arguments — the system reads "
+                "the order from the in-call snapshot."
+            ),
+            "parameters": {
+                "type":       "object",
+                "properties": {},
+                "required":   [],
+            },
+        }
+    ]
+}
+
+
+# Render the customer-facing recap line from the session snapshot. Pure
+# function — voice_websocket dispatcher passes session["last_order_items"]
+# and session["last_order_total"] in directly. Returns (message, reason).
+# Plural rule mirrors the existing closing-summary line (Proposal I).
+# (snapshot → recap 문구. closing-summary와 동일한 plural 규칙)
+
+def render_recall_message(
+    *,
+    items:       list,
+    total_cents: int,
+) -> tuple[str, str]:
+    """Build the customer-facing recap line + reason hint.
+
+    Returns:
+        (message, reason) where reason is 'recall_present' if items+total
+        are non-empty, else 'recall_empty'.
+    (스냅샷에 주문이 있으면 recall_present, 없으면 recall_empty)
+    """
+    if not items or not isinstance(items, list) or int(total_cents or 0) <= 0:
+        return (
+            "I don't have an order placed for you yet. Would you like to start one?",
+            "recall_empty",
+        )
+
+    parts: list[str] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        try:
+            qty = int(it.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1
+        nm = (it.get("name") or "").strip()
+        if not nm:
+            continue
+        plural = "" if qty == 1 else "s"
+        parts.append(f"{qty} {nm}{plural}")
+
+    if not parts:
+        return (
+            "I don't have an order placed for you yet. Would you like to start one?",
+            "recall_empty",
+        )
+
+    phrase = ", ".join(parts)
+    return (
+        f"You have {phrase} for ${total_cents / 100:.2f}. The payment "
+        f"link is on its way — tap it and your order goes straight to "
+        f"the kitchen.",
+        "recall_present",
+    )

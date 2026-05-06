@@ -20,6 +20,7 @@ from app.api.settings import router as settings_router      # Store settings (�
 from app.api.store import router as store_router            # Store dashboard data (스토어 대시보드 데이터)
 from app.api.voice_bot import router as voice_bot_router    # AI Voice Bot settings (AI Voice Bot 설정)
 from app.api.voice_websocket import router as voice_ws_router  # Retell Custom LLM WebSocket (Retell ↔ Gemini 브리지)
+from app.api.realtime_voice import router as realtime_router  # Phase 2-D — Twilio Media Streams ↔ OpenAI Realtime (듀얼 트랙)
 
 
 @asynccontextmanager
@@ -60,6 +61,7 @@ app.include_router(reservations_router)  # Reservations (예약 관리)
 app.include_router(analytics_router)     # Analytics (분석)
 app.include_router(voice_bot_router)     # AI Voice Bot settings (AI Voice Bot 설정)
 app.include_router(voice_ws_router)      # Retell Custom LLM WebSocket (Retell ↔ Gemini 브리지)
+app.include_router(realtime_router)      # Phase 2-D — Twilio Media Streams ↔ OpenAI Realtime 브리지 (듀얼 트랙)
 app.include_router(menu_router)          # Menu sync + Loyverse inventory webhook (메뉴 동기화 + 인벤토리 웹훅)
 app.include_router(payment_router)       # Pay link mock callback (결제 링크 목 콜백)
 

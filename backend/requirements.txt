@@ -12,11 +12,24 @@ alembic==1.14.0
 pydantic==2.10.3
 pydantic-settings==2.6.1
 
-# Google Gemini AI (Gemini AI 엔진)
+# Google Gemini AI (Gemini AI 엔진 — Phase 2-D 마이그레이션 동안 듀얼 운영, Phase 7에서 제거)
 google-generativeai==0.8.3
+
+# OpenAI Realtime API (Phase 2-D — gpt-realtime-1.5 마이그레이션, Twilio Media Streams 브릿지)
+openai>=1.50.0
+websockets>=12.0
+
+# Audio capture for local POC scripts (POC 음성 캡처용 — production에서는 Twilio가 audio 전달)
+# (POC 전용 — production scripts/poc_realtime_*.py 에서만 import)
+sounddevice>=0.5.0
+numpy>=2.0.0
 
 # HTTP Client for external APIs (외부 API 클라이언트)
 httpx>=0.25.0
+
+# Async SMTP for fire-and-forget pay-link / reservation emails
+# (비동기 SMTP — 결제 링크/예약 이메일 발송에 사용; smtp.py에서 import)
+aiosmtplib>=3.0.0
 
 # Authentication & Security (인증 및 보안)
 python-jose[cryptography]==3.3.0

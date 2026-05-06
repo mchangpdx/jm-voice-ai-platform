@@ -8,7 +8,7 @@
 #   4. call_details event: fallback for web_call / Retell Simulation flows
 #   5. ping → ping_response  |  update_only → ignored  |  reminder_required → nudge
 #
-# Language: English default — natural switch to Spanish / Korean on customer cue.
+# Language: English default — natural switch to Spanish / Korean / Mandarin / Japanese on customer cue.
 # Retell docs: https://docs.retellai.com/api-references/llm-websocket
 
 from __future__ import annotations
@@ -44,6 +44,8 @@ from app.skills.order.order import (
     MODIFY_RESERVATION_SCRIPT_BY_HINT,
     ORDER_SCRIPT_BY_HINT,
     ORDER_TOOL_DEF,
+    RECALL_ORDER_TOOL_DEF,                   # Phase 2-C.B6
+    render_recall_message,                   # Phase 2-C.B6
 )
 from app.skills.scheduler.reservation import (
     CANCEL_RESERVATION_TOOL_DEF,
@@ -190,13 +192,33 @@ def build_system_prompt(store: dict) -> str:
         "I3. STATUS — never say 'cancelled' / 'confirmed' / 'booked' / 'placed' "
         "until the corresponding tool call returned success in THIS call. No "
         "phantom confirmations, no invented confirmation numbers.\n"
-        "Violations of I1/I2/I3 ship wrong food, wrong charges, or wrong "
-        "promises to real customers. They are non-negotiable.\n\n"
+        "I4. TOOL-CALL-AFTER-YES — when your IMMEDIATELY PREVIOUS reply "
+        "contained a confirmation pattern ('Confirming...', 'is that right?', "
+        "'updating your order to', 'updated to') AND the customer's CURRENT "
+        "reply is any affirmation in any of the 5 supported languages "
+        "('Yes' / 'Yeah' / 'OK' / 'Sure' / 'Correct' / 'sí' / 'claro' / "
+        "'네' / '예' / '맞아요' / '是' / '对' / '好' / 'はい' / 'そうです'), "
+        "you MUST call the matching tool on this very turn — NEVER reply "
+        "with text alone. Map: 'Confirming reservation...' → make_reservation; "
+        "'updating ... reservation' → modify_reservation; 'cancel ... reservation' "
+        "→ cancel_reservation; 'Confirming N items for NAME' → create_order; "
+        "'updated order' → modify_order; 'cancel your order' → cancel_order. "
+        "Set user_explicit_confirmation=true. A silent (text-only) response "
+        "after a yes is a BUG that strands the customer with no committed action.\n"
+        "Violations of I1/I2/I3/I4 ship wrong food, wrong charges, wrong "
+        "promises, or stranded reservations. They are non-negotiable.\n\n"
         "=== RULES (non-negotiable) ===\n"
         "1. BREVITY: 1-2 short sentences per reply. Voice only — no markdown, no lists, no upsells.\n"
-        "2. LANGUAGES: English and Spanish only. Reply in the language of the customer's CURRENT "
-        "message. Short fillers ('Yes', 'No', 'Okay', 'Thanks') are ENGLISH — switch back instantly. "
-        "If the customer speaks anything else, briefly apologize in their language and offer English or Spanish.\n"
+        "2. LANGUAGES: English (default), Spanish, Korean (한국어), Mandarin Chinese (中文), Japanese (日本語). "
+        "Reply in the language of the customer's CURRENT message. The first turn is English unless the customer "
+        "opens in another supported language. If the customer switches language mid-call, switch with them on "
+        "their VERY NEXT reply — do not ask permission. Short fillers ('Yes', 'No', 'Okay', 'Thanks', 'sí', "
+        "'네', '是', 'はい') are language-neutral — keep the conversation language you were just using; do not "
+        "switch on a single filler. If the customer speaks any language outside this set (e.g. French, German, "
+        "Vietnamese), briefly apologize in their language and offer to continue in English, Spanish, Korean, "
+        "Chinese, or Japanese. NEVER mix two languages within ONE sentence — if you must hand off proper nouns "
+        "(menu items, names, addresses), keep them as the customer pronounced them but wrap the surrounding "
+        "sentence entirely in the active language.\n"
         "3. UNCLEAR / SILENT: Stay in YOUR previous language and say 'Sorry, could you repeat that?'. "
         "Never switch language on an empty turn.\n"
         "4. RESERVATIONS — make_reservation / modify_reservation: "
@@ -434,7 +456,16 @@ def build_system_prompt(store: dict) -> str:
         "to make sure we get this exactly right — let me connect you with our manager who can verify "
         "directly with the kitchen. One moment please.' Then stop. Even our curated data carries "
         "trace-amount and cross-contamination uncertainty that is not safe to communicate for "
-        "severe cases."
+        "severe cases.\n"
+        "13. ORDER RECALL (recall_order): When the customer asks about the current order state "
+        "mid-call ('what's my order', 'my order info', 'did you send it', 'is it confirmed', "
+        "'how much was it', 'the total'), call recall_order with NO arguments. NEVER answer "
+        "from your own memory and NEVER claim there is no order — recall_order is the only "
+        "source of truth for in-call order state. Read the tool's 'message' field VERBATIM. "
+        "Do NOT call this tool reflexively right after a successful create_order or "
+        "modify_order — those have their own confirmation copy. Live trigger: "
+        "call_7d7ef130 T25-T26 — bot answered 'no active order' even though session held a "
+        "pending pay_first order; this rule + tool eliminate that hallucination class."
     )
 
     return "\n\n".join(parts)
@@ -461,13 +492,25 @@ def format_transcript(transcript: list[dict]) -> str:
 
 
 # Affirmation tokens that trigger forced tool-call mode after a "Confirming…"
-# recital. Lowercase + punctuation-stripped match. Covers EN + ES.
-# (확정 토큰 — 영어 + 스페인어; 정확한 yes-class 발화에만 매칭)
+# recital. Lowercase + punctuation-stripped match.
+# Covers EN, ES, KO (한국어), ZH (中文), JA (日本語) — Phase 2-D 5-language support.
+# (확정 토큰 — 영어/스페인어/한국어/중국어/일본어; 정확한 yes-class 발화에만 매칭)
 _AFFIRMATION_TOKENS = {
+    # English
     "yes", "yeah", "yep", "yup", "sure", "correct", "right",
     "that's right", "thats right", "that's correct", "thats correct",
     "ok", "okay", "go ahead", "do it", "confirm", "confirmed",
+    # Spanish
     "sí", "si", "claro", "correcto", "está bien", "esta bien",
+    # Korean — 네/예/맞아요/맞습니다/좋아요/좋습니다 + romanizations from STT
+    "네", "예", "맞아요", "맞습니다", "좋아요", "좋습니다", "그래요", "그렇습니다",
+    "ne", "ye", "majayo", "majsupnida", "joayo",
+    # Mandarin Chinese — 是/对/好/可以 + Pinyin
+    "是", "对", "好", "可以", "没问题", "好的",
+    "shì", "shi", "duì", "dui", "hǎo", "hao", "kěyǐ", "keyi",
+    # Japanese — はい/そうです/大丈夫/お願いします + romaji
+    "はい", "そうです", "大丈夫", "お願いします", "了解",
+    "hai", "sou desu", "soudesu", "daijoubu", "onegaishimasu", "ryoukai",
 }
 
 # Phrases the assistant uses right before a tool call. If the assistant's
@@ -1150,6 +1193,7 @@ async def _stream_gemini_response(
             MODIFY_ORDER_TOOL_DEF,
             CANCEL_ORDER_TOOL_DEF,
             ALLERGEN_LOOKUP_TOOL_DEF,        # Phase 2-C.B5
+            RECALL_ORDER_TOOL_DEF,           # Phase 2-C.B6
         ]
         if force_tool_use:
             kwargs["tool_config"] = {
@@ -2099,6 +2143,27 @@ async def _stream_gemini_response(
                 "message":      script,
                 "error":        "",
             }
+    elif tool_name == "recall_order":
+        # Phase 2-C.B6 — read-only order recap from session snapshot.
+        # Live trigger: call_7d7ef130 T25-T26 — without this tool, the
+        # bot hallucinated "no active order" even though session held
+        # a pending pay_first order. No bridge call, no DB lookup —
+        # the snapshot is the source of truth.
+        # (B6 — session 스냅샷 그대로 노출. bridge/DB 콜 없음)
+        snap_items = (session or {}).get("last_order_items") or []
+        snap_total = int((session or {}).get("last_order_total") or 0)
+        recap_msg, recap_reason = render_recall_message(
+            items       = snap_items,
+            total_cents = snap_total,
+        )
+        _mon("RECALL ORDER reason=%s items=%d total_cents=%d",
+             recap_reason, len(snap_items), snap_total)
+        result = {
+            "success": True,
+            "reason":  recap_reason,
+            "message": recap_msg,
+            "error":   "",
+        }
     else:
         result = {"success": False, "error": f"unsupported tool: {tool_name}"}
 

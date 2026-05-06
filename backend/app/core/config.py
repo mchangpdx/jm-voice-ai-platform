@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     retell_api_key: str = ""     # Bearer token for Retell REST API (Retell REST API용 Bearer 토큰)
     retell_api_url: str = "https://api.retellai.com"  # No /v2 prefix for agent endpoints (/v2 없음)
 
+    # OpenAI Realtime API — Phase 2-D 마이그레이션 (gpt-realtime-1.5 / mini)
+    openai_api_key:         str = ""   # sk-proj-... — used by app/api/realtime_voice.py
+    openai_realtime_model:  str = "gpt-realtime-mini"   # Phase 2 default; Phase 5 → gpt-realtime-1.5
+    openai_realtime_voice:  str = "marin"
+
     # Twilio SMS — post-event customer notifications (Twilio SMS — 이벤트 후 고객 알림)
     twilio_account_sid:           str = ""   # Twilio Account SID (AC...)
     twilio_auth_token:            str = ""   # Twilio Auth Token
