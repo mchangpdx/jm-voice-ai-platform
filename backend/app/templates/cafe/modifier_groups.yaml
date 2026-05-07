@@ -1,0 +1,122 @@
+# Cafe vertical — modifier groups (8 groups).
+# (Cafe vertical modifier 그룹 — 8개)
+#
+# Schema:
+#   id            — group code, referenced from menu.yaml items
+#   required      — true means at least 1 must be selected
+#   min/max       — selection range
+#   options[]     — each with id, en label, price_delta, allergen_add/remove
+#   applies_to    — optional: list of item categories or ids this group applies to
+#
+# Allergen dynamics:
+#   When a customer applies a modifier (e.g. oat milk on a Latte), the
+#   item's effective allergen set = base_allergens
+#                                  + ∪(option.allergen_add)
+#                                  − ∪(option.allergen_remove)
+#   The voice agent's allergen_lookup tool should use the effective set,
+#   not the base set, once Phase 7-A modifier dispatch lands.
+
+groups:
+  # ── Group 1: Size (Required for sized items) ────────────────────────────────
+  size:
+    required: true
+    min: 1
+    max: 1
+    options:
+      - {id: small,  en: "12oz",   ko: "스몰",   ja: "Sサイズ",  zh: "小杯",  es: "Pequeño",   price_delta: 0.00}
+      - {id: medium, en: "16oz",   ko: "미디엄", ja: "Mサイズ",  zh: "中杯",  es: "Mediano",   price_delta: 0.50}
+      - {id: large,  en: "20oz",   ko: "라지",   ja: "Lサイズ",  zh: "大杯",  es: "Grande",    price_delta: 1.00}
+      - {id: single, en: "Single", ko: "싱글",   ja: "シングル", zh: "单份",  es: "Sencillo",  price_delta: 0.00}
+
+  # ── Group 2: Temperature ────────────────────────────────────────────────────
+  temperature:
+    required: true
+    min: 1
+    max: 1
+    options:
+      - {id: hot,     en: "Hot",     ko: "핫",     ja: "ホット",  zh: "热",     es: "Caliente", price_delta: 0.00}
+      - {id: iced,    en: "Iced",    ko: "아이스", ja: "アイス",  zh: "冰",     es: "Frío",     price_delta: 0.00}
+      - {id: blended, en: "Blended", ko: "프라페", ja: "ブレンド", zh: "冰沙",   es: "Frappé",   price_delta: 0.75, allergen_add: [dairy]}
+
+  # ── Group 3: Milk (REQUIRED for milk drinks) ────────────────────────────────
+  # Critical food-safety: oat → +gluten/+wheat ; almond → +nuts ; soy → +soy
+  milk:
+    required: true
+    min: 1
+    max: 1
+    options:
+      - {id: whole,    en: "Whole milk",    ko: "일반 우유",  ja: "ホールミルク",  zh: "全脂奶", es: "Leche entera",   price_delta: 0.00, allergen_add: [dairy]}
+      - {id: two_pct,  en: "2% milk",       ko: "저지방 우유", ja: "2%ミルク",     zh: "2%奶",   es: "Leche al 2%",    price_delta: 0.00, allergen_add: [dairy]}
+      - {id: skim,     en: "Skim milk",     ko: "무지방 우유", ja: "スキムミルク", zh: "脱脂奶", es: "Leche descremada", price_delta: 0.00, allergen_add: [dairy]}
+      - {id: oat,      en: "Oat milk",      ko: "오트 우유",  ja: "オーツミルク", zh: "燕麦奶", es: "Leche de avena", price_delta: 0.75, allergen_add: [gluten, wheat], allergen_remove: [dairy]}
+      - {id: almond,   en: "Almond milk",   ko: "아몬드 우유", ja: "アーモンドミルク", zh: "杏仁奶", es: "Leche de almendra", price_delta: 0.75, allergen_add: [nuts], allergen_remove: [dairy]}
+      - {id: soy,      en: "Soy milk",      ko: "두유",       ja: "豆乳",         zh: "豆奶",   es: "Leche de soya",  price_delta: 0.75, allergen_add: [soy], allergen_remove: [dairy]}
+      - {id: coconut,  en: "Coconut milk",  ko: "코코넛 우유", ja: "ココナッツミルク", zh: "椰奶", es: "Leche de coco",  price_delta: 0.75, allergen_remove: [dairy]}
+
+  # ── Group 4: Milk (OPTIONAL for non-milk drinks like Drip/Americano/Cold Brew)
+  # Same options as `milk` group but min:0 — customer may decline cream entirely.
+  milk_optional:
+    required: false
+    min: 0
+    max: 1
+    options:
+      - {id: whole,   en: "Whole milk",   price_delta: 0.00, allergen_add: [dairy]}
+      - {id: two_pct, en: "2% milk",      price_delta: 0.00, allergen_add: [dairy]}
+      - {id: skim,    en: "Skim milk",    price_delta: 0.00, allergen_add: [dairy]}
+      - {id: oat,     en: "Oat milk",     price_delta: 0.75, allergen_add: [gluten, wheat]}
+      - {id: almond,  en: "Almond milk",  price_delta: 0.75, allergen_add: [nuts]}
+      - {id: soy,     en: "Soy milk",     price_delta: 0.75, allergen_add: [soy]}
+      - {id: coconut, en: "Coconut milk", price_delta: 0.75}
+
+  # ── Group 5: Espresso shots (Optional, additive) ────────────────────────────
+  shots:
+    required: false
+    min: 0
+    max: 2
+    options:
+      - {id: plus_one, en: "+1 shot",  ko: "샷 추가",   ja: "ショット追加",   zh: "加一份", es: "+1 toma", price_delta: 1.00}
+      - {id: plus_two, en: "+2 shots", ko: "샷 2개 추가", ja: "ショット2追加", zh: "加两份", es: "+2 tomas", price_delta: 2.00}
+
+  # ── Group 6: Sweetener / Syrup (Optional, multi up to 3) ────────────────────
+  syrup:
+    required: false
+    min: 0
+    max: 3
+    options:
+      - {id: vanilla,         en: "Vanilla",          ko: "바닐라",   ja: "バニラ",    zh: "香草",    es: "Vainilla",  price_delta: 0.75}
+      - {id: hazelnut,        en: "Hazelnut",         ko: "헤이즐넛", ja: "ヘーゼルナッツ", zh: "榛果", es: "Avellana", price_delta: 0.75, allergen_add: [nuts]}
+      - {id: caramel,         en: "Caramel",          ko: "카라멜",   ja: "キャラメル", zh: "焦糖",   es: "Caramelo",  price_delta: 0.75, allergen_add: [dairy]}
+      - {id: lavender,        en: "Lavender",         ko: "라벤더",   ja: "ラベンダー", zh: "薰衣草", es: "Lavanda",   price_delta: 0.75}
+      - {id: vanilla_sf,      en: "Sugar-free Vanilla", ko: "무설탕 바닐라", price_delta: 0.75}
+      - {id: brown_sugar,     en: "Brown sugar",      ko: "흑설탕",   ja: "黒糖",      zh: "红糖",   es: "Azúcar morena", price_delta: 0.50}
+      - {id: honey,           en: "Honey",            ko: "꿀",       ja: "蜂蜜",      zh: "蜂蜜",   es: "Miel",        price_delta: 0.50}
+
+  # ── Group 7: Strength ───────────────────────────────────────────────────────
+  strength:
+    required: false
+    min: 0
+    max: 1
+    options:
+      - {id: regular,  en: "Regular",  ko: "레귤러",     ja: "レギュラー", zh: "普通",   es: "Regular",     price_delta: 0.00}
+      - {id: decaf,    en: "Decaf",    ko: "디카페인",   ja: "デカフェ",  zh: "低咖啡因", es: "Descafeinado", price_delta: 0.00}
+      - {id: half_caf, en: "Half-caf", ko: "하프 카페인", ja: "ハーフカフェ", zh: "半咖啡因", es: "Mitad cafeína", price_delta: 0.00}
+
+  # ── Group 8: Foam / Texture ─────────────────────────────────────────────────
+  foam:
+    required: false
+    min: 0
+    max: 1
+    options:
+      - {id: regular,    en: "Regular foam",         ko: "거품 보통", price_delta: 0.00}
+      - {id: dry,        en: "Extra foam (dry)",     ko: "거품 많이", price_delta: 0.00}
+      - {id: wet,        en: "Light foam (wet)",     ko: "거품 적게", price_delta: 0.00}
+      - {id: no_foam,    en: "No foam",              ko: "거품 없이", price_delta: 0.00}
+
+  # ── Group 9: Whipped cream ──────────────────────────────────────────────────
+  whip:
+    required: false
+    min: 0
+    max: 1
+    options:
+      - {id: with_whip, en: "With whip", ko: "휘핑크림",   ja: "ホイップ追加", zh: "加奶油", es: "Con crema",   price_delta: 0.00, allergen_add: [dairy]}
+      - {id: no_whip,   en: "No whip",   ko: "휘핑크림 빼기", ja: "ホイップなし", zh: "不要奶油", es: "Sin crema", price_delta: 0.00}

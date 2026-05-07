@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.core.config import settings
 from app.services.menu.inventory import apply_inventory_levels
 from app.services.menu.sync import sync_menu_from_pos
+from app.services.sync.freeze import is_blocked, is_globally_frozen
 
 log = logging.getLogger(__name__)
 
@@ -97,9 +98,21 @@ async def loyverse_items_webhook(request: Request) -> dict[str, Any]:
         body = {}
     n_items = len(body.get("items", []) or []) if isinstance(body, dict) else 0
 
+    # Phase 7-A — sync freeze: ignore the webhook (still return 200 so Loyverse
+    # stops retrying) when an onboarding/migration window is active. Avoids
+    # touching the upstream webhook registration which is known-unreliable.
+    # (Loyverse webhook 등록 그대로 보존 + freeze 모드에서는 200만 반환하고 sync skip)
+    if is_globally_frozen():
+        log.warning("[FROZEN] items webhook skipped (n_items=%d)", n_items)
+        return {"received": True, "items": n_items, "skipped": "frozen"}
+
     store_ids = await _find_loyverse_store_ids()
     refreshed: list[dict[str, Any]] = []
     for sid in store_ids:
+        if is_blocked(sid):
+            log.warning("[FROZEN] items webhook skipped for store=%s", sid)
+            refreshed.append({"store_id": sid, "skipped": "frozen"})
+            continue
         try:
             res = await sync_menu_from_pos(sid)
             refreshed.append({"store_id": sid, **res})
@@ -157,6 +170,12 @@ async def loyverse_inventory_webhook(request: Request) -> dict[str, Any]:
         levels = body
     else:
         levels = []
+
+    # Phase 7-A — sync freeze: same pattern as items webhook.
+    # (메뉴 webhook과 동일 freeze 패턴 — onboarding 윈도우 동안 무시)
+    if is_globally_frozen():
+        log.warning("[FROZEN] inventory webhook skipped (n_levels=%d)", len(levels))
+        return {"received": True, "applied": 0, "skipped": "frozen"}
 
     result = await apply_inventory_levels(levels)
     return result

@@ -1,0 +1,78 @@
+{
+  "fetched_at": "2026-05-07T17:26:50.491116+00:00",
+  "loyverse_account": "JM Cafe (per LOYVERSE_API_KEY scope)",
+  "count": 7,
+  "webhooks": [
+    {
+      "id": "e7b393ba-afad-488f-8be4-ac75886df467",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/item",
+      "type": "items.update",
+      "status": "ENABLED",
+      "created_at": "2026-04-29T06:31:42.000Z",
+      "updated_at": "2026-04-29T06:31:41.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "c213a2f2-fb2a-497d-b2d8-1c1c41767590",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/inventory",
+      "type": "inventory_levels.update",
+      "status": "ENABLED",
+      "created_at": "2026-04-29T06:27:54.000Z",
+      "updated_at": "2026-04-29T06:27:54.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "7127bab2-6644-4aea-afd9-f321def1b97c",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/customers",
+      "type": "customers.update",
+      "status": "ENABLED",
+      "created_at": "2026-04-29T06:20:45.000Z",
+      "updated_at": "2026-04-29T06:20:45.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "81bc78db-996a-473f-94fb-d6059557a4a0",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/inventory_levels",
+      "type": "inventory_levels.update",
+      "status": "DISABLED",
+      "created_at": "2026-02-25T19:27:56.000Z",
+      "updated_at": "2026-03-06T11:11:34.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "1d6bd12a-542d-460c-9695-694cb8e5fbfa",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/receipts",
+      "type": "receipts.update",
+      "status": "DISABLED",
+      "created_at": "2026-02-25T19:27:55.000Z",
+      "updated_at": "2026-03-06T20:17:40.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "bdc7d475-e933-4e8e-a1f0-8df3b04d07a2",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://bipectinate-cheerily-akilah.ngrok-free.dev/api/webhooks/loyverse/items",
+      "type": "items.update",
+      "status": "DISABLED",
+      "created_at": "2026-02-25T18:34:30.000Z",
+      "updated_at": "2026-03-11T02:04:37.000Z",
+      "deleted_at": null
+    },
+    {
+      "id": "fe88bf6a-664a-4f1a-bb05-0f1c3e9da601",
+      "merchant_id": "48e02b1b-b313-4343-a761-e6427c77cfb4",
+      "url": "https://jm-guard-middleware.onrender.com/webhook/loyverse",
+      "type": "receipts.update",
+      "status": "ENABLED",
+      "created_at": "2026-02-13T09:53:46.000Z",
+      "updated_at": "2026-02-13T09:53:46.000Z",
+      "deleted_at": null
+    }
+  ],
+  "note": "Permanent backup. If webhook accidentally deleted, recreate via POST /webhooks with same {type, url} pair. Loyverse may reject duplicates — wait a few minutes between DELETE and POST."
+}

@@ -1,0 +1,106 @@
+# Cafe vertical — allergen auto-inference rules.
+# (Cafe vertical 알러젠 자동 추론 규칙 — Phase 7-A AI helper용)
+#
+# Used by `app/services/onboarding/ai_helper.py:infer_allergens()` to
+# pre-fill allergens during new-store menu import. Operator reviews and
+# confirms in Admin UI Wizard before activation.
+#
+# Rules are FDA-9 aligned + cafe-specific patterns (oat=gluten/wheat,
+# almond=nuts, etc). Pattern matching is case-insensitive substring.
+
+# ── Pattern → allergen-add rules ─────────────────────────────────────────────
+patterns:
+  # Wheat / gluten sources (cafe pastries, breads, sandwiches)
+  - keywords: [croissant, bagel, muffin, scone, cake, cookie, brownie,
+               bread, sandwich, toast, roll, pastry, pretzel,
+               waffle, pancake, donut, doughnut, biscuit, cupcake,
+               quiche, crepe, puff, danish, baguette]
+    add_allergens: [gluten, wheat]
+    confidence: 0.95
+    reason: "Wheat-flour-based bakery item"
+
+  # Tree nuts
+  - keywords: [almond, hazelnut, walnut, pecan, pistachio, cashew,
+               macadamia, brazil nut, pine nut]
+    add_allergens: [nuts]
+    confidence: 0.97
+    reason: "Tree nut explicitly named"
+
+  # Peanuts (FDA distinct from tree nuts)
+  - keywords: [peanut, "peanut butter", pb&j]
+    add_allergens: [peanuts]
+    confidence: 0.97
+    reason: "Peanut explicitly named"
+
+  # Dairy
+  - keywords: [milk, cream, cheese, butter, yogurt, whey, lactose,
+               latte, cappuccino, mocha, frappe, frappé, chai latte,
+               matcha latte, hot chocolate]
+    add_allergens: [dairy]
+    confidence: 0.92
+    reason: "Dairy ingredient or milk-based drink"
+
+  # Egg
+  - keywords: [egg, omelet, omelette, frittata, quiche, "egg sandwich",
+               custard, meringue, hollandaise]
+    add_allergens: [egg]
+    confidence: 0.95
+    reason: "Egg ingredient or egg-based dish"
+
+  # Oat (technically gluten-free grain BUT typically processed with wheat
+  # in non-certified facilities → conservatively flag gluten + wheat)
+  - keywords: [oat, oatmeal, granola]
+    add_allergens: [gluten, wheat]
+    confidence: 0.85
+    reason: "Oat shares facilities with wheat in most operations — flag conservatively"
+
+  # Soy
+  - keywords: [soy, tofu, edamame, soybean]
+    add_allergens: [soy]
+    confidence: 0.95
+    reason: "Soy ingredient"
+
+  # Sesame (FDA-9 since 2023)
+  - keywords: [sesame, tahini]
+    add_allergens: [sesame]
+    confidence: 0.95
+    reason: "Sesame ingredient"
+
+  # Fish / shellfish (rare in cafe but possible — bagel + lox, salmon toast)
+  - keywords: [salmon, tuna, lox, anchovy, fish, sardine]
+    add_allergens: [fish]
+    confidence: 0.95
+  - keywords: [shrimp, lobster, crab, scallop, oyster, clam, mussel]
+    add_allergens: [shellfish]
+    confidence: 0.95
+
+
+# ── Reverse rules (dietary tags inferred from absence) ───────────────────────
+# Used when allergens list is finalized to auto-suggest dietary_tags.
+dietary_inference:
+  - if_absent: [dairy]
+    suggest: [dairy_free]
+    confidence: 0.90
+  - if_absent: [gluten, wheat]
+    suggest: [gluten_free]
+    confidence: 0.85
+  - if_absent: [nuts, peanuts]
+    suggest: [nut_free]
+    confidence: 0.92
+  - if_absent: [dairy, egg]
+    suggest: [vegan]   # not enough alone — needs all animal absence
+    confidence: 0.50   # require operator manual confirmation
+
+
+# ── Confidence thresholds for UI ─────────────────────────────────────────────
+ui_thresholds:
+  auto_check: 0.90    # Confidence ≥ 0.90 → auto-checked (operator reviews)
+  warning:    0.80    # 0.80 ≤ conf < 0.90 → ⚠️ icon, suggested but unchecked
+  hint_only:  0.60    # 0.60 ≤ conf < 0.80 → "AI suggests" hint, unchecked
+
+
+# ── Override hints (operator-side) ───────────────────────────────────────────
+operator_hints:
+  - text: "Cross-contamination not yet captured here. Mark items 'allergen_unknown' if your kitchen shares prep surfaces with allergen-containing items."
+  - text: "Hidden allergens to verify: caramel sauce (dairy), some chocolate (soy lecithin), brioche egg wash, almond extract."
+  - text: "FDA-9 list (2026): milk, eggs, fish, crustacean shellfish, tree nuts, peanuts, wheat, soybeans, sesame."

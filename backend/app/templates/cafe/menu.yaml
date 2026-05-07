@@ -1,0 +1,371 @@
+# Cafe vertical — default menu template (25 items).
+# (Cafe vertical default 메뉴 템플릿 — 25개 아이템)
+#
+# Source: JM Cafe production catalog (2026-05-07 redesign).
+# Pattern: PDX fast-casual cafes (Stumptown / Coava / Heart-style).
+# Customization: Operator adjusts prices + adds house specials via
+# Admin UI Wizard. Allergens are FDA-9 aligned with "wheat" + "peanuts"
+# (added Phase 5 #8 fix).
+#
+# Schema notes:
+# - base_price = 12oz / Small (base for size deltas in modifier_groups.yaml)
+# - sizes = applicable size codes (omitted for non-sized items like pastries)
+# - base_allergens = allergens present in the base recipe (modifier add/remove
+#   layered at runtime — see modifier_groups.yaml allergen_add/remove)
+
+vertical: cafe
+default_lang: en
+supported_langs: [en, es, ko, ja, zh]
+
+categories:
+  - id: espresso
+    en: Espresso Drinks
+    es: Bebidas de Espresso
+    ko: 에스프레소
+    ja: エスプレッソ
+    zh: 浓缩咖啡饮品
+  - id: non_espresso
+    en: Non-Espresso Drinks
+    es: Bebidas sin Espresso
+    ko: 논에스프레소
+    ja: ノンエスプレッソ
+    zh: 非浓缩咖啡
+  - id: pastry
+    en: Pastries
+    es: Pastelería
+    ko: 페이스트리
+    ja: ペストリー
+    zh: 糕点
+  - id: food
+    en: Food
+    es: Comida
+    ko: 식사
+    ja: フード
+    zh: 餐食
+  - id: dessert
+    en: Desserts
+    es: Postres
+    ko: 디저트
+    ja: デザート
+    zh: 甜点
+
+items:
+  # ─────────── Espresso (8) ───────────
+  - id: drip_coffee
+    en: Drip Coffee
+    es: Café de filtro
+    ko: 드립 커피
+    ja: ドリップコーヒー
+    zh: 滴漏咖啡
+    category: espresso
+    base_price: 3.25
+    sizes: [small, medium, large]
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: [size, temperature, milk_optional, syrup, strength]
+
+  - id: americano
+    en: Americano
+    es: Americano
+    ko: 아메리카노
+    ja: アメリカーノ
+    zh: 美式咖啡
+    category: espresso
+    base_price: 3.75
+    sizes: [small, medium, large]
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: [size, temperature, milk_optional, shots, syrup, strength]
+
+  - id: espresso_single
+    en: Espresso
+    es: Espresso
+    ko: 에스프레소
+    ja: エスプレッソ
+    zh: 浓缩咖啡
+    category: espresso
+    base_price: 3.25
+    sizes: [single]
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: [strength]
+
+  - id: macchiato
+    en: Macchiato
+    es: Macchiato
+    ko: 마키아토
+    ja: マキアート
+    zh: 玛奇朵
+    category: espresso
+    base_price: 4.25
+    sizes: [small, medium]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, shots, syrup, strength, foam]
+
+  - id: cappuccino
+    en: Cappuccino
+    es: Capuchino
+    ko: 카푸치노
+    ja: カプチーノ
+    zh: 卡布奇诺
+    category: espresso
+    base_price: 5.00
+    sizes: [small, medium]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, shots, syrup, strength, foam]
+
+  - id: cafe_latte
+    en: Cafe Latte
+    es: Café con leche
+    ko: 카페 라떼
+    ja: カフェラテ
+    zh: 拿铁
+    category: espresso
+    base_price: 5.50
+    sizes: [small, medium, large]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, shots, syrup, strength, foam]
+
+  - id: mocha
+    en: Mocha
+    es: Moca
+    ko: 모카
+    ja: モカ
+    zh: 摩卡
+    category: espresso
+    base_price: 5.75
+    sizes: [small, medium, large]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, shots, syrup, strength, foam, whip]
+
+  - id: flat_white
+    en: Flat White
+    es: Flat White
+    ko: 플랫 화이트
+    ja: フラットホワイト
+    zh: 馥芮白
+    category: espresso
+    base_price: 5.50
+    sizes: [small, medium]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, shots, syrup, strength]
+
+  # ─────────── Non-Espresso (5) ───────────
+  - id: cold_brew
+    en: Cold Brew
+    es: Café frío
+    ko: 콜드 브루
+    ja: コールドブリュー
+    zh: 冷萃咖啡
+    category: non_espresso
+    base_price: 5.00
+    sizes: [small, medium, large]
+    temperature_default: iced
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: [size, milk_optional, syrup, strength]
+
+  - id: iced_tea
+    en: Iced Tea
+    es: Té helado
+    ko: 아이스 티
+    ja: アイスティー
+    zh: 冰茶
+    category: non_espresso
+    base_price: 3.75
+    sizes: [small, medium, large]
+    temperature_default: iced
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: [size, syrup]
+
+  - id: matcha_latte
+    en: Matcha Latte
+    es: Té matcha latte
+    ko: 말차 라떼
+    ja: 抹茶ラテ
+    zh: 抹茶拿铁
+    category: non_espresso
+    base_price: 5.75
+    sizes: [small, medium, large]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, syrup, foam, whip]
+
+  - id: chai_latte
+    en: Chai Latte
+    es: Té chai latte
+    ko: 차이 라떼
+    ja: チャイラテ
+    zh: 印度奶茶
+    category: non_espresso
+    base_price: 5.50
+    sizes: [small, medium, large]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, syrup, foam, whip]
+
+  - id: hot_chocolate
+    en: Hot Chocolate
+    es: Chocolate caliente
+    ko: 핫 초콜릿
+    ja: ホットチョコレート
+    zh: 热巧克力
+    category: non_espresso
+    base_price: 4.75
+    sizes: [small, medium, large]
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: [size, temperature, milk, syrup, foam, whip]
+
+  # ─────────── Pastry (6) ───────────
+  - id: croissant
+    en: Croissant
+    es: Croissant
+    ko: 크루아상
+    ja: クロワッサン
+    zh: 牛角面包
+    category: pastry
+    base_price: 4.50
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: almond_croissant
+    en: Almond Croissant
+    es: Croissant de almendra
+    ko: 아몬드 크루아상
+    ja: アーモンドクロワッサン
+    zh: 杏仁牛角面包
+    category: pastry
+    base_price: 5.50
+    base_allergens: [gluten, wheat, dairy, egg, nuts]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: pain_au_chocolat
+    en: Pain au Chocolat
+    es: Pan de chocolate
+    ko: 팽 오 쇼콜라
+    ja: パン・オ・ショコラ
+    zh: 巧克力面包
+    category: pastry
+    base_price: 5.00
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: blueberry_muffin
+    en: Blueberry Muffin
+    es: Muffin de arándano
+    ko: 블루베리 머핀
+    ja: ブルーベリーマフィン
+    zh: 蓝莓松饼
+    category: pastry
+    base_price: 4.25
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: cinnamon_roll
+    en: Cinnamon Roll
+    es: Rollo de canela
+    ko: 시나몬 롤
+    ja: シナモンロール
+    zh: 肉桂卷
+    category: pastry
+    base_price: 4.75
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: bagel_cream_cheese
+    en: Plain Bagel + Cream Cheese
+    es: Bagel con queso crema
+    ko: 베이글 + 크림치즈
+    ja: プレーンベーグル クリームチーズ
+    zh: 原味百吉饼 奶油芝士
+    category: pastry
+    base_price: 5.00
+    base_allergens: [gluten, wheat, dairy]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  # ─────────── Food (4) ───────────
+  - id: avocado_toast
+    en: Avocado Toast
+    es: Tostada de aguacate
+    ko: 아보카도 토스트
+    ja: アボカドトースト
+    zh: 牛油果吐司
+    category: food
+    base_price: 9.50
+    base_allergens: [gluten, wheat]
+    base_dietary: [vegan, vegetarian, nut_free, dairy_free]
+    modifier_groups: []
+
+  - id: breakfast_sandwich
+    en: Breakfast Sandwich
+    es: Sándwich de desayuno
+    ko: 브렉퍼스트 샌드위치
+    ja: ブレックファストサンドイッチ
+    zh: 早餐三明治
+    category: food
+    base_price: 8.50
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: yogurt_parfait
+    en: Yogurt Parfait
+    es: Parfait de yogur
+    ko: 요거트 파르페
+    ja: ヨーグルトパフェ
+    zh: 酸奶水果杯
+    category: food
+    base_price: 6.75
+    base_allergens: [dairy, nuts]
+    base_dietary: [vegetarian, gluten_free]
+    modifier_groups: []
+
+  - id: quiche_lorraine
+    en: Quiche Lorraine
+    es: Quiche Lorraine
+    ko: 키쉬 로렌
+    ja: キッシュ・ロレーヌ
+    zh: 洛林蛋挞
+    category: food
+    base_price: 7.50
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  # ─────────── Dessert (2) ───────────
+  - id: chocolate_chip_cookie
+    en: Chocolate Chip Cookie
+    es: Galleta con chispas de chocolate
+    ko: 초콜릿 칩 쿠키
+    ja: チョコレートチップクッキー
+    zh: 巧克力曲奇
+    category: dessert
+    base_price: 3.50
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
+
+  - id: brownie
+    en: Brownie
+    es: Brownie
+    ko: 브라우니
+    ja: ブラウニー
+    zh: 布朗尼
+    category: dessert
+    base_price: 4.00
+    base_allergens: [gluten, wheat, dairy, egg]
+    base_dietary: [vegetarian, nut_free]
+    modifier_groups: []
