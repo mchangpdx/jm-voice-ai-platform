@@ -251,3 +251,153 @@ async def test_t13_wheat_explicit_marker_returns_present():
             allergen        = "wheat",
         )
     assert result["ai_script_hint"] == "allergen_present"
+
+
+# ── T14–T18: Phase 7-A.B — selected_modifiers integration ────────────────────
+# Live trigger: 2026-05-07 call CA90b88e... — caller asked "does the oat milk
+# latte have wheat?" while we had Cafe Latte (dairy) + oat milk (+gluten +wheat
+# -dairy) in DB but no way to combine them at query time. With these tests,
+# the LLM can pass selected_modifiers=[{group:milk,option:oat}] alongside
+# menu_item_name='Cafe Latte' and the tool computes the effective profile.
+
+def _patched_get_multi(responses):
+    """Mock that serves a sequence of GETs with different bodies.
+    `responses` is a list of (status, json_body) tuples in call order.
+    """
+    aiter = iter(responses)
+    async def _next_get(*args, **kwargs):
+        status, body = next(aiter)
+        r = AsyncMock()
+        r.status_code = status
+        r.json = lambda: body
+        return r
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__  = AsyncMock(return_value=False)
+    client.get = _next_get
+    return client
+
+
+def _jm_cafe_modifier_groups():
+    return [
+        {"id": "g-milk", "store_id": _STORE_ID, "code": "milk",
+         "display_name": "Milk", "is_required": True, "min_select": 1,
+         "max_select": 1, "sort_order": 3},
+        {"id": "g-temp", "store_id": _STORE_ID, "code": "temperature",
+         "display_name": "Temperature", "is_required": True, "min_select": 1,
+         "max_select": 1, "sort_order": 2},
+    ]
+
+
+def _jm_cafe_modifier_options():
+    return [
+        {"id": "o-oat", "group_id": "g-milk", "code": "oat",
+         "display_name": "Oat milk", "price_delta": 0.75,
+         "allergen_add": ["gluten", "wheat"], "allergen_remove": ["dairy"],
+         "sort_order": 4, "is_default": False, "is_available": True},
+        {"id": "o-almond", "group_id": "g-milk", "code": "almond",
+         "display_name": "Almond milk", "price_delta": 0.75,
+         "allergen_add": ["nuts"], "allergen_remove": ["dairy"],
+         "sort_order": 5, "is_default": False, "is_available": True},
+        {"id": "o-iced", "group_id": "g-temp", "code": "iced",
+         "display_name": "Iced", "price_delta": 0.0,
+         "allergen_add": [], "allergen_remove": [],
+         "sort_order": 2, "is_default": False, "is_available": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_t14_oat_milk_on_cafe_latte_makes_wheat_present():
+    """The exact case from CA90b88e... — caller asked 'oat milk latte have wheat?'.
+    With selected_modifiers, lookup must compute effective allergens and answer
+    PRESENT (oat milk adds gluten+wheat to the Cafe Latte base)."""
+    client = _patched_get_multi([
+        (200, _jm_cafe_rows()),                      # menu_items
+        (200, _jm_cafe_modifier_groups()),           # modifier_groups
+        (200, _jm_cafe_modifier_options()),          # modifier_options
+    ])
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id           = _STORE_ID,
+            menu_item_name     = "Cafe Latte",
+            allergen           = "wheat",
+            selected_modifiers = [{"group": "milk", "option": "oat"}],
+        )
+    assert result["ai_script_hint"] == "allergen_present"
+    # Returned allergens must reflect the effective profile, not the base.
+    assert "wheat" in result["allergens"]
+    assert "gluten" in result["allergens"]
+    assert "dairy" not in result["allergens"]
+
+
+@pytest.mark.asyncio
+async def test_t15_almond_milk_makes_dairy_absent():
+    """Almond milk replaces dairy with nuts — dairy query → absent, nuts → present."""
+    client = _patched_get_multi([
+        (200, _jm_cafe_rows()),
+        (200, _jm_cafe_modifier_groups()),
+        (200, _jm_cafe_modifier_options()),
+    ])
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id           = _STORE_ID,
+            menu_item_name     = "Cafe Latte",
+            allergen           = "dairy",
+            selected_modifiers = [{"group": "milk", "option": "almond"}],
+        )
+    assert result["ai_script_hint"] == "allergen_absent"
+    assert "nuts" in result["allergens"]
+
+
+@pytest.mark.asyncio
+async def test_t16_empty_selected_modifiers_keeps_legacy_behavior():
+    """Backward-compat: no modifiers → no extra DB calls, identical to T3."""
+    client = _patched_get(_jm_cafe_rows())   # single-GET mock
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id           = _STORE_ID,
+            menu_item_name     = "Cafe Latte",
+            allergen           = "dairy",
+            selected_modifiers = [],
+        )
+    assert result["ai_script_hint"] == "allergen_present"
+
+
+@pytest.mark.asyncio
+async def test_t17_unknown_modifier_falls_back_to_base():
+    """LLM hallucinates 'milk: rice' — tool must not crash; treat as base only."""
+    client = _patched_get_multi([
+        (200, _jm_cafe_rows()),
+        (200, _jm_cafe_modifier_groups()),
+        (200, _jm_cafe_modifier_options()),
+    ])
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id           = _STORE_ID,
+            menu_item_name     = "Cafe Latte",
+            allergen           = "dairy",
+            selected_modifiers = [{"group": "milk", "option": "rice"}],
+        )
+    # Unknown modifier silently skipped → effective allergens == base == ['dairy']
+    assert result["ai_script_hint"] == "allergen_present"
+
+
+@pytest.mark.asyncio
+async def test_t18_wheat_alias_works_after_modifier_merge():
+    """Cafe Latte (dairy only — no gluten marker) + oat milk → effective has
+    'wheat' explicitly, so wheat query returns PRESENT not UNKNOWN."""
+    client = _patched_get_multi([
+        (200, _jm_cafe_rows()),
+        (200, _jm_cafe_modifier_groups()),
+        (200, _jm_cafe_modifier_options()),
+    ])
+    with patch("app.skills.menu.allergen.httpx.AsyncClient", return_value=client):
+        result = await allergen_lookup(
+            store_id           = _STORE_ID,
+            menu_item_name     = "Cafe Latte",
+            allergen           = "wheat",
+            selected_modifiers = [{"group": "milk", "option": "oat"}],
+        )
+    # Without modifiers (T12) this same query returns UNKNOWN.
+    # With oat milk it must escalate to PRESENT.
+    assert result["ai_script_hint"] == "allergen_present"

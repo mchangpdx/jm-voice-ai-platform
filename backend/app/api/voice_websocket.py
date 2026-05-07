@@ -138,6 +138,16 @@ def build_system_prompt(store: dict) -> str:
             f"{store['menu_cache']}"
         )
 
+    # Modifiers — combinable customizations (size/temperature/milk/syrup/...).
+    # Loaded by the realtime caller via services.menu.modifiers and injected
+    # immediately after menu_cache so 'iced oat latte' resolves to base
+    # 'Cafe Latte' + iced + oat. Without this block the LLM denies valid
+    # composite orders (live trigger CA90b88e... 2026-05-07 — caller asked
+    # four times for an iced oat latte, was denied four times, hung up).
+    # (Phase 7-A.B — modifier_section 주입. menu_cache 직후 배치)
+    if store.get("modifier_section"):
+        parts.append(store["modifier_section"])
+
     if store.get("custom_knowledge"):
         parts.append(f"Store knowledge:\n{store['custom_knowledge']}")
 
@@ -473,7 +483,29 @@ def build_system_prompt(store: dict) -> str:
         "to make sure we get this exactly right — let me connect you with our manager who can verify "
         "directly with the kitchen. One moment please.' Then stop. Even our curated data carries "
         "trace-amount and cross-contamination uncertainty that is not safe to communicate for "
-        "severe cases.\n"
+        "severe cases. "
+        # Phase 7-A.B — modifier+allergen composition guard.
+        # Live trigger: 2026-05-07 call CA90b88e... Customer asked four times
+        # for 'large iced oat latte' and once 'does the oat milk latte have
+        # wheat?'. Bot denied every time because menu_cache only listed 'Cafe
+        # Latte' and 'Iced Tea' as separate lines. Modifiers (iced, oat) and
+        # their allergen deltas were invisible to the LLM. Customer hung up.
+        # The MENU MODIFIERS block above and this clause together close that gap.
+        # (modifier+allergen 가드 — 'iced oat latte'를 base+modifier로 분해 호출)
+        "MODIFIER + ALLERGEN COMPOSITION: When the customer's question or order "
+        "names a modifier ('iced oat latte', 'almond milk cappuccino', 'caramel "
+        "macchiato with oat milk'), DO NOT deny it because the literal phrase "
+        "isn't a separate menu line. Decompose: identify the BASE item (Cafe "
+        "Latte, Cappuccino, Macchiato, …) plus the modifier choices from the "
+        "MENU MODIFIERS block. For allergen questions on a modified drink, call "
+        "allergen_lookup with menu_item_name=<BASE> AND "
+        "selected_modifiers=[{'group':<code>,'option':<code>}, …] using the "
+        "exact group/option codes from the MENU MODIFIERS block. Example: "
+        "'does the oat milk latte have wheat?' → allergen_lookup(menu_item_name="
+        "'Cafe Latte', allergen='wheat', selected_modifiers=[{'group':'milk',"
+        "'option':'oat'}]). Never answer modifier-allergen questions from "
+        "memory — the tool composes base + modifier deltas and returns the "
+        "operator-curated effective profile.\n"
         "13. ORDER RECALL (recall_order): When the customer asks about the current order state "
         "mid-call ('what's my order', 'my order info', 'did you send it', 'is it confirmed', "
         "'how much was it', 'the total'), call recall_order with NO arguments. NEVER answer "

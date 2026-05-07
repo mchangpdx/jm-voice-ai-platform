@@ -49,6 +49,10 @@ from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
 from app.services.handoff.manager_alert import send_tier3_alert
+from app.services.menu.modifiers import (
+    fetch_modifier_groups,
+    format_modifier_block,
+)
 from app.skills.menu.allergen import (
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -306,11 +310,19 @@ async def _dispatch_tool_call(
         return result
 
     if tool_name == "allergen_lookup":
+        # Phase 7-A.B — pass selected_modifiers through so allergen profile is
+        # composed from base + modifier deltas (oat milk → +gluten +wheat -dairy).
+        # The LLM is instructed to send [] when no modifiers were spoken.
+        # (modifier 인자 통과 — base allergens 단독 lookup이 아니라 dynamic 계산)
+        sm = tool_args.get("selected_modifiers") or []
+        if not isinstance(sm, list):
+            sm = []
         skill_result = await allergen_lookup(
-            store_id        = store_id,
-            menu_item_name  = tool_args.get("menu_item_name", ""),
-            allergen        = tool_args.get("allergen", ""),
-            dietary_tag     = tool_args.get("dietary_tag", ""),
+            store_id           = store_id,
+            menu_item_name     = tool_args.get("menu_item_name", ""),
+            allergen           = tool_args.get("allergen", ""),
+            dietary_tag        = tool_args.get("dietary_tag", ""),
+            selected_modifiers = sm,
         )
         hint = skill_result.get("ai_script_hint", "item_not_found")
         template = ALLERGEN_SCRIPT_BY_HINT.get(hint, "Let me transfer you to a manager.")
@@ -508,9 +520,27 @@ async def realtime_bridge(ws: WebSocket) -> None:
         return
     store_id = store["id"]
     store_name = store.get("name") or "the restaurant"
+
+    # Phase 7-A.B — load modifier groups + options for this store and pass them
+    # into build_system_prompt as `modifier_section`. Without this block the LLM
+    # sees only menu_cache (base items) and denies composite orders like "iced
+    # oat latte" — see live trigger CA90b88e... 2026-05-07.
+    # (Phase 7-A.B — modifier 사전 로드 + 시스템 프롬프트 주입)
+    mod_group_count = 0
+    try:
+        mod_groups = await fetch_modifier_groups(store_id)
+        mod_group_count = len(mod_groups)
+        store["modifier_section"] = format_modifier_block(mod_groups)
+    except Exception as exc:
+        # Modifier load is best-effort. A failure must not abort the call —
+        # fall back to base-menu-only behavior (pre-Phase 7-A.B).
+        # (modifier 로드 실패는 통화 중단 사유 아님 — base menu only로 fallback)
+        _dbg(f"[realtime] ⚠ modifier load failed: {type(exc).__name__}: {exc}")
+        store["modifier_section"] = ""
+
     instructions = build_system_prompt(store)
     _dbg(f"[realtime] store loaded id={store_id} name={store_name!r} "
-         f"prompt_len={len(instructions)}")
+         f"prompt_len={len(instructions)} modifier_groups={mod_group_count}")
 
     # 3) Open OpenAI Realtime session
     # (OpenAI Realtime 세션 오픈 — g711_ulaw 양방향 + server VAD)

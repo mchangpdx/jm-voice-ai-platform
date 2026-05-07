@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.services.menu.allergen_compute import compute_effective_allergens
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +51,12 @@ ALLERGEN_LOOKUP_TOOL_DEF: dict = {
                 "Pass the menu item name as the customer said it; the "
                 "system handles fuzzy matching. Pass the allergen or "
                 "dietary tag the customer asked about (or empty string "
-                "if they asked generically). The tool returns "
-                "operator-curated data — speak its result VERBATIM."
+                "if they asked generically). When the customer mentions "
+                "modifiers ('iced oat latte', 'almond milk cappuccino'), "
+                "pass them in selected_modifiers so allergens are computed "
+                "for the actual drink (e.g. oat milk replaces dairy with "
+                "gluten+wheat). The tool returns operator-curated data — "
+                "speak its result VERBATIM."
             ),
             "parameters": {
                 "type": "object",
@@ -59,8 +64,10 @@ ALLERGEN_LOOKUP_TOOL_DEF: dict = {
                     "menu_item_name": {
                         "type": "string",
                         "description": (
-                            "The menu item the customer asked about, as "
-                            "they said it (e.g. 'cafe latte', 'croissant')."
+                            "The BASE menu item the customer asked about "
+                            "(e.g. 'cafe latte', 'croissant'). Strip modifier "
+                            "words like 'iced', 'large', 'oat milk' from the "
+                            "name and pass them via selected_modifiers."
                         ),
                     },
                     "allergen": {
@@ -83,6 +90,28 @@ ALLERGEN_LOOKUP_TOOL_DEF: dict = {
                             "kosher, halal). Empty string for allergen queries."
                         ),
                     },
+                    "selected_modifiers": {
+                        "type": "array",
+                        "description": (
+                            "Modifier choices the customer mentioned. Pull "
+                            "the group code and option code from the MENU "
+                            "MODIFIERS section of your instructions. Examples: "
+                            "'iced oat latte' → "
+                            "[{'group':'temperature','option':'iced'},"
+                            "{'group':'milk','option':'oat'}]; "
+                            "'almond milk cappuccino' → "
+                            "[{'group':'milk','option':'almond'}]. "
+                            "Pass [] when no modifiers were spoken."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "group":  {"type": "string"},
+                                "option": {"type": "string"},
+                            },
+                            "required": ["group", "option"],
+                        },
+                    },
                 },
                 "required": ["menu_item_name"],
             },
@@ -95,17 +124,23 @@ ALLERGEN_LOOKUP_TOOL_DEF: dict = {
 
 async def allergen_lookup(
     *,
-    store_id:       str,
-    menu_item_name: str,
-    allergen:       str = "",
-    dietary_tag:    str = "",
+    store_id:           str,
+    menu_item_name:     str,
+    allergen:           str = "",
+    dietary_tag:        str = "",
+    selected_modifiers: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Look up allergens / dietary tags for a single menu item.
-    (단일 메뉴 항목의 allergen / dietary 조회 — Phase 2-C.B5)
+    (단일 메뉴 항목의 allergen / dietary 조회 — Phase 2-C.B5 + 7-A.B)
 
     Returns a structured payload with ai_script_hint that the voice handler
     maps to ALLERGEN_SCRIPT_BY_HINT. Never raises on missing data — emits
     an honest-unknown hint instead (HonestUnknown invariant I1).
+
+    Phase 7-A.B: selected_modifiers (e.g. [{group:'milk',option:'oat'}])
+    triggers two extra REST calls (modifier_groups + modifier_options) and
+    composes the effective allergen profile via compute_effective_allergens.
+    Empty / None list keeps the legacy single-query path.
     """
     raw_name = (menu_item_name or "").strip()
     queried_allergen = (allergen or "").strip().lower()
@@ -174,8 +209,27 @@ async def allergen_lookup(
         )
 
     matched_name  = match.get("name") or raw_name
-    allergens     = list(match.get("allergens") or [])
+    base_allergens = list(match.get("allergens") or [])
     dietary_tags  = list(match.get("dietary_tags") or [])
+
+    # Phase 7-A.B — apply modifier-driven allergen mutations.
+    # When selected_modifiers is non-empty we fetch the modifier index
+    # (two more REST calls) and compose the effective profile. The empty
+    # path is the unchanged legacy behavior.
+    # (modifier 적용 시 effective allergens 재계산. 빈 리스트면 기존 동작)
+    if selected_modifiers:
+        index = await _fetch_modifier_index(store_id)
+        if index:
+            allergens = compute_effective_allergens(
+                base_allergens, selected_modifiers, index)
+        else:
+            # Modifier table read failed — bias toward unchanged base. The
+            # alternative (returning unknown) would block real allergen
+            # questions during a transient REST hiccup.
+            # (modifier index 로드 실패 시 base allergens fallback)
+            allergens = list(base_allergens)
+    else:
+        allergens = list(base_allergens)
 
     # HonestUnknown — both arrays empty means operator hasn't curated this
     # item yet. Bot must NOT speak "free of X"; hand off to manager.
@@ -216,6 +270,54 @@ async def allergen_lookup(
         queried_dietary=queried_dietary,
         hint=hint,
     )
+
+
+async def _fetch_modifier_index(
+    store_id: str,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Fetch modifier groups + options and return a (group_code, option_code)
+    -> option-row index for compute_effective_allergens.
+    (modifier_groups + options 인덱스 조회 — allergen 동적 계산용)
+
+    Returns {} on any REST failure — caller falls back to base allergens.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            g_resp = await client.get(
+                f"{_REST}/modifier_groups",
+                headers=_SUPABASE_HEADERS,
+                params={"store_id": f"eq.{store_id}", "select": "id,code"},
+            )
+            if g_resp.status_code != 200:
+                return {}
+            groups = g_resp.json() or []
+            if not groups:
+                return {}
+            gid_to_code = {g["id"]: g["code"] for g in groups}
+
+            o_resp = await client.get(
+                f"{_REST}/modifier_options",
+                headers=_SUPABASE_HEADERS,
+                params={
+                    "group_id": "in.(" + ",".join(gid_to_code.keys()) + ")",
+                    "select":   "group_id,code,allergen_add,allergen_remove",
+                },
+            )
+            if o_resp.status_code != 200:
+                return {}
+            options = o_resp.json() or []
+    except Exception as exc:
+        log.warning("_fetch_modifier_index store=%s err=%r", store_id, exc)
+        return {}
+
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for o in options:
+        gid = o.get("group_id")
+        gcode = gid_to_code.get(gid)
+        if not gcode:
+            continue
+        index[(gcode, o.get("code"))] = o
+    return index
 
 
 def _result(
