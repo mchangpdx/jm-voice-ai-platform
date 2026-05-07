@@ -335,6 +335,16 @@ def build_system_prompt(store: dict) -> str:
         "Pass [] only when the customer truly ordered a default item with no "
         "customizations. Skipping selected_modifiers ships the wrong drink and "
         "the wrong total to the POS. "
+        # Phase 7-A.D hot fix — every spoken modifier MUST be captured.
+        # Live trigger CA9c22bb95... — caller said 'large iced almond cafe
+        # latte' (3 modifiers). Bot asked for milk → captured iced+almond,
+        # silently dropped 'large' (size). Customer undercharged $1.00.
+        # The fix is single-sentence: capture is non-selective.
+        # (모든 발화된 modifier 캡처 — 부분 캡처 금지)
+        "INCLUDE EVERY MODIFIER THE CUSTOMER NAMED on a single line in the "
+        "same call — size, temperature, milk, syrup, shots, foam, whip, all "
+        "of them. Asking about one missing dimension does NOT excuse dropping "
+        "another that was already spoken. "
         # Phase 7-A.D — required-modifier ask gate.
         # The MENU MODIFIERS block flags groups as (required) — these are
         # dimensions the kitchen MUST know to make the drink correctly. If
@@ -363,7 +373,29 @@ def build_system_prompt(store: dict) -> str:
         "email, spell the local part using the NATO phonetic alphabet so each letter is "
         "unambiguous. 'c, y, m, e, e, t' read aloud sounds identical to the customer's own "
         "speech and they will say yes to a missing letter (live cost: 12-turn loop and a "
-        "delivery to the wrong inbox). NATO ('C as in Charlie, Y as in Yankee, M as in Mike, "
+        "delivery to the wrong inbox). "
+        # Phase 7-A.D hot fix — letter-by-letter ASK on STT-uncertain emails.
+        # Live trigger CA9c22bb95... (and prior CA61eaa299b): caller said
+        # 'signit@gmail.com, the start C as Charlie' — STT decoded 'signit'
+        # but the caller corrected with 'C as Charlie' hint. Bot then NATO'd
+        # 'C-Y-M-E-E-T' — neither what the caller said nor what STT heard,
+        # silently fabricating letters. NATO readback can amplify STT drift
+        # because the bot uses its own (already-wrong) decoded version as
+        # the source. The fix: when the customer self-corrects ('the start
+        # X', 'no it's Y not Z') OR the spelling has unusual letters /
+        # contains digits / is non-dictionary-word, ASK them to spell the
+        # local part letter by letter BEFORE doing NATO readback. Single
+        # letters STT decodes far more reliably than running text.
+        # (STT 불확실 이메일 — 한 글자씩 말하기 요청 후 NATO)
+        "STT FALLBACK — LETTER-BY-LETTER ASK: if the customer self-corrects "
+        "('the start C as Charlie', 'no, it's S not C'), or the local part "
+        "is unusual / contains digits / fails a quick sanity check, ASK "
+        "'Could you spell the local part one letter at a time?' BEFORE the "
+        "NATO readback. Wait for the customer to say each letter, capture "
+        "them, THEN do the NATO readback from THOSE letters. Single-letter "
+        "STT is far more reliable than word-form STT. Skipping this step "
+        "ships pay links to phantom inboxes. "
+        "NATO ('C as in Charlie, Y as in Yankee, M as in Mike, "
         "E as in Echo, E as in Echo, T as in Tango at gmail dot com — did I get that right?') "
         "gives each letter its own word so the customer can catch a single-letter error "
         "instantly. DOMAIN COVERAGE: only these four domains may be spoken whole — "
@@ -422,7 +454,23 @@ def build_system_prompt(store: dict) -> str:
         "next yes means CALL THE TOOL. AFTER the tool returns success and you read its message, the order "
         "is FINAL: do NOT call create_order again, do NOT ask 'is that right?' again. If the customer says "
         "'okay' or 'thanks' or 'bye', reply with one short closing sentence ('Thanks, see you soon.') and "
-        "stop. The pay link / kitchen handoff happens after the call ends.\n"
+        "stop. The pay link / kitchen handoff happens after the call ends. "
+        # Phase 7-A.D hot fix — order recital gate.
+        # Live trigger CA9c22bb95... — bot fired create_order on the email
+        # NATO yes ('Yes' to 'C-Y-M-E-E-T at gmail dot com — did I get that
+        # right?'), skipping the order recital entirely. Customer never
+        # confirmed the order itself; the kitchen received an undercharged,
+        # never-recited drink. I4 'TOOL-CALL-AFTER-YES' fired on the wrong
+        # confirmation pattern. This gate disambiguates email yes from order yes.
+        # (recital gate — email yes ≠ order yes)
+        "RECITAL GATE (mandatory before create_order): the call MUST contain "
+        "an order recital sentence — one starting with 'Confirming' AND ending "
+        "with 'is that right?' AND naming the items + name + total — AND the "
+        "customer's CURRENT yes must be the immediate reply to THAT sentence. "
+        "A yes to 'did I get that right?' on the email NATO readback authorizes "
+        "the email ONLY, not the order. If you have not yet recited the order, "
+        "RECITE NOW before firing create_order — never let an email-readback "
+        "yes trigger the order tool.\n"
         "6. MODIFY ORDER (modify_order): Call this ONLY when the customer EXPLICITLY "
         "states a change to a JUST-placed order (add X, remove Y, change quantity Z). "
         "INFO UPDATES ARE NOT MODIFY: when the customer asks to add/change/correct "
