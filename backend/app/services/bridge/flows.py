@@ -607,8 +607,14 @@ async def create_order(
         }
 
     # ── 4. Total — derived from real catalog prices, not from caller args ─
+    # Phase 7-A.C: prefer effective_price (base + Σ price_delta from
+    # selected_modifiers) when present. Falls back to base `price` for legacy
+    # lines that didn't go through the modifier resolver. Never trust the
+    # caller-supplied price field.
+    # (effective_price 우선 — modifier price_delta 반영. 미존재 시 base price)
     total_cents = sum(
-        int(round(float(r["price"]) * 100)) * int(r["quantity"])
+        int(round(float(r.get("effective_price") or r["price"]) * 100))
+        * int(r["quantity"])
         for r in resolved
     )
 

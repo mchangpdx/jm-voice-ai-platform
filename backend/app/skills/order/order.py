@@ -76,18 +76,41 @@ ORDER_TOOL_DEF: dict = {
                         "type": "array",
                         "description": (
                             "List of items the customer wants. Each item must have name (exact "
-                            "menu name) and quantity (positive integer)."
+                            "menu name) and quantity (positive integer). When the customer "
+                            "spoke modifier choices (size, milk type, syrup, etc.), include "
+                            "them in selected_modifiers so the price and POS line carry the "
+                            "correct upcharges and customizations."
                         ),
                         "items": {
                             "type": "object",
                             "properties": {
                                 "name": {
                                     "type": "string",
-                                    "description": "Exact menu item name (case-insensitive).",
+                                    "description": "Exact BASE menu item name (case-insensitive). Strip modifier words like 'iced', 'large', 'oat milk' — those go in selected_modifiers.",
                                 },
                                 "quantity": {
                                     "type": "integer",
                                     "description": "How many of this item, at least 1.",
+                                },
+                                "selected_modifiers": {
+                                    "type": "array",
+                                    "description": (
+                                        "Modifier choices for THIS line item. Use the exact "
+                                        "group/option codes from the MENU MODIFIERS block in "
+                                        "your instructions. Examples: 'large iced oat latte' → "
+                                        "[{'group':'size','option':'large'},"
+                                        "{'group':'temperature','option':'iced'},"
+                                        "{'group':'milk','option':'oat'}]. Pass [] for items "
+                                        "the customer ordered without customization."
+                                    ),
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "group":  {"type": "string"},
+                                            "option": {"type": "string"},
+                                        },
+                                        "required": ["group", "option"],
+                                    },
                                 },
                             },
                             "required": ["name", "quantity"],

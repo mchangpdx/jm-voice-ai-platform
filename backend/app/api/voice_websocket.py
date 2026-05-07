@@ -319,6 +319,22 @@ def build_system_prompt(store: dict) -> str:
         "Items and customer_name MUST come from THIS call's transcript — see "
         "INVARIANTS I1 and I2 above. After a cancel, start a new order with "
         "an EMPTY items list; never carry over from the cancelled order. "
+        # Phase 7-A.C — modifier serialization on the order line.
+        # Live trigger: 2026-05-07 call CA61eaa299b... booked 'Cafe Latte $5.50'
+        # for an order that was actually a 20oz iced almond milk café latte
+        # ($5.50 + size 1.00 + almond 0.75 = $7.25). Modifier choices were
+        # spoken but not serialized → POS got the wrong item + wrong total.
+        # (modifier 직렬화 — items 마다 selected_modifiers 송신 필수)
+        "MODIFIERS ON ORDER LINES: When the customer ordered a customized drink "
+        "('large iced oat latte', 'almond milk cappuccino', '20 ounce caramel "
+        "macchiato'), the create_order items[] entry MUST carry a "
+        "selected_modifiers array with the exact group/option codes from the "
+        "MENU MODIFIERS block. Example: items=[{name:'Cafe Latte',quantity:1,"
+        "selected_modifiers:[{group:'size',option:'large'},"
+        "{group:'temperature',option:'iced'},{group:'milk',option:'oat'}]}]. "
+        "Pass [] only when the customer truly ordered a default item with no "
+        "customizations. Skipping selected_modifiers ships the wrong drink and "
+        "the wrong total to the POS. "
         "PHONE: do NOT ask the customer for their phone number — the system already has it from the "
         "inbound call. Only ask if they explicitly want the link sent to a different number. "
         "EMAIL (REQUIRED while SMS delivery is being verified): after items are agreed but BEFORE you "
