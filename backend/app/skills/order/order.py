@@ -207,18 +207,43 @@ MODIFY_ORDER_TOOL_DEF: dict = {
                         "description": (
                             "Complete final list of items the customer wants on "
                             "the order. Each entry must have name (exact menu name) "
-                            "and quantity (positive integer)."
+                            "and quantity (positive integer). When the customer "
+                            "spoke modifier choices on this update (e.g. switched "
+                            "from oat milk to almond milk mid-call), include them "
+                            "in selected_modifiers — same shape as create_order so "
+                            "the new total reflects the modifier surcharges."
                         ),
                         "items": {
                             "type": "object",
                             "properties": {
                                 "name": {
                                     "type": "string",
-                                    "description": "Exact menu item name (case-insensitive).",
+                                    "description": "Exact BASE menu item name (case-insensitive). Strip modifier words like 'iced', 'large', 'oat milk' — those go in selected_modifiers.",
                                 },
                                 "quantity": {
                                     "type": "integer",
                                     "description": "How many of this item, at least 1.",
+                                },
+                                "selected_modifiers": {
+                                    "type": "array",
+                                    "description": (
+                                        "Modifier choices for THIS line item. Use "
+                                        "the exact group/option codes from the MENU "
+                                        "MODIFIERS block in your instructions. "
+                                        "Example: 'switch the latte to almond milk' "
+                                        "→ items[i].selected_modifiers = "
+                                        "[{'group':'milk','option':'almond'}]. "
+                                        "Pass [] for items the customer left at "
+                                        "default."
+                                    ),
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "group":  {"type": "string"},
+                                            "option": {"type": "string"},
+                                        },
+                                        "required": ["group", "option"],
+                                    },
                                 },
                             },
                             "required": ["name", "quantity"],

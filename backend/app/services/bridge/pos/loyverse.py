@@ -27,15 +27,15 @@ from typing import Any, Optional
 
 import httpx
 
-
-def _now_iso() -> str:
-    # ISO-8601 UTC, used as Loyverse receipt_date (영수증 생성 시각)
-    return datetime.now(timezone.utc).isoformat()
-
 from app.core.config import settings
 from app.services.bridge.pos.base import POSAdapter
 
 log = logging.getLogger(__name__)
+
+
+def _now_iso() -> str:
+    # ISO-8601 UTC, used as Loyverse receipt_date (영수증 생성 시각)
+    return datetime.now(timezone.utc).isoformat()
 
 
 class NotSupported(Exception):
@@ -149,7 +149,16 @@ class LoyversePOSAdapter(POSAdapter):
         running_total: float = 0.0
         for item in payload.get("items", []) or []:
             qty   = int(item.get("quantity", 1))
-            price = float(item.get("price", 0))
+            # Phase 7-A.D — prefer effective_price (base + Σ modifier price_delta
+            # from selected_modifiers). Falls back to base `price` for legacy
+            # items that didn't go through the modifier resolver. Without this
+            # the receipt undercharges every modifier order — live trigger
+            # CA61eaa299b... booked $5.50 for a $7.25 iced almond latte.
+            # (effective_price 우선 — modifier delta 반영. 미제공 시 base price)
+            try:
+                price = float(item.get("effective_price") or item.get("price") or 0)
+            except (TypeError, ValueError):
+                price = float(item.get("price") or 0)
             li: dict[str, Any] = {
                 "item_name":         item.get("name", ""),
                 "quantity":          qty,

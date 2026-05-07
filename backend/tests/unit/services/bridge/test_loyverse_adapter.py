@@ -400,6 +400,116 @@ async def test_create_pending_total_money_overrides_payload_total():
 
 
 @pytest.mark.asyncio
+async def test_create_pending_uses_effective_price_when_provided():
+    """Phase 7-A.D — line items with effective_price (base + modifier delta sum)
+    must produce a Loyverse total that reflects modifier surcharges.
+    Live trigger: 2026-05-07 call CA61eaa299b... — receipt was $5.50 base
+    instead of $7.25 effective for an iced almond Cafe Latte. Without this
+    contract the customer is undercharged on every modifier order.
+    """
+    from app.services.bridge.pos.loyverse import LoyversePOSAdapter
+
+    payment_types_resp = AsyncMock(); payment_types_resp.status_code = 200
+    payment_types_resp.json = lambda: {"payment_types": [{"id": "pt-1"}]}
+    stores_resp = AsyncMock(); stores_resp.status_code = 200
+    stores_resp.json = lambda: {"stores": [{"id": "s-1"}]}
+    receipt_resp = AsyncMock(); receipt_resp.status_code = 200
+    receipt_resp.json = lambda: {"receipt_number": "1-7", "id": "u"}
+
+    captured: dict = {}
+
+    async def fake_get(url, **_):
+        if "/payment_types" in url: return payment_types_resp
+        if "/stores"        in url: return stores_resp
+        return AsyncMock(status_code=404)
+
+    async def fake_post(url, **kw):
+        captured["payload"] = kw.get("json")
+        return receipt_resp
+
+    with patch("app.services.bridge.pos.loyverse.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(side_effect=fake_get)
+        instance.post = AsyncMock(side_effect=fake_post)
+
+        a = LoyversePOSAdapter(api_key="k")
+        await a.create_pending(
+            vertical="restaurant", store_id="s",
+            payload={
+                "pos_object_type": "order",
+                "items": [{
+                    "variant_id": "v-1", "item_id": "i-1", "name": "Cafe Latte",
+                    "quantity": 1,
+                    "price": 5.50,            # base
+                    "effective_price": 7.25,  # base + size 1.00 + almond 0.75
+                    "selected_modifiers": [
+                        {"group": "size", "option": "large"},
+                        {"group": "milk", "option": "almond"},
+                    ],
+                }],
+                "customer_name":  "Michael",
+                "customer_phone": "+15035550100",
+            },
+        )
+
+    body = captured["payload"]
+    li   = body["line_items"][0]
+    # Loyverse line price + total reflect effective price, not base.
+    assert li["price"]            == 7.25
+    assert li["total_money"]      == 7.25
+    assert li["gross_total_money"] == 7.25
+    assert body["total_money"]    == 7.25
+    assert body["payments"][0]["money_amount"] == 7.25
+    # Item identity preserved (variant_id, item_id, name).
+    assert li["variant_id"] == "v-1"
+    assert li["item_id"]    == "i-1"
+    assert li["item_name"]  == "Cafe Latte"
+
+
+@pytest.mark.asyncio
+async def test_create_pending_falls_back_to_base_price_when_no_effective():
+    """Legacy items without effective_price must keep using base price unchanged
+    — pin the pre-Phase-7-A.D contract so non-modifier menus stay correct.
+    """
+    from app.services.bridge.pos.loyverse import LoyversePOSAdapter
+
+    payment_types_resp = AsyncMock(); payment_types_resp.status_code = 200
+    payment_types_resp.json = lambda: {"payment_types": [{"id": "pt-1"}]}
+    stores_resp = AsyncMock(); stores_resp.status_code = 200
+    stores_resp.json = lambda: {"stores": [{"id": "s-1"}]}
+    receipt_resp = AsyncMock(); receipt_resp.status_code = 200
+    receipt_resp.json = lambda: {"receipt_number": "1-8", "id": "u"}
+
+    captured: dict = {}
+    async def fake_get(url, **_):
+        if "/payment_types" in url: return payment_types_resp
+        if "/stores"        in url: return stores_resp
+        return AsyncMock(status_code=404)
+    async def fake_post(url, **kw):
+        captured["payload"] = kw.get("json"); return receipt_resp
+
+    with patch("app.services.bridge.pos.loyverse.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get  = AsyncMock(side_effect=fake_get)
+        instance.post = AsyncMock(side_effect=fake_post)
+        a = LoyversePOSAdapter(api_key="k")
+        await a.create_pending(
+            vertical="restaurant", store_id="s",
+            payload={
+                "pos_object_type": "order",
+                "items": [{"variant_id": "v", "quantity": 2,
+                           "price": 4.50, "name": "Latte"}],
+                "customer_name": "L", "customer_phone": "+1",
+            },
+        )
+
+    body = captured["payload"]
+    assert body["line_items"][0]["price"]   == 4.50
+    assert body["line_items"][0]["total_money"] == 9.00
+    assert body["total_money"] == 9.00
+
+
+@pytest.mark.asyncio
 async def test_create_pending_strips_control_chars_from_api_key():
     """API keys stored in DB sometimes have stray \\n / \\t / spaces — must be
     stripped before going into Authorization header (Invalid character error guard).

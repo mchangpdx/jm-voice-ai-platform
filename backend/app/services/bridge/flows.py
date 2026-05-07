@@ -975,9 +975,13 @@ async def modify_order(
                 "transaction_id":  target["id"],
                 "ai_script_hint":  "rejected"}
 
-    # 5. Compute the new total. Same arithmetic as create_order.
+    # 5. Compute the new total. Same arithmetic as create_order — prefer
+    # effective_price (base + modifier delta) over base price; fall back to
+    # base for legacy items without modifier resolution. (Phase 7-A.D)
+    # (effective_price 우선 — modifier 변경 시 정확한 새 total)
     new_total = sum(
-        int(round(float(r["price"]) * 100)) * int(r["quantity"])
+        int(round(float(r.get("effective_price") or r["price"]) * 100))
+        * int(r["quantity"])
         for r in resolved
     )
     old_total = int(target.get("total_cents") or 0)
@@ -992,12 +996,22 @@ async def modify_order(
     # observed in call_feede2b9... — 4 modify calls, 0 actual changes).
     # (no-op 단축 회로 — 같은 items 반복 modify 호출은 무한 loop의 연료)
     def _items_key(items: list[dict]) -> list[tuple]:
+        # Phase 7-A.D — include sorted modifier signature in the key so a
+        # genuine modifier swap (e.g. oat milk → almond milk) is NOT
+        # collapsed to no_op. Without this guard the customer's mid-call
+        # change would be silently discarded.
+        # (modifier 시그니처 포함 — milk swap이 no_op로 처리되는 것 차단)
         out: list[tuple] = []
         for it in items or []:
             nm  = (it.get("name") or "").strip().lower()
             qty = int(it.get("quantity") or 0)
+            mods = sorted(
+                (str(m.get("group", "")), str(m.get("option", "")))
+                for m in (it.get("selected_modifiers") or [])
+                if isinstance(m, dict)
+            )
             if nm and qty > 0:
-                out.append((nm, qty))
+                out.append((nm, qty, tuple(mods)))
         return sorted(out)
 
     old_key = _items_key(target.get("items_json") or [])

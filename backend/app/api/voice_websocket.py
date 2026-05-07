@@ -335,6 +335,24 @@ def build_system_prompt(store: dict) -> str:
         "Pass [] only when the customer truly ordered a default item with no "
         "customizations. Skipping selected_modifiers ships the wrong drink and "
         "the wrong total to the POS. "
+        # Phase 7-A.D — required-modifier ask gate.
+        # The MENU MODIFIERS block flags groups as (required) — these are
+        # dimensions the kitchen MUST know to make the drink correctly. If
+        # the customer named only the base item ('a cafe latte, please')
+        # without specifying a (required) dimension, ASK before firing.
+        # Default-fill bias is unsafe: a dairy-allergic customer hearing
+        # 'one cafe latte, that's $5.50' may say yes without realizing the
+        # default whole milk was substituted on their behalf.
+        # (필수 modifier 미지정 시 ASK — 안전상 default 자동 채택 금지)
+        "REQUIRED-MODIFIER ASK: before reciting or calling create_order, check "
+        "every (required) group in the MENU MODIFIERS block against the "
+        "customer's spoken modifiers for each item. For ANY item missing a "
+        "required dimension (size for sized drinks, milk for milk-based "
+        "drinks, temperature for hot/iced-able drinks), ASK in one short "
+        "sentence ('What size?', 'Hot or iced?', 'What kind of milk — whole, "
+        "oat, almond?'). NEVER fire create_order with default-filled values "
+        "the customer didn't say. Once the customer answers, include the "
+        "code in selected_modifiers and proceed. "
         "PHONE: do NOT ask the customer for their phone number — the system already has it from the "
         "inbound call. Only ask if they explicitly want the link sent to a different number. "
         "EMAIL (REQUIRED while SMS delivery is being verified): after items are agreed but BEFORE you "
@@ -381,7 +399,24 @@ def build_system_prompt(store: dict) -> str:
         "the wrong inbox. Live observed twice in one session. This is a "
         "TRUTHFULNESS INVARIANT on par with I1/I2/I3. "
         "Recite ONCE: 'Confirming [N] [item], [N] [item] "
-        "for [name] — is that right?'. On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
+        "for [name] — is that right?'. "
+        # Phase 7-A.D — modifier text in recital. Without this guidance the
+        # bot can drift to bare base names ('Cafe Latte') even after capturing
+        # full modifier composition in selected_modifiers, so the customer
+        # confirms one drink and gets another. Live trigger CA61eaa299b...
+        # turn 8 happened to recite correctly but the rule was implicit;
+        # making it explicit closes the drift window.
+        # (recital에 modifier 텍스트 명시 — 손님이 confirm한 음료 = 받는 음료)
+        "MODIFIER WORDING IN RECITAL: when the line carries selected_modifiers, "
+        "speak them in natural English right before the base item name and "
+        "include the effective price you computed from the MENU MODIFIERS block. "
+        "Example: items=[{name:'Cafe Latte',quantity:1,selected_modifiers:["
+        "{group:'size',option:'large'},{group:'temperature',option:'iced'},"
+        "{group:'milk',option:'almond'}]}] → recite as 'one 20 ounce iced almond "
+        "milk café latte for $7.75 for [name] — is that right?'. NEVER recite the "
+        "bare base name when modifiers are present, and NEVER substitute a "
+        "modifier the customer didn't say. "
+        "On the FIRST verbal yes (yes / yeah / sure / correct / that's right / sí), "
         "CALL create_order with user_explicit_confirmation=true IMMEDIATELY — do NOT recite again, do NOT "
         "apologize, do NOT ask the same question twice. If you have already confirmed the items once, the "
         "next yes means CALL THE TOOL. AFTER the tool returns success and you read its message, the order "
