@@ -38,7 +38,9 @@ from openai import AsyncOpenAI
 from app.adapters.twilio.sms import send_reservation_confirmation
 from app.api.voice_websocket import (
     _GREETING_PROMPT,
+    _SEVERE_ALLERGY_RE,
     _build_pending_reservation_email_payload,
+    _has_severe_allergy_signal,
     build_system_prompt,
 )
 from app.core.config import settings
@@ -46,6 +48,7 @@ from app.services.bridge import flows as bridge_flows
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.services.handoff.manager_alert import send_tier3_alert
 from app.skills.menu.allergen import (
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -602,6 +605,13 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 "last_order_items": [],
                 "last_order_total": 0,
                 "pending_reservation_email": None,
+                # Phase 5 #26 — Tier-3 manager alert state.
+                # last_user_text feeds the keyword detector; tier3_alerted
+                # is an idempotency latch so repeated keyword utterances
+                # in the same call don't fan out duplicate emails.
+                # (Tier 3 매니저 알림 상태 — 통화당 1회만 발송)
+                "last_user_text":   "",
+                "tier3_alerted":    False,
             }
 
             async def twilio_to_openai() -> None:
@@ -695,8 +705,37 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                  f"{getattr(event, 'transcript', '')!r}")
 
                         elif etype == "conversation.item.input_audio_transcription.completed":
+                            user_text = getattr(event, 'transcript', '') or ""
                             _dbg(f"[oai→twilio] turn={stats['user_turns']} caller: "
-                                 f"{getattr(event, 'transcript', '')!r}")
+                                 f"{user_text!r}")
+                            # Track for tier-3 detection + (future) audit context.
+                            session_state["last_user_text"] = user_text
+                            # Phase 5 #26 — Tier-3 manager alert (V0+).
+                            # Fire-and-forget email when a severe-allergy keyword
+                            # appears. Idempotent per call (latch in session_state).
+                            # The bot's verbal hand-off is driven separately by the
+                            # system prompt rule 12; this is the operator-side
+                            # follow-up channel that was missing pre-Phase-5.
+                            # (Tier 3 키워드 감지 → 매니저 이메일 fire-and-forget,
+                            #  통화당 1회만)
+                            if (not session_state["tier3_alerted"]
+                                    and _has_severe_allergy_signal(user_text)):
+                                session_state["tier3_alerted"] = True
+                                match = _SEVERE_ALLERGY_RE.search(user_text)
+                                trigger_kw = match.group(0) if match else "severe-allergy"
+                                _dbg(f"[tier3] keyword={trigger_kw!r} — dispatching "
+                                     f"manager alert (caller={caller_phone} "
+                                     f"call_sid={call_sid})")
+                                try:
+                                    asyncio.create_task(send_tier3_alert(
+                                        store_name         = store_name or "the store",
+                                        caller_phone       = caller_phone or "",
+                                        triggered_keyword  = trigger_kw,
+                                        transcript_excerpt = user_text,
+                                        call_sid           = call_sid or "",
+                                    ))
+                                except Exception as exc:
+                                    _dbg(f"[tier3] alert dispatch error: {exc}")
 
                         elif etype == "response.function_call_arguments.done":
                             # Tool dispatch — model has finished emitting args.

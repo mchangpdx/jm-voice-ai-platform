@@ -30,6 +30,7 @@ from app.services.bridge.flows import is_placeholder_name
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.services.handoff.manager_alert import send_tier3_alert
 from app.skills.menu.allergen import (  # Phase 2-C.B5
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -2117,6 +2118,25 @@ async def _stream_gemini_response(
         if _has_severe_allergy_signal(last_user_text):
             _mon("ALLERGEN TIER3 intercept user=%r — skipping allergen_lookup",
                  (last_user_text or "")[:80])
+            # Phase 5 #26 — fire manager alert (V0+, email channel) once per call.
+            # The verbal hand-off below tells the caller a manager will follow up;
+            # this email is the operator-side leg that was missing pre-Phase-5.
+            # (Tier 3 매니저 이메일 fire-and-forget — 통화당 1회만)
+            if session is not None and not session.get("tier3_alerted"):
+                session["tier3_alerted"] = True
+                match      = _SEVERE_ALLERGY_RE.search(last_user_text or "")
+                trigger_kw = match.group(0) if match else "severe-allergy"
+                try:
+                    asyncio.create_task(send_tier3_alert(
+                        store_name         = store_name or "the store",
+                        caller_phone       = caller_phone_e164 or "",
+                        triggered_keyword  = trigger_kw,
+                        transcript_excerpt = last_user_text or "",
+                        call_sid           = "",  # Retell call_id propagation: V2 follow-up
+                    ))
+                    _mon("TIER3 alert queued kw=%r caller=%s", trigger_kw, caller_phone_e164)
+                except Exception as exc:
+                    _mon("TIER3 alert dispatch error: %s", exc)
             result = {
                 "success":      True,
                 "matched_name": None,
@@ -2283,6 +2303,11 @@ async def websocket_llm(websocket: WebSocket, call_id: str):
         "last_msg_sig":       ("", 0.0, 0),   # (msg, ts, skip_count) — Wave 1 P0-3 yield dedup
         "last_reservation_summary": "",       # B4 — cancel_reservation recital source (party of N on <date> at <time>)
         "pending_reservation_email": None,    # B4 — defer-and-fire-on-end. Set by make/modify success, cleared by cancel success, fired on WS disconnect.
+        # Phase 5 #26 — Tier-3 manager alert idempotency latch.
+        # The bot's verbal hand-off message can repeat across turns; this flag
+        # keeps the operator-side email to ONE per call.
+        # (Tier 3 매니저 알림 — 통화당 1회 발송 보장)
+        "tier3_alerted":      False,
     }
     init_done = asyncio.Event()
 

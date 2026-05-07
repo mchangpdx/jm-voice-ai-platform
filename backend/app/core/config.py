@@ -95,6 +95,14 @@ class Settings(BaseSettings):
     smtp_from_name:      str = "JM Tech One"
     smtp_secure:         bool = False   # True only on port 465
 
+    # Phase 5 #26 — Tier-3 severe-allergy manager alert recipients (V0+).
+    # Comma-separated email list. Env var: TIER3_ALERT_EMAILS.
+    # Email-to-SMS gateways supported (e.g. 5031234567@vtext.com).
+    # V2 will move to a per-store column on `stores` and fall back to this
+    # env value when the store has none configured.
+    # (Tier-3 핸드오프 알림 수신처 — V0+ 환경변수, V2에서 매장별 컬럼 + env fallback)
+    tier3_alert_emails:  str = ""
+
 
 # Module-level singleton — loaded once at import time (임포트 시 한 번 로드되는 모듈 수준 싱글톤)
 settings = Settings()
