@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -32,7 +33,11 @@ from app.services.bridge.pos.factory import get_pos_adapter_for_store
 from app.services.bridge.pos.supabase import SupabasePOSAdapter
 from app.services.bridge.state_machine import State, can_transition
 from app.services.menu.match import resolve_items_against_menu          # Phase 2-B.1.8
-from app.services.policy.order_lanes import decide_lane                 # Phase 2-B.1.7b
+from app.services.policy.order_lanes import (                            # Phase 2-B.1.7b
+    compute_lane_from_threshold,
+    decide_lane,
+    read_threshold_cents,
+)
 from app.skills.scheduler.reservation import (
     combine_date_time,
     format_date_human,
@@ -580,15 +585,30 @@ async def create_order(
     phone_e164 = normalize_phone_us(raw_phone)
     customer   = raw_name
 
-    # ── 2. Resolve items against menu_items (catalog enrichment) ──────────
-    # Wave A.3: caller may pass a pre-built modifier_index (from
-    # realtime_voice.py session.update) so resolve_items_against_menu
-    # skips its own modifier REST round-trip — saves ~400-500ms.
-    # (사전 로드된 modifier_index 전달 — create_order 핫패스 단축)
-    resolved = await resolve_items_against_menu(
-        store_id       = store_id,
-        items          = raw_items,
-        modifier_index = modifier_index,
+    # ── 2. Parallel reads — menu enrichment + idempotency probe + lane threshold ─
+    # Wave A.3 Step 2: these three reads have no inter-dependencies before
+    # the early-exit decision point, so asyncio.gather lets us pay max(latency)
+    # instead of sum(latency). Combined with Step 1's modifier_index reuse,
+    # the create_order hot path shrinks from ~9 sequential round-trips to
+    # ~3 parallel + idempotent-short-circuit + 1 INSERT + 1 POS call.
+    # (병렬 read — menu / 멱등성 / 정책 임계값 동시 호출. 의존성 없음)
+    #
+    # Note: when the idempotency probe hits (rare — same caller redials
+    # within 5 min), the resolve + threshold work is wasted. The savings on
+    # the common non-idempotent path far outweigh that occasional waste.
+    resolved, existing, threshold_cents = await asyncio.gather(
+        resolve_items_against_menu(
+            store_id       = store_id,
+            items          = raw_items,
+            modifier_index = modifier_index,
+        ),
+        _find_recent_duplicate(
+            store_id        = store_id,
+            customer_phone  = phone_e164,
+            pos_object_type = "order",
+            unique_key      = "",   # orders dedup on store+phone+type only
+        ),
+        read_threshold_cents(store_id),
     )
 
     # ── 3. Refusal gates: unknown items first, then sold_out ──────────────
@@ -624,15 +644,10 @@ async def create_order(
         for r in resolved
     )
 
-    # ── 5. Idempotency probe — same store + phone + 'order' in 5-min window
-    # short-circuits to the existing transaction. Mirrors the reservation flow.
+    # ── 5. Idempotency short-circuit (probe ran in step 2 above) ──────────
+    # Mirrors the reservation flow — same store + phone + 'order' in a
+    # 5-min window returns the existing transaction.
     # (5분 윈도우 idempotency — 예약 흐름과 동일 패턴)
-    existing = await _find_recent_duplicate(
-        store_id        = store_id,
-        customer_phone  = phone_e164,
-        pos_object_type = "order",
-        unique_key      = "",       # orders dedup on store+phone+type only
-    )
     if existing:
         log.info("Idempotent order hit: tx=%s pos_object_id=%s",
                  existing["id"], existing.get("pos_object_id"))
@@ -660,7 +675,13 @@ async def create_order(
         }
 
     # ── 6. Lane decision (policy engine) ─────────────────────────────────
-    decision = await decide_lane(store_id=store_id, total_cents=total_cents)
+    # threshold_cents was read in parallel (step 2). Apply the pure-compute
+    # half here without paying another round-trip.
+    # (정책 임계값은 step 2에서 read — 여기서는 순수 계산만)
+    decision = compute_lane_from_threshold(
+        threshold_cents = threshold_cents,
+        total_cents     = total_cents,
+    )
     lane     = decision["lane"]    # 'fire_immediate' | 'pay_first'
 
     # ── 7. Open the bridge transaction with payment_lane + items recorded ─

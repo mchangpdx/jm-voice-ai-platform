@@ -32,6 +32,40 @@ LANE_FIRE_IMMEDIATE = "fire_immediate"
 LANE_PAY_FIRST      = "pay_first"
 
 
+def compute_lane_from_threshold(
+    *, threshold_cents: int, total_cents: int,
+) -> dict[str, Any]:
+    """Pure compute half of decide_lane — no I/O, just the routing decision.
+    (decide_lane의 순수 계산 부분 — I/O 분리로 호출자가 임계값 read를 병렬화 가능)
+
+    Wave A.3 Step 2 split this out so create_order can asyncio.gather() the
+    three independent reads (menu + idempotency + threshold) and apply the
+    cached threshold here without paying the sequential cost.
+
+    Returns:
+        { lane, threshold_cents, reason }
+    """
+    if threshold_cents <= 0:
+        return {
+            "lane":            LANE_PAY_FIRST,
+            "threshold_cents": 0,
+            "reason":          "policy_off_default_pay_first",
+        }
+
+    if total_cents < threshold_cents:
+        return {
+            "lane":            LANE_FIRE_IMMEDIATE,
+            "threshold_cents": threshold_cents,
+            "reason":          f"total_{total_cents}<threshold_{threshold_cents}",
+        }
+
+    return {
+        "lane":            LANE_PAY_FIRST,
+        "threshold_cents": threshold_cents,
+        "reason":          f"total_{total_cents}>=threshold_{threshold_cents}",
+    }
+
+
 async def decide_lane(*, store_id: str, total_cents: int) -> dict[str, Any]:
     """Decide which order lane this transaction should take.
     (이 트랜잭션이 어떤 주문 lane을 따라야 하는지 결정)
@@ -47,28 +81,14 @@ async def decide_lane(*, store_id: str, total_cents: int) -> dict[str, Any]:
         * threshold == 0 OR row missing OR order_policy NULL ⇒ pay_first (safe default)
         * total_cents <  threshold ⇒ fire_immediate
         * total_cents >= threshold ⇒ pay_first
+
+    Now a thin wrapper around read_threshold_cents + compute_lane_from_threshold;
+    callers wanting parallel I/O should use the two halves directly.
     """
-    threshold = await _read_threshold_cents(store_id)
-
-    if threshold <= 0:
-        return {
-            "lane":            LANE_PAY_FIRST,
-            "threshold_cents": 0,
-            "reason":          "policy_off_default_pay_first",
-        }
-
-    if total_cents < threshold:
-        return {
-            "lane":            LANE_FIRE_IMMEDIATE,
-            "threshold_cents": threshold,
-            "reason":          f"total_{total_cents}<threshold_{threshold}",
-        }
-
-    return {
-        "lane":            LANE_PAY_FIRST,
-        "threshold_cents": threshold,
-        "reason":          f"total_{total_cents}>=threshold_{threshold}",
-    }
+    return compute_lane_from_threshold(
+        threshold_cents = await read_threshold_cents(store_id),
+        total_cents     = total_cents,
+    )
 
 
 async def read_no_show_timeouts() -> dict[str, int]:
@@ -108,10 +128,13 @@ async def read_no_show_timeouts() -> dict[str, int]:
     return out
 
 
-async def _read_threshold_cents(store_id: str) -> int:
+async def read_threshold_cents(store_id: str) -> int:
     """Read store_configs.order_policy.fire_immediate_threshold_cents for a store.
     Missing row, NULL policy, missing key ⇒ 0 (policy off).
     (정책 행 없음 / NULL / 키 없음 ⇒ 0 — 정책 비활성)
+
+    Made public in Wave A.3 Step 2 so create_order can run this in parallel
+    with menu + idempotency reads via asyncio.gather().
     """
     async with httpx.AsyncClient(timeout=8) as client:
         resp = await client.get(

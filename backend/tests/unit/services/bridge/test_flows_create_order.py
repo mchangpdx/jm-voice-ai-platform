@@ -143,10 +143,8 @@ async def test_create_order_chooses_fire_immediate_below_threshold():
 
     with patch.object(flows, "resolve_items_against_menu",
                       new=AsyncMock(return_value=enriched)), \
-         patch.object(flows, "decide_lane",
-                      new=AsyncMock(return_value={
-                          "lane": "fire_immediate", "threshold_cents": 2000,
-                          "reason": "below_threshold"})), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
          patch.object(flows, "_find_recent_duplicate",
                       new=AsyncMock(return_value=None)), \
          patch.object(flows, "transactions") as mock_tx, \
@@ -196,10 +194,8 @@ async def test_create_order_chooses_pay_first_above_threshold():
 
     with patch.object(flows, "resolve_items_against_menu",
                       new=AsyncMock(return_value=enriched)), \
-         patch.object(flows, "decide_lane",
-                      new=AsyncMock(return_value={
-                          "lane": "pay_first", "threshold_cents": 2000,
-                          "reason": "at_or_above_threshold"})), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
          patch.object(flows, "_find_recent_duplicate",
                       new=AsyncMock(return_value=None)), \
          patch.object(flows, "transactions") as mock_tx, \
@@ -250,10 +246,8 @@ async def test_create_order_persists_payment_lane_on_transaction():
 
     with patch.object(flows, "resolve_items_against_menu",
                       new=AsyncMock(return_value=enriched)), \
-         patch.object(flows, "decide_lane",
-                      new=AsyncMock(return_value={
-                          "lane": "fire_immediate", "threshold_cents": 2000,
-                          "reason": "below"})), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
          patch.object(flows, "_find_recent_duplicate",
                       new=AsyncMock(return_value=None)), \
          patch.object(flows, "transactions") as mock_tx, \
@@ -297,10 +291,8 @@ async def test_create_order_keeps_pending_on_pos_failure():
 
     with patch.object(flows, "resolve_items_against_menu",
                       new=AsyncMock(return_value=enriched)), \
-         patch.object(flows, "decide_lane",
-                      new=AsyncMock(return_value={
-                          "lane": "fire_immediate", "threshold_cents": 2000,
-                          "reason": "below"})), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
          patch.object(flows, "_find_recent_duplicate",
                       new=AsyncMock(return_value=None)), \
          patch.object(flows, "transactions") as mock_tx, \
@@ -352,10 +344,8 @@ async def test_create_order_idempotent_within_window():
 
     with patch.object(flows, "resolve_items_against_menu",
                       new=AsyncMock(return_value=enriched)), \
-         patch.object(flows, "decide_lane",
-                      new=AsyncMock(return_value={
-                          "lane": "fire_immediate", "threshold_cents": 2000,
-                          "reason": "below"})), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
          patch.object(flows, "_find_recent_duplicate",
                       new=AsyncMock(return_value={
                           "id": "tx-existing", "pos_object_id": "r-9",
@@ -418,9 +408,7 @@ def _idempotent_setup(state: str, payment_lane: str, total_cents: int,
     return patch.multiple(
         flows,
         resolve_items_against_menu = AsyncMock(return_value=enriched),
-        decide_lane                = AsyncMock(return_value={
-            "lane": "fire_immediate", "threshold_cents": 2000, "reason": "below"
-        }),
+        read_threshold_cents       = AsyncMock(return_value=2000),
         _find_recent_duplicate     = AsyncMock(return_value=existing_row),
         get_pos_adapter_for_store  = AsyncMock(return_value=pos_adapter),
         transactions               = MagicMock(create_transaction=AsyncMock()),

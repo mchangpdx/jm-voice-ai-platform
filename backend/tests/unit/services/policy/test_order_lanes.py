@@ -137,4 +137,95 @@ async def test_decide_lane_includes_reason_for_audit():
         decision = await decide_lane(store_id="S", total_cents=600)
 
     assert "reason" in decision and isinstance(decision["reason"], str)
-    assert len(decision["reason"]) > 0
+
+
+# ── Phase 7-A.D Wave A.3 Step 2 — split decide_lane for parallel I/O ──────────
+# create_order's hot path runs resolve_items + idempotency_probe + decide_lane
+# sequentially. Splitting decide_lane into a public read_threshold_cents
+# (I/O) + compute_lane_from_threshold (pure compute) lets create_order
+# asyncio.gather() the three independent reads — saves ~150-300ms per order.
+# decide_lane remains as a wrapper so existing callers/tests are unaffected.
+
+
+@pytest.mark.asyncio
+async def test_read_threshold_cents_returns_value():
+    """read_threshold_cents is the public name of the per-store threshold read.
+    (read_threshold_cents — 매장 임계값 단독 read의 public API)
+    """
+    from app.services.policy.order_lanes import read_threshold_cents
+
+    fake_resp = AsyncMock(); fake_resp.status_code = 200
+    fake_resp.json = lambda: [
+        {"order_policy": {"fire_immediate_threshold_cents": 2500}}
+    ]
+
+    with patch("app.services.policy.order_lanes.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get = AsyncMock(return_value=fake_resp)
+
+        threshold = await read_threshold_cents("STORE-UUID")
+
+    assert threshold == 2500
+
+
+@pytest.mark.asyncio
+async def test_read_threshold_cents_zero_when_missing():
+    """Row absent / NULL policy / missing key ⇒ 0 (policy off)."""
+    from app.services.policy.order_lanes import read_threshold_cents
+
+    fake_resp = AsyncMock(); fake_resp.status_code = 200
+    fake_resp.json = lambda: []  # no row
+
+    with patch("app.services.policy.order_lanes.httpx.AsyncClient") as MockClient:
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.get = AsyncMock(return_value=fake_resp)
+
+        threshold = await read_threshold_cents("STORE-UUID")
+
+    assert threshold == 0
+
+
+def test_compute_lane_from_threshold_zero_returns_pay_first():
+    """threshold == 0 (policy off) ⇒ pay_first regardless of total."""
+    from app.services.policy.order_lanes import compute_lane_from_threshold
+
+    decision = compute_lane_from_threshold(threshold_cents=0, total_cents=500)
+    assert decision["lane"] == "pay_first"
+    assert decision["threshold_cents"] == 0
+    assert "policy_off" in decision["reason"]
+
+
+def test_compute_lane_from_threshold_below_returns_fire_immediate():
+    """total < threshold ⇒ fire_immediate."""
+    from app.services.policy.order_lanes import compute_lane_from_threshold
+
+    decision = compute_lane_from_threshold(threshold_cents=2000, total_cents=899)
+    assert decision["lane"] == "fire_immediate"
+    assert decision["threshold_cents"] == 2000
+    assert "899" in decision["reason"] and "2000" in decision["reason"]
+
+
+def test_compute_lane_from_threshold_at_or_above_returns_pay_first():
+    """total >= threshold ⇒ pay_first (boundary inclusive on threshold side)."""
+    from app.services.policy.order_lanes import compute_lane_from_threshold
+
+    eq = compute_lane_from_threshold(threshold_cents=2000, total_cents=2000)
+    assert eq["lane"] == "pay_first"
+    above = compute_lane_from_threshold(threshold_cents=2000, total_cents=2500)
+    assert above["lane"] == "pay_first"
+
+
+def test_compute_lane_is_pure_no_io():
+    """compute_lane_from_threshold must not perform I/O — it's the synchronous
+    half of decide_lane. (pure function — gather pattern requires I/O 무동반)"""
+    from app.services.policy import order_lanes
+
+    # If compute_lane_from_threshold tried to do I/O, monkey-patching httpx
+    # to raise would surface it. Pure compute means the call simply ignores it.
+    with patch("app.services.policy.order_lanes.httpx.AsyncClient",
+               side_effect=AssertionError("compute_lane must not touch httpx")):
+        d = order_lanes.compute_lane_from_threshold(
+            threshold_cents=1000, total_cents=500,
+        )
+    assert d["lane"] == "fire_immediate"
+    assert len(d["reason"]) > 0
