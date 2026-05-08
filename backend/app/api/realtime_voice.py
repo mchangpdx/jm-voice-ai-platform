@@ -1004,7 +1004,55 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             # be skipped (see speech_started handler).
                             # (bot 발화 종료 — 이후 caller 발화는 barge-in 아님)
                             stats["bot_speaking"] = False
-                            _dbg(f"[oai→twilio] response.done turn={stats['user_turns']}")
+
+                            # Diagnostic — capture id / status / output shape so
+                            # the silent-after-tool failure mode (Wave A.3 fire_immediate
+                            # branch, observed 2026-05-08 callSid CA59d6f3f31...) is
+                            # debuggable from the log alone. We record:
+                            #  - response_id: which response (multiple emit per turn
+                            #    when a tool fires — first carries the function_call,
+                            #    second is meant to carry the post-tool audio reply)
+                            #  - status / status_details: completed / cancelled /
+                            #    failed / incomplete, with reason when present
+                            #  - output_types: ['function_call'] vs ['message'] vs
+                            #    ['function_call','message'] tells us which response
+                            #    actually produced speech vs only a tool
+                            #  - has_audio + transcript: first 80 chars of any audio
+                            #    transcript, or '' when the response was empty
+                            # This is logging-only — no behavior change. Decisions
+                            # about whether to retry, fallback, or alarm on empty
+                            # post-tool responses come in a follow-up commit once
+                            # we have data on which pattern actually fires.
+                            # (Wave A.3 후 fire_immediate 무음 진단용 — 행동 무변경)
+                            response = getattr(event, "response", None)
+                            r_id     = getattr(response, "id", "?") or "?"
+                            r_status = getattr(response, "status", "?") or "?"
+                            r_status_details = getattr(response, "status_details", None)
+                            output_items = getattr(response, "output", None) or []
+                            output_types: list[str] = []
+                            has_audio  = False
+                            transcript = ""
+                            for item in output_items:
+                                it_type = getattr(item, "type", "") or ""
+                                output_types.append(it_type)
+                                if it_type != "message":
+                                    continue
+                                for c in (getattr(item, "content", None) or []):
+                                    c_type = getattr(c, "type", "") or ""
+                                    if c_type == "audio":
+                                        has_audio = True
+                                        if not transcript:
+                                            transcript = (getattr(c, "transcript", "") or "")[:80]
+                                    elif c_type == "text" and not transcript:
+                                        transcript = (getattr(c, "text", "") or "")[:80]
+                            _dbg(
+                                f"[oai→twilio] response.done turn={stats['user_turns']} "
+                                f"id={r_id} status={r_status} "
+                                f"output_types={output_types} has_audio={has_audio} "
+                                f"transcript={transcript!r}"
+                            )
+                            if r_status_details:
+                                _dbg(f"[oai→twilio] response.status_details={r_status_details!r}")
 
                         elif etype == "error":
                             err = getattr(event, "error", None)
