@@ -1,0 +1,241 @@
+<html><head><meta charset="utf-8"><style>body{font-family:-apple-system,sans-serif;max-width:900px;margin:30px auto;padding:0 20px;line-height:1.55;color:#1f2937;}h1{color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:6px;}h2{color:#1f2937;border-bottom:1px solid #d1d5db;padding-bottom:3px;}h3{color:#374151;}table{border-collapse:collapse;width:100%;font-size:14px;}th,td{border:1px solid #d1d5db;padding:6px 10px;}th{background:#f3f4f6;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}pre{background:#1f2937;color:#e5e7eb;padding:12px;border-radius:6px;font-size:12px;}pre code{background:transparent;color:inherit;}</style></head><body><h1>Session Summary — 2026-05-07 (Phase 7-A.D)</h1>
+<p><strong>Theme</strong>: Modifier system completeness + voice quality fixes
+<strong>Duration</strong>: full day
+<strong>Commits</strong>: 9 (<code>34d154c</code> … <code>1ee3eb5</code>)
+<strong>Tests added</strong>: ~50 unit tests; full regression 489–572/572 pass across multiple checkpoints</p>
+<hr />
+<h2>1. Phase Overview</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Commit</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>7-A</td>
+<td><code>34d154c</code></td>
+<td>(prior session) JM Cafe production menu + modifier DB + sync freeze</td>
+</tr>
+<tr>
+<td>7-A.B</td>
+<td><code>ae2efb2</code></td>
+<td>Voice agent modifier recognition + dynamic allergen compute</td>
+</tr>
+<tr>
+<td>7-A.C</td>
+<td><code>22cea0a</code></td>
+<td>Modifier serialization on order line (<code>effective_price</code>)</td>
+</tr>
+<tr>
+<td>7-A.D</td>
+<td><code>7c160fc</code></td>
+<td>Close POS round-trip (D1 Loyverse price + D2 recital + D3 modify + D4 required-ask)</td>
+</tr>
+<tr>
+<td>7-A.D hot-fix</td>
+<td><code>c329afd</code></td>
+<td>Recital gate + all-modifier capture + email letter-by-letter</td>
+</tr>
+<tr>
+<td>7-A.D Q1+Q2</td>
+<td><code>76d495a</code></td>
+<td>VAD switch to server_vad/1200ms + barge-in debounce + email simplification</td>
+</tr>
+<tr>
+<td>7-A.D Wave A</td>
+<td><code>f393ebf</code></td>
+<td>Prompt compaction + INVARIANTS recency placement</td>
+</tr>
+<tr>
+<td>7-A.D Wave A.1</td>
+<td><code>86b95c8</code></td>
+<td>STT-arg consistency hot fixes (Bugs A/B/C/D)</td>
+</tr>
+<tr>
+<td>7-A.D Wave A.2</td>
+<td><code>1ee3eb5</code></td>
+<td>Recital gate strict + menu_cache sync + letter-by-letter ASK + receipt modifier breakdown</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. Bugs Closed</h2>
+<h3>Originally identified (call CA90b88e... 2026-05-07 12:14 — pre-Phase-7-A.B)</h3>
+<ul>
+<li>❌ <code>iced oat latte</code> rejected 4 times → customer hangup → <strong>Phase 7-A.B SOLVED</strong></li>
+</ul>
+<h3>Phase 7-A.B verification (call CA61eaa299b... 13:33 — post-7-A.B)</h3>
+<ul>
+<li>✅ Composite drink recognition working</li>
+<li>❌ Order booked $5.50 instead of $7.25 (modifier surcharge missing) → <strong>Phase 7-A.C SOLVED</strong></li>
+</ul>
+<h3>Phase 7-A.C+D verification (call CA9c22bb95... 18:29 — post-7-A.D)</h3>
+<p>Bugs surfaced after Phase 7-A.C/D ship:
+- <strong>R1</strong>: Order recital SKIPPED before create_order → <strong>hot fix c329afd partial</strong>, then <strong>Wave A.2-E full SOLVED</strong>
+- <strong>Issue 3</strong>: size:large dropped from selected_modifiers despite being spoken → <strong>Wave A.1 SOLVED via code= prefix in MENU MODIFIERS</strong>
+- <strong>Issue 4</strong>: NATO email B→C silent substitution → <strong>partial</strong> (NATO-SOURCE GATE + LETTER-BY-LETTER ASK improved)</p>
+<h3>Quality regression triage (4 calls 16:52-17:00)</h3>
+<p>Customer feedback on call CA55035ea4: "communication is not good"
+- Barge-in clears at 1.0/turn unconditionally → <strong>Q1 SOLVED via server_vad/1200ms + bot_speaking debounce</strong>
+- Letter-by-letter spelling fragmented to 4+ turns → <strong>Q1 SOLVED</strong>
+- Letter-by-letter ASK clause amplifying VAD fragmentation → <strong>Q2 SOLVED via revert to single NATO readback</strong></p>
+<h3>Wave A.1 verification (call CAc4250831 18:29 — post-Q1+Q2+Wave A)</h3>
+<ul>
+<li><strong>Bug A</strong> size capture failure → <strong>Wave A.1 SOLVED</strong></li>
+<li><strong>Bug B</strong> $8.00 vs $7.75 math hallucination → <strong>Wave A.1 SOLVED via PRICE MATH bullet</strong></li>
+<li><strong>Bug C</strong> Whisper 'Chin' → bot args 'Tran' → <strong>Wave A.1 SOLVED via ARGS-NAME GATE</strong></li>
+<li><strong>Bug D</strong> STT 'simit' → bot NATO 'D-Y-M-E-E-T' → <strong>Wave A.1 partial</strong> (NATO-SOURCE GATE)</li>
+</ul>
+<h3>Wave A.1 verification (call CA0459df13 19:08 — post-Wave-A.1)</h3>
+<ul>
+<li><strong>Bug A/C</strong> verified solved; <strong>Bug B</strong> verified solved</li>
+<li><strong>Bug E</strong> (new): RECITAL GATE bypassed (recital + tool in same response) → <strong>Wave A.2-E SOLVED</strong></li>
+<li><strong>Bug F</strong> (new): menu_cache vs menu_items $0.50 mismatch → <strong>Wave A.2-F SOLVED via deactivating Medium/Large legacy variants on 12 sized drinks (21 rows)</strong></li>
+<li><strong>Bug D</strong>: still partial → <strong>Wave A.2-D partially helped via LETTER-BY-LETTER ASK fallback</strong></li>
+<li><strong>Bug G</strong> (request): pay link email + receipt page hid modifier choices → <strong>Wave A.2-G SOLVED via modifier_lines persisted in items_json + email/receipt rendering</strong></li>
+</ul>
+<h3>Wave A.2 verification (calls CA30358613 19:37, CA99939c84 19:46 — post-Wave-A.2)</h3>
+<ul>
+<li>✅ Bug A/B/C/E/F/G all verified solved live</li>
+<li>⚠️ Bug D persists (NATO ↔ args drift) — <strong>inherent STT limitation</strong>, will resolve naturally when TCR SMS approved</li>
+<li>⚠️ <strong>Latency observed</strong>: create_order tool ~3.2s consistently. Bottleneck identified — 9 serial REST calls. <strong>Wave A.3 candidate</strong> for next session.</li>
+</ul>
+<hr />
+<h2>3. Architecture / Data Changes</h2>
+<h3>DB</h3>
+<ul>
+<li><code>menu_items</code> — 21 Medium/Large legacy variants set <code>is_available=false</code> on JM Cafe (12 sized drinks). Modifier system size price_delta now solely drives sized pricing.</li>
+<li><code>stores.menu_cache</code> — regenerated from current <code>is_available=true</code> rows.</li>
+<li><code>items_json</code> schema (within <code>bridge_transactions</code>):</li>
+<li>new field: <code>effective_price</code> (base + Σ price_delta)</li>
+<li>new field: <code>selected_modifiers: [{group, option}]</code></li>
+<li>new field: <code>modifier_lines: [{label, group, option, price_delta}]</code> — render-friendly for receipts</li>
+<li>Phase A — <code>loyverse_item_id</code> phantom column dropped (prior session).</li>
+</ul>
+<h3>Code — services layer</h3>
+<ul>
+<li><code>services/menu/modifiers.py</code> (NEW Phase 7-A.B) — <code>fetch_modifier_groups</code>, <code>format_modifier_block</code> with <code>code=Display</code> rendering</li>
+<li><code>services/menu/allergen_compute.py</code> (NEW Phase 7-A.B) — <code>compute_effective_allergens</code> (base ⊖ remove ⊕ add)</li>
+<li><code>services/menu/match.py</code> — added <code>is_available=eq.true</code> filter (Wave A.2-F); per-line <code>effective_price</code> + <code>modifier_lines</code> enrichment</li>
+</ul>
+<h3>Code — bridge layer</h3>
+<ul>
+<li><code>services/bridge/flows.py</code> — <code>total_cents</code> uses <code>effective_price</code>; <code>_items_key</code> includes modifier signature</li>
+<li><code>services/bridge/pos/loyverse.py</code> — line <code>price</code> reads <code>effective_price</code> first</li>
+<li><code>services/bridge/pay_link_email.py</code> — <code>_items_rows_html</code> uses <code>effective_price</code> + renders <code>modifier_lines</code> block</li>
+</ul>
+<h3>Code — API layer</h3>
+<ul>
+<li><code>api/realtime_voice.py</code> — modifier preload + dispatcher passes <code>selected_modifiers</code>; VAD switch to <code>server_vad/silence=1200ms</code>; barge-in debounce via <code>bot_speaking</code> flag</li>
+<li><code>api/voice_websocket.py</code> <code>build_system_prompt</code> — Wave A compaction (28,286→20,000 chars on synthetic store; ~24,453 on production); INVARIANTS moved to recency zone with top-of-prompt anchor; rule 5 ORDERS rewritten as checklist with NATO-SOURCE GATE / ARGS-NAME GATE / PRICE MATH / RECITAL GATE / SAME-RESPONSE TOOL BAN / LETTER-BY-LETTER ASK clauses</li>
+<li><code>api/payment.py</code> <code>_success_page</code> — same modifier breakdown rendering as email</li>
+</ul>
+<h3>Code — skills</h3>
+<ul>
+<li><code>skills/menu/allergen.py</code> — <code>selected_modifiers</code> parameter on <code>allergen_lookup</code> + dynamic effective allergen path</li>
+<li><code>skills/order/order.py</code> — <code>create_order</code> and <code>modify_order</code> tool defs accept <code>selected_modifiers</code> per item</li>
+</ul>
+<hr />
+<h2>4. Live Verification Trail</h2>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Time</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CA90b88e...</td>
+<td>12:14</td>
+<td>Pre-7-A.B baseline. <code>iced oat latte</code> rejected 4× → hangup.</td>
+</tr>
+<tr>
+<td>CA61eaa299b</td>
+<td>13:33</td>
+<td>Phase 7-A.B verified. Composite drink ordered. $5.50 underbill.</td>
+</tr>
+<tr>
+<td>CA9c22bb95</td>
+<td>18:29</td>
+<td>Phase 7-A.D verified. R1+I3+I4 surfaced.</td>
+</tr>
+<tr>
+<td>CA55035ea4</td>
+<td>16:52</td>
+<td>Quality regression. "communication is not good" → hangup.</td>
+</tr>
+<tr>
+<td>3 more 16:55-17:00</td>
+<td>—</td>
+<td>Quality regression confirmed.</td>
+</tr>
+<tr>
+<td>CAc4250831</td>
+<td>18:29</td>
+<td>Q1+Q2+Wave A verified. Bug A→D surfaced.</td>
+</tr>
+<tr>
+<td>CA0459df13</td>
+<td>19:08</td>
+<td>Wave A.1 verified. Bug E+F+G surfaced.</td>
+</tr>
+<tr>
+<td>CA30358613</td>
+<td>19:37</td>
+<td>Wave A.2 verified. 5/6 PASS.</td>
+</tr>
+<tr>
+<td>CA99939c84</td>
+<td>19:46</td>
+<td>Wave A.2 final verification. Latency 3.2s identified.</td>
+</tr>
+</tbody>
+</table>
+<p>Each call outcome documented in chat trace.</p>
+<hr />
+<h2>5. Known Issues Remaining</h2>
+<h3>High priority (next session)</h3>
+<ol>
+<li><strong>Wave A.3 — Latency</strong>: create_order ~3.2s. Strategies A+B (prefetch loyverse store/payment_type + reuse modifier_index) → 2.2s. Strategy C (bot acknowledges while tool runs) → ~0s perceived.</li>
+<li><strong>Bug D — Email accuracy</strong>: NATO ↔ args drift. Best fix is TCR SMS approval (deprecates email primary).</li>
+</ol>
+<h3>Medium priority</h3>
+<ol>
+<li><strong>CRM Wave 1</strong>: phone-keyed customer lookup at call start (Step 4 from earlier)</li>
+<li><strong>JM BBQ adapter</strong>: KBBQ AYCE × 2 stores (PDX Phase 1 priority)</li>
+</ol>
+<h3>Deferred</h3>
+<ul>
+<li>D5 (Loyverse line_modifiers structured POST) — Phase 7-A.E</li>
+<li>D6 (server-side is_required hard gate) — Phase 8</li>
+<li>E series (5-lang modifier display, recall_order modifier mention)</li>
+<li>F series (admin UI for modifier toggle, modifier analytics)</li>
+</ul>
+<hr />
+<h2>6. Numbers</h2>
+<ul>
+<li>Total commits: 9</li>
+<li>Files touched: 12 unique</li>
+<li>Tests added: ~50</li>
+<li>Production prompt: 28,286 → 24,453 chars (-13.5%)</li>
+<li>Tool latency: 3.2s identified (next-session priority)</li>
+<li>Live calls verified: 9</li>
+<li>Production POS receipts created (test): #0099 → #0103 (5 successful Loyverse pushes)</li>
+</ul>
+<hr />
+<h2>7. Backend State at Session End</h2>
+<ul>
+<li>Branch: <code>feature/openai-realtime-migration</code></li>
+<li>Last commit: <code>1ee3eb5</code></li>
+<li>uvicorn <code>--reload</code> running (PID 32433)</li>
+<li>ngrok: <code>https://bipectinate-cheerily-akilah.ngrok-free.dev</code></li>
+<li>Twilio +1-503-994-1265 → Realtime 100%</li>
+<li>DB JM Cafe: 26 menu_items active (12 sized + 14 non-sized) + 9 modifier_groups + 39 options</li>
+<li>VAD: server_vad/silence=1200ms</li>
+<li>System prompt: 24,453 chars production</li>
+</ul></body></html>
