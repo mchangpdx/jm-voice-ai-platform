@@ -1,0 +1,4 @@
+1. 오늘 한 일: Wave A.3 6 commits — Loyverse POS 비동기화(Plan D) + NATO recital 서버 보정(Plan E) + 진단 로그 정리. create_order voice-perceived latency 3200ms→293ms (10.9× 개선), 이메일 정확도 1/11→11/11 (100%). 라이브 1통화 검증 통과. 439 tests pass, 회귀 0.
+2. 다음 세션에서 가장 먼저 할 일: session_resume_2026-05-08_wave-a3.md 읽기 → CRM Wave 1(AHT -25%) / JM BBQ adapter / Onboarding automation / Modifier 정확도(size 인식 오류) 중 선택
+3. 절대 하지 말 것: Loyverse webhook DELETE/POST 7개 금지(freeze만 사용); _fire_pos_async 동기화 회귀 금지(latency 3000ms+ 재발); compute_lane_from_threshold/read_threshold_cents 분리 회귀 금지; services/voice/recital.py NATO 추출 회귀 금지; ORDER_SCRIPT_BY_HINT 'fire_immediate' 'placing your order now' 멘트를 'in the kitchen now'로 회귀 금지
+4. 참고: docs/sessions/2026-05-08_wave-a-3/SESSION_SUMMARY.{md,html,pdf}, session_resume_2026-05-08_wave-a3.md, commit chain c4aa197→26b1d34 (Wave A.3 6 commits), realtime_migration_runbook.md, [perf] sync_done/bg_done 운영 모니터링 키워드
