@@ -30,6 +30,7 @@ from app.services.bridge.flows import is_placeholder_name
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.services.crm import CustomerContext
 from app.services.handoff.manager_alert import send_tier3_alert
 from app.skills.menu.allergen import (  # Phase 2-C.B5
     ALLERGEN_LOOKUP_TOOL_DEF,
@@ -114,9 +115,126 @@ _GREETING_PROMPT = (
 
 # ── Pure helper functions (unit-testable, no I/O) ─────────────────────────────
 
-def build_system_prompt(store: dict) -> str:
+def _summarize_recent_items(items_json) -> str:
+    """One-line item summary for a single transaction's items_json.
+    (한 트랜잭션의 items_json을 한 줄로 요약 — '2x iced oat latte (Large), croissant')
+    """
+    if not items_json or not isinstance(items_json, list):
+        return "(no items)"
+    parts: list[str] = []
+    for it in items_json:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name") or "item"
+        try:
+            qty = int(it.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1
+        prefix = f"{qty}x " if qty > 1 else ""
+        mod_lines = it.get("modifier_lines") or []
+        mod_labels = [m.get("label") for m in mod_lines if isinstance(m, dict) and m.get("label")]
+        if mod_labels:
+            parts.append(f"{prefix}{name} ({', '.join(mod_labels)})")
+        else:
+            parts.append(f"{prefix}{name}")
+    return ", ".join(parts) if parts else "(no items)"
+
+
+def _format_last_visit(created_at_iso: Optional[str]) -> str:
+    """'today' / 'yesterday' / 'N days ago' relative to UTC now.
+    (created_at ISO 타임스탬프 → 상대 표현. 파싱 실패 시 빈 문자열)
+    """
+    if not created_at_iso or not isinstance(created_at_iso, str):
+        return ""
+    try:
+        # Supabase returns ISO with timezone (e.g. '2026-05-05T14:23:01+00:00')
+        ts = created_at_iso.replace("Z", "+00:00")
+        when = datetime.fromisoformat(ts)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return ""
+    delta = datetime.now(timezone.utc).date() - when.date()
+    days = delta.days
+    if days < 0:  # clock skew defensive
+        return "today"
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    return f"{days} days ago"
+
+
+def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
+    """Render the returning-caller block placed right before INVARIANTS.
+
+    Returns "" for None / first-time / visit_count==0 — caller must skip
+    appending empty strings (they would create a stray blank section after
+    the join). When non-empty, the block carries (a) the customer snapshot
+    the LLM uses for "Welcome back, {name}" and (b) the CRM rules that
+    govern when "the usual" may be offered.
+
+    (재방문 고객 블록 — INVARIANTS 직전 배치. 신규/익명/실패 시 빈 문자열)
+    """
+    if ctx is None or ctx.visit_count <= 0:
+        return ""
+
+    lines: list[str] = ["=== CUSTOMER CONTEXT (returning caller — applies to ALL turns) ==="]
+
+    # Snapshot
+    if ctx.name:
+        lines.append(f"- Name: {ctx.name} (use in greeting)")
+    last_visit = _format_last_visit(ctx.recent[0].get("created_at")) if ctx.recent else ""
+    if last_visit:
+        lines.append(f"- Visits: {ctx.visit_count} | Last: {last_visit}")
+    else:
+        lines.append(f"- Visits: {ctx.visit_count}")
+    if ctx.email:
+        lines.append(f"- Email on file: {ctx.email}")
+
+    # Recent paid orders (numbered)
+    if ctx.recent:
+        lines.append("- Recent orders (paid/settled only):")
+        for i, tx in enumerate(ctx.recent, start=1):
+            date_str = (tx.get("created_at") or "")[:10] or "----"
+            items    = _summarize_recent_items(tx.get("items_json"))
+            cents    = tx.get("total_cents") or 0
+            try:
+                dollars = f"${int(cents)/100:.2f}"
+            except (TypeError, ValueError):
+                dollars = "$?"
+            lines.append(f"  {i}. {date_str}  {items}  {dollars}")
+
+    # CRM Rules — exactly the playbook the LLM should follow on this call
+    lines.append("")
+    lines.append("CRM RULES:")
+    lines.append('- Greet by name once: "Welcome back, {name}!"')
+    lines.append("- Email & phone are on file — do NOT ask NATO recital unless customer "
+                 "explicitly says they are using a different email this time.")
+    if ctx.usual_eligible and ctx.recent:
+        usual_items = _summarize_recent_items(ctx.recent[0].get("items_json"))
+        lines.append(f'- Usual eligible: YES — last 2 paid orders match. After greeting '
+                     f'you MAY offer once: "Would you like the usual, {usual_items}?"')
+        lines.append("  → If customer says yes, populate items + modifiers from order #1 verbatim.")
+        lines.append("  → If no/different, proceed normal menu flow — do not retry the usual.")
+    else:
+        lines.append('- Usual eligible: NO — do NOT use "the usual" phrasing on this call.')
+
+    return "\n".join(lines)
+
+
+def build_system_prompt(
+    store:            dict,
+    customer_context: Optional[CustomerContext] = None,
+) -> str:
     """Compose Gemini system prompt from store persona fields.
     (스토어 페르소나 필드로 Gemini 시스템 프롬프트 조합)
+
+    customer_context: optional Wave 1 CRM block. None / visit_count==0 →
+    no block injected, returns prompt byte-for-byte identical to the
+    pre-CRM build (verified by tests/unit/.../P1, P2). Returning caller →
+    block sits right before the CORE TRUTHFULNESS INVARIANTS to ride the
+    same recency boost (Cat 2.6 / Q6 of the design).
     """
     parts: list[str] = []
 
@@ -486,6 +604,17 @@ def build_system_prompt(store: dict) -> str:
         "    NOT call. Reply 'I can only see orders from this current call —\n"
         "    want to place a new one?' and stop."
     )
+
+    # CRM Wave 1 — customer_context block sits immediately before INVARIANTS.
+    # Q6 of the design: same recency-boost zone as INVARIANTS so the LLM
+    # actually applies the "Welcome back" / "the usual" rules through the
+    # whole call rather than losing them in the middle of a 3.5K-token prompt.
+    # First-time / anonymous / lookup-failed → empty string → not appended,
+    # so the prompt is byte-identical to the pre-CRM path.
+    # (재방문 고객 컨텍스트 블록 — INVARIANTS 직전 동일 recency 영역)
+    crm_block = _render_customer_context_block(customer_context)
+    if crm_block:
+        parts.append(crm_block)
 
     # Phase 7-A.D Wave A — INVARIANTS in recency zone (last block before close).
     # These four are the ABSOLUTE rules — every other rule above defers to them.
