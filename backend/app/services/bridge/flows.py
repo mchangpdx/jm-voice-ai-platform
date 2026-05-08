@@ -513,6 +513,103 @@ def _success_message(args: dict[str, Any], customer: str, party_size: int) -> st
 # vs pay_first) lives in app.services.policy.order_lanes.decide_lane and is
 # applied here. Pay link wiring is the responsibility of Phase 2-B.1.9.
 
+async def _fire_pos_async(
+    *,
+    store_id:    str,
+    txn_id:      str,
+    resolved:    list[dict[str, Any]],
+    customer:    str,
+    phone_e164:  str,
+    t0_total:    float,
+) -> None:
+    """Background POS injection — Phase 7-A.D Wave A.3 Plan D.
+
+    Decouples adapter.create_pending + set_pos_object_id + advance_state
+    from the voice hot path. Caller (create_order fire_immediate branch)
+    fires this via asyncio.create_task and returns to voice immediately;
+    this coroutine then drives bridge_transactions to its terminal state
+    (FIRED_UNPAID on success, FAILED on POS error) without blocking the
+    customer's response. (background task — voice 응답 후 POS 실행)
+
+    Failure semantics: any exception advances to FAILED so the broadened
+    idempotency probe excludes the row on subsequent calls. Bridge-side
+    state update failures are logged but not re-raised — by then the
+    customer is gone from the call and the kitchen state (whatever it is)
+    is now an operator concern. This coroutine MUST NOT raise into the
+    asyncio loop — wrapping each step in try/except keeps the task quiet.
+    (모든 예외는 흡수 — operator alert + daily reconcile로 복구)
+    """
+    _t2 = time.monotonic()
+    try:
+        adapter = await get_pos_adapter_for_store(store_id)
+    except Exception as exc:
+        log.error("POS adapter lookup failed (background) tx=%s: %s", txn_id, exc)
+        try:
+            await transactions.advance_state(
+                transaction_id = txn_id,
+                to_state       = State.FAILED,
+                source         = "voice",
+                actor          = "pos_adapter:lookup_failed_async",
+                extra_fields   = {},
+            )
+        except Exception as inner:
+            log.error("FAILED transition write also failed tx=%s: %s", txn_id, inner)
+        return
+    _perf(f"create_order adapter_lookup_done txid={txn_id[:8]} ms={(time.monotonic()-_t2)*1000:.0f}")
+
+    _t3 = time.monotonic()
+    try:
+        pos_object_id = await adapter.create_pending(
+            vertical="restaurant",
+            store_id=store_id,
+            payload={
+                "pos_object_type": "order",
+                "items":           resolved,
+                "customer_name":   customer,
+                "customer_phone":  phone_e164,
+                "bridge_tx_id":    txn_id,
+            },
+        )
+        _perf(f"create_order pos_create_done txid={txn_id[:8]} pos_id={pos_object_id} ms={(time.monotonic()-_t3)*1000:.0f}")
+    except Exception as exc:
+        log.error("POS create_pending failed (background) tx=%s: %s", txn_id, exc)
+        try:
+            await transactions.advance_state(
+                transaction_id = txn_id,
+                to_state       = State.FAILED,
+                source         = "voice",
+                actor          = "pos_adapter:create_pending_failed_async",
+                extra_fields   = {},
+            )
+        except Exception as inner:
+            log.error("FAILED transition write also failed tx=%s: %s", txn_id, inner)
+        return
+
+    _t4 = time.monotonic()
+    try:
+        await transactions.set_pos_object_id(txn_id, pos_object_id)
+    except Exception as exc:
+        log.error("set_pos_object_id failed (background) tx=%s pos_id=%s: %s — "
+                  "Loyverse has the receipt; bridge row is drifted, needs reconcile.",
+                  txn_id, pos_object_id, exc)
+    _perf(f"create_order set_pos_id_done txid={txn_id[:8]} ms={(time.monotonic()-_t4)*1000:.0f}")
+
+    _t5 = time.monotonic()
+    try:
+        await transactions.advance_state(
+            transaction_id = txn_id,
+            to_state       = State.FIRED_UNPAID,
+            source         = "voice",
+            actor          = "tool_call:create_order:async",
+            extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
+        )
+    except Exception as exc:
+        log.error("advance_state(FIRED_UNPAID) failed (background) tx=%s: %s — "
+                  "Loyverse receipt %s exists; needs reconcile.",
+                  txn_id, exc, pos_object_id)
+    _perf(f"create_order advance_state_done txid={txn_id[:8]} ms={(time.monotonic()-_t5)*1000:.0f} BG_TOTAL_ms={(time.monotonic()-t0_total)*1000:.0f}")
+
+
 async def create_order(
     *,
     store_id:       str,
@@ -738,95 +835,39 @@ async def create_order(
 
     # ── 8. Lane branch ───────────────────────────────────────────────────
     if lane == "fire_immediate":
-        # Try to inject into POS now; if the adapter raises, leave the
-        # transaction in PENDING so an operator can recover. Critical
-        # invariant: this branch must never raise out to the voice path.
-        # (POS 실패 시 PENDING 유지 — 음성 경로 보호)
-        _t2 = time.monotonic()
-        adapter = await get_pos_adapter_for_store(store_id)
-        _perf(f"create_order adapter_lookup_done txid={txn_id[:8]} ms={(time.monotonic()-_t2)*1000:.0f}")
-        try:
-            _t3 = time.monotonic()
-            pos_object_id = await adapter.create_pending(
-                vertical="restaurant",
-                store_id=store_id,
-                payload={
-                    "pos_object_type": "order",
-                    "items":           resolved,
-                    "customer_name":   customer,
-                    "customer_phone":  phone_e164,
-                    "bridge_tx_id":    txn_id,
-                },
-            )
-            _perf(f"create_order pos_create_done txid={txn_id[:8]} pos_id={pos_object_id} ms={(time.monotonic()-_t3)*1000:.0f}")
-        except Exception as exc:
-            log.error("POS create_pending failed for tx=%s: %s", txn_id, exc)
-            # Advance to FAILED so the idempotency probe in subsequent
-            # turns excludes this row. Otherwise a PENDING tx stays
-            # eligible for re-match and the next yes returns success=True
-            # with a 'pay_first' script the customer never actually got
-            # a link for. Audit row is written via advance_state.
-            # (POS 실패 → FAILED 전이 — idempotency 거짓 성공 차단)
-            try:
-                await transactions.advance_state(
-                    transaction_id = txn_id,
-                    to_state       = State.FAILED,
-                    source         = "voice",
-                    actor          = "pos_adapter:create_pending_failed",
-                    extra_fields   = {},
-                )
-            except Exception as inner:
-                log.error("FAILED transition write also failed tx=%s: %s",
-                          txn_id, inner)
-            return {
-                "success":        False,
-                "transaction_id": txn_id,
-                "lane":           lane,
-                "state":          State.FAILED,
-                "error":          f"POS injection failed: {exc}",
-                "ai_script_hint": "pos_failure",
-            }
-
-        # POS receipt created. Backfill link, advance state, stamp fired_at.
-        # The Loyverse side already booked revenue and decremented inventory;
-        # if the bridge-side state UPDATE fails (e.g. CHECK constraint drift,
-        # connectivity blip), we MUST NOT bubble the exception to the voice
-        # layer — that would leave the customer in dead silence after the
-        # kitchen already received the order. Treat the bridge-side advance
-        # as best-effort: log + emit a recovery audit hint via _BRIDGE_DRIFT
-        # so reconcile_pos_drift.py can fix the row offline. The customer
-        # still gets the fire_immediate script, which is accurate (kitchen
-        # has the order, pay link is sent).
-        # (Loyverse는 이미 매출/재고 처리 — bridge UPDATE 실패해도 침묵 금지)
-        _t4 = time.monotonic()
-        try:
-            await transactions.set_pos_object_id(txn_id, pos_object_id)
-        except Exception as exc:
-            log.error("set_pos_object_id failed tx=%s pos_id=%s: %s — "
-                      "Loyverse has the receipt; bridge row is drifted, "
-                      "needs reconcile.", txn_id, pos_object_id, exc)
-        _perf(f"create_order set_pos_id_done txid={txn_id[:8]} ms={(time.monotonic()-_t4)*1000:.0f}")
-        _t5 = time.monotonic()
-        try:
-            await transactions.advance_state(
-                transaction_id = txn_id,
-                to_state       = State.FIRED_UNPAID,
-                source         = "voice",
-                actor          = "tool_call:create_order",
-                extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
-            )
-        except Exception as exc:
-            log.error("advance_state(FIRED_UNPAID) failed tx=%s: %s — "
-                      "Loyverse receipt %s already exists; needs reconcile.",
-                      txn_id, exc, pos_object_id)
-        _perf(f"create_order advance_state_done txid={txn_id[:8]} ms={(time.monotonic()-_t5)*1000:.0f} TOTAL_ms={(time.monotonic()-_t0)*1000:.0f}")
+        # Wave A.3 Plan D — POS create_pending + state advance run in a
+        # background asyncio task so the voice handler can respond to the
+        # caller in ~500ms instead of ~3000ms. Live measurement 2026-05-08:
+        # adapter.create_pending alone took 2484ms of the 3029ms total.
+        #
+        # Trade-off: when this task fails, the bot has already told the
+        # customer "placing your order now" — the FAILED bridge_transactions
+        # row is the operator-side recovery signal (manager_alert + daily
+        # reconcile). Loyverse failure is rare in practice (webhook freeze
+        # pattern keeps the integration stable), so the latency win
+        # dominates the false-confirmation risk.
+        # (POS는 background task — voice 응답 6× 단축. 실패 시 FAILED state로 operator 복구)
+        asyncio.create_task(_fire_pos_async(
+            store_id    = store_id,
+            txn_id      = txn_id,
+            resolved    = resolved,
+            customer    = customer,
+            phone_e164  = phone_e164,
+            t0_total    = _t0,
+        ))
+        _perf(f"create_order fire_async_dispatched txid={txn_id[:8]} TOTAL_ms={(time.monotonic()-_t0)*1000:.0f}")
 
         return {
             "success":         True,
             "transaction_id":  txn_id,
-            "pos_object_id":   pos_object_id,
+            # pos_object_id is "" here — the background task will backfill
+            # it via set_pos_object_id once Loyverse responds. Voice handler
+            # callers MUST NOT depend on this field being populated.
+            "pos_object_id":   "",
             "lane":            lane,
-            "state":           State.FIRED_UNPAID,
+            # State is PENDING at the moment of return — the advance to
+            # FIRED_UNPAID happens in the background after POS confirms.
+            "state":           State.PENDING,
             "total_cents":     total_cents,
             "items":           resolved,
             "ai_script_hint":  "fire_immediate",

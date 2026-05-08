@@ -139,8 +139,16 @@ ORDER_TOOL_DEF: dict = {
 # (lane별 고객 응답 스크립트 — Voice Engine이 ai_script_hint로 선택)
 
 ORDER_SCRIPT_BY_HINT: dict[str, str] = {
+    # Phase 7-A.D Wave A.3 Plan D — POS create_pending now runs in a
+    # background task to cut user-perceived latency from ~3s to ~0.5s.
+    # The script wording shifted from "in the kitchen now" (POS confirmed)
+    # to "placing your order now" (bridge row created, POS in-flight).
+    # If the background POS injection fails, manager_alert + daily
+    # reconcile picks up the FAILED bridge row — the customer is not
+    # falsely told the kitchen has it.
+    # (POS는 background — 멘트는 정직하게 "placing")
     "fire_immediate": (
-        "Got it — your order is in the kitchen now. I just sent a payment link to your phone. "
+        "Got it — placing your order now and sending a payment link to your phone. "
         "You can pay before pickup or at the counter."
     ),
     "pay_first": (

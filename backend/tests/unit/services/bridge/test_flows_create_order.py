@@ -161,15 +161,29 @@ async def test_create_order_chooses_fire_immediate_below_threshold():
                   "customer_name":  "Michael"},
         )
 
-    assert res["success"]          is True
-    assert res["lane"]             == "fire_immediate"
-    assert res["total_cents"]      == 900   # 2 * $4.50 = $9.00
-    assert res["pos_object_id"]    == "receipt-1042"
-    assert res["state"]            == State.FIRED_UNPAID
-    assert res["ai_script_hint"]   == "fire_immediate"
+        # Wave A.3 Plan D — fire_immediate now returns to voice the moment the
+        # bridge INSERT completes. POS create_pending + state advance happen
+        # in a background asyncio.Task. Immediately after create_order returns:
+        #   - state is PENDING (background hasn't finished FIRED_UNPAID advance)
+        #   - pos_object_id is "" (background hasn't backfilled it yet)
+        #   - ai_script_hint stays 'fire_immediate' (script wording softened
+        #     to "placing your order now" rather than "in the kitchen now").
+        assert res["success"]          is True
+        assert res["lane"]             == "fire_immediate"
+        assert res["total_cents"]      == 900   # 2 * $4.50 = $9.00
+        assert res["pos_object_id"]    == ""
+        assert res["state"]            == State.PENDING
+        assert res["ai_script_hint"]   == "fire_immediate"
+
+        # Yield to the loop so the background task runs to completion. Must
+        # stay inside the patch context — otherwise get_pos_adapter_for_store
+        # un-patches and the background task hits the real httpx client.
+        # (background task가 patch context 안에서 실행되도록 sleep도 내부에)
+        import asyncio as _asyncio
+        for _ in range(5):
+            await _asyncio.sleep(0)
 
     pos_adapter.create_pending.assert_awaited_once()
-    # State advanced PENDING → FIRED_UNPAID with fired_at extra_field
     fired_call = next(c for c in advance_calls if c.get("to_state") == State.FIRED_UNPAID)
     assert "fired_at" in fired_call.get("extra_fields", {})
 
@@ -373,14 +387,217 @@ async def test_create_order_omits_customer_email_when_caller_did_not_provide():
     assert captured_kwargs.get("customer_email") in (None, "")
 
 
+# ── Phase 7-A.D Wave A.3 Plan D — Loyverse POS fire-and-forget async ──────────
+# Live measurement 2026-05-08 21:43:10-13 showed adapter.create_pending alone
+# took 2484ms of the 3029ms total create_order — 82% of the user-perceived
+# silence after the customer's confirming yes. These tests pin the contract
+# that fire_immediate now returns to the voice path with state=PENDING the
+# moment create_transaction completes; the POS round-trip and final state
+# advance run in a background asyncio task.
+
+@pytest.mark.asyncio
+async def test_create_order_fire_immediate_returns_before_pos_completes():
+    """fire_immediate path must return to the caller immediately after the
+    bridge INSERT — without waiting for adapter.create_pending. Live: this
+    cuts user-perceived latency from ~3.0s to ~0.5s.
+    (fire_immediate 분기는 POS 호출 완료 전에 voice에 응답)
+    """
+    import asyncio as _asyncio
+    from app.services.bridge import flows
+    from app.services.bridge.state_machine import State
+
+    enriched = [
+        {"name": "Latte", "variant_id": "v", "item_id": "i",
+         "price": 4.00, "quantity": 1, "stock_quantity": 5,
+         "missing": False, "sufficient_stock": True},
+    ]
+
+    pos_started   = _asyncio.Event()
+    pos_can_finish = _asyncio.Event()
+
+    async def slow_create_pending(**_kw):
+        pos_started.set()
+        await pos_can_finish.wait()  # blocks until the test releases
+        return "r-async-1"
+
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock(side_effect=slow_create_pending)
+
+    with patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=enriched)), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
+         patch.object(flows, "_find_recent_duplicate",
+                      new=AsyncMock(return_value=None)), \
+         patch.object(flows, "transactions") as mock_tx, \
+         patch.object(flows, "get_pos_adapter_for_store",
+                      new=AsyncMock(return_value=pos_adapter)):
+
+        mock_tx.create_transaction = AsyncMock(return_value={"id": "tx-async"})
+        mock_tx.set_pos_object_id  = AsyncMock()
+        mock_tx.advance_state      = AsyncMock()
+
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items":          [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+
+        # We returned WITHOUT pos_create_pending finishing — that's the whole point.
+        assert res["success"]         is True
+        assert res["state"]           == State.PENDING  # not FIRED_UNPAID yet
+        assert res["pos_object_id"]   == ""             # backfilled later
+        assert res["ai_script_hint"]  == "fire_immediate"
+
+        # asyncio.create_task schedules but doesn't run until the loop yields.
+        # One sleep(0) is enough to let the task reach its first await
+        # (the slow create_pending we mocked) — proving the task IS running
+        # in the background and that we returned BEFORE it finished.
+        # (create_task는 yield 후 실행 — sleep(0)으로 task 시작 보장)
+        await _asyncio.sleep(0)
+        assert pos_started.is_set()
+        pos_adapter.create_pending.assert_awaited_once()
+        # But neither set_pos_object_id nor advance_state have run yet —
+        # they're inside the background task, gated behind create_pending.
+        mock_tx.set_pos_object_id.assert_not_awaited()
+        mock_tx.advance_state.assert_not_awaited()
+
+        # Release the gate so the background task can complete cleanly,
+        # then yield so its subsequent awaits actually run before exiting
+        # the patch context. Without these awaits the test exits while a
+        # task is mid-flight — pytest-asyncio reports unawaited coroutines.
+        # (게이트 해제 후 background task 완주 대기 — 미완 task 경고 방지)
+        pos_can_finish.set()
+        # Spin the loop a few times to let background reach set_pos + advance.
+        for _ in range(5):
+            await _asyncio.sleep(0)
+
+    # After the loop spin, background work should have completed.
+    mock_tx.set_pos_object_id.assert_awaited_once()
+    advance_calls = [c.kwargs.get("to_state") for c in mock_tx.advance_state.await_args_list]
+    assert State.FIRED_UNPAID in advance_calls
+
+
+@pytest.mark.asyncio
+async def test_create_order_async_pos_failure_advances_to_failed():
+    """Plan D: POS adapter raises in the background → bridge tx still ends in
+    FAILED state (operator-recoverable), even though the voice caller already
+    got a success response. The bot's script wording is now soft enough
+    ('placing your order') that the customer is not falsely told the kitchen
+    has it. The transaction's FAILED state is the operator-side signal.
+    (POS 실패 시 background에서 FAILED 전이 — operator 복구 가능)
+    """
+    import asyncio as _asyncio
+    from app.services.bridge import flows
+    from app.services.bridge.state_machine import State
+
+    enriched = [
+        {"name": "Latte", "variant_id": "v", "item_id": "i",
+         "price": 4.00, "quantity": 1, "stock_quantity": 5,
+         "missing": False, "sufficient_stock": True},
+    ]
+
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock(side_effect=RuntimeError("Loyverse 502"))
+
+    with patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=enriched)), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
+         patch.object(flows, "_find_recent_duplicate",
+                      new=AsyncMock(return_value=None)), \
+         patch.object(flows, "transactions") as mock_tx, \
+         patch.object(flows, "get_pos_adapter_for_store",
+                      new=AsyncMock(return_value=pos_adapter)):
+
+        mock_tx.create_transaction = AsyncMock(return_value={"id": "tx-fail-async"})
+        mock_tx.set_pos_object_id  = AsyncMock()
+        mock_tx.advance_state      = AsyncMock()
+
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items":          [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+
+        # Voice path got a success — the customer is NOT left hanging on the
+        # phone while we wait for POS. The hint is still fire_immediate (the
+        # script text is updated server-side to reflect 'placing now').
+        assert res["success"]  is True
+        assert res["state"]    == State.PENDING
+
+        # Spin the loop so the background task runs through its except path.
+        for _ in range(5):
+            await _asyncio.sleep(0)
+
+    # Background task transitioned the row to FAILED (idempotency safety).
+    advance_to_states = [c.kwargs.get("to_state") for c in mock_tx.advance_state.await_args_list]
+    assert State.FAILED          in advance_to_states
+    assert State.FIRED_UNPAID    not in advance_to_states
+    # set_pos_object_id MUST NOT have been called — POS never returned.
+    mock_tx.set_pos_object_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_order_pay_first_unchanged_by_plan_d():
+    """pay_first lane never went through adapter.create_pending in the first
+    place, so Plan D leaves it unchanged. The transaction stays PENDING and
+    no background task is spawned (POS lookup itself never happens).
+    (pay_first는 원래 POS 호출 안 함 — Plan D 영향 없음)"""
+    from app.services.bridge import flows
+    from app.services.bridge.state_machine import State
+
+    enriched = [
+        {"name": "Combo", "variant_id": "v", "item_id": "i",
+         "price": 25.00, "quantity": 1, "stock_quantity": 50,
+         "missing": False, "sufficient_stock": True},
+    ]
+
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock()
+
+    with patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=enriched)), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
+         patch.object(flows, "_find_recent_duplicate",
+                      new=AsyncMock(return_value=None)), \
+         patch.object(flows, "transactions") as mock_tx, \
+         patch.object(flows, "get_pos_adapter_for_store",
+                      new=AsyncMock(return_value=pos_adapter)):
+
+        mock_tx.create_transaction = AsyncMock(return_value={"id": "tx-pf"})
+
+        res = await flows.create_order(
+            store_id="STORE",
+            args={"items":          [{"name": "Combo", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+
+    assert res["success"]        is True
+    assert res["lane"]           == "pay_first"
+    assert res["state"]          == State.PENDING
+    assert res["ai_script_hint"] == "pay_first"
+    pos_adapter.create_pending.assert_not_called()
+
+
 # ── POS injection failure handling ────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_create_order_keeps_pending_on_pos_failure():
-    """fire_immediate path: if POS adapter raises, stay PENDING — never crash.
-    Transaction stays open so an operator can retry / recover.
-    (POS 실패 시 PENDING 유지 — 운영자 수동 복구)
+    """Plan D revision: POS now runs in a background task, so the voice
+    handler ALWAYS gets success=True at the moment of return — the eventual
+    FAILED state lands in bridge_transactions a few hundred ms later when
+    the background task's POS exception is caught. Operator-side recovery
+    is unchanged (manager_alert + reconcile pick up FAILED rows). The bot
+    has already said 'placing your order' — the soft wording avoids a
+    false 'in the kitchen now' promise on POS failure.
+    (POS 실패는 background 처리 — voice는 즉시 success, FAILED는 사후 영속화)
     """
+    import asyncio as _asyncio
     from app.services.bridge import flows
     from app.services.bridge.state_machine import State
 
@@ -413,18 +630,24 @@ async def test_create_order_keeps_pending_on_pos_failure():
                   "customer_name":  "Michael"},
         )
 
-    # Caller-visible signal — order is hard-failed and the bridge tx is
-    # advanced to FAILED so the broadened idempotency probe excludes it
-    # (Phase F-2.E: a 'pending' tx with a fake POS state was matching
-    # the next yes and returning a misleading success).
-    # (POS 실패 = FAILED 전이 — 다음 idempotency probe에서 제외됨)
-    assert res["success"] is False
-    assert res["state"]   == State.FAILED
-    assert "pos" in res["error"].lower()
-    # The state machine MUST have advanced to FAILED, never to FIRED_UNPAID.
+        # Voice path got success — caller is NOT held on the line for the
+        # POS failure handling. The hint is fire_immediate; the wording is
+        # 'placing your order now', which is honest about in-flight POS.
+        assert res["success"]         is True
+        assert res["state"]           == State.PENDING
+        assert res["ai_script_hint"]  == "fire_immediate"
+        assert res["pos_object_id"]   == ""
+
+        # Spin so the background task runs through its except path.
+        for _ in range(5):
+            await _asyncio.sleep(0)
+
+    # Background task observed the POS exception and advanced to FAILED.
+    # set_pos_object_id MUST NOT have been called (POS never returned).
     to_states = [c.kwargs.get("to_state") for c in mock_tx.advance_state.await_args_list]
-    assert State.FIRED_UNPAID not in to_states
-    assert State.FAILED       in to_states
+    assert State.FAILED        in to_states
+    assert State.FIRED_UNPAID  not in to_states
+    mock_tx.set_pos_object_id.assert_not_awaited()
 
 
 # ── Idempotency ───────────────────────────────────────────────────────────────
