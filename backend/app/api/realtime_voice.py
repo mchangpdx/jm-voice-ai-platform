@@ -57,7 +57,10 @@ from app.services.menu.modifiers import (
     fetch_modifier_groups,
     format_modifier_block,
 )
-from app.services.voice.recital import reconcile_email_with_recital
+from app.services.voice.recital import (
+    extract_email_from_recital,
+    reconcile_email_with_recital,
+)
 from app.skills.menu.allergen import (
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -170,9 +173,24 @@ async def _dispatch_tool_call(
     # (NATO recital이 args보다 권위 — 모든 email-bearing tool에 적용)
     if tool_name in ("create_order", "modify_order", "make_reservation",
                      "modify_reservation"):
+        # Prefer the latched NATO-bearing agent text over last_assistant_text.
+        # last_assistant_text gets overwritten on every turn — including the
+        # order/reservation confirmation that typically follows the email
+        # NATO recital — so reconcile would lose the NATO source by tool-fire
+        # time. last_email_recital_text only updates when the agent text
+        # actually contains a parseable NATO email, so it survives across
+        # intervening turns. Live trigger 2026-05-08 CA47b6683b... — args
+        # 'cym eet@gmail.com' (whitespace inserted by LLM) sailed past
+        # reconcile because last_assistant_text was the order confirmation,
+        # not the NATO recital that had already been spoken correctly.
+        # (NATO recital이 후속 confirmation에 덮이지 않도록 별도 latch 우선)
+        recital_text = (
+            session_state.get("last_email_recital_text")
+            or session_state.get("last_assistant_text")
+        )
         reconciled = reconcile_email_with_recital(
             args_email          = tool_args.get("customer_email"),
-            last_assistant_text = session_state.get("last_assistant_text"),
+            last_assistant_text = recital_text,
         )
         if reconciled and reconciled != tool_args.get("customer_email"):
             _dbg(f"[tool] EMAIL RECONCILED args={tool_args.get('customer_email')!r} "
@@ -731,6 +749,13 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # (Tier 3 매니저 알림 상태 — 통화당 1회만 발송)
                 "last_user_text":   "",
                 "tier3_alerted":    False,
+                # Latched copy of the most recent agent text containing a
+                # parseable NATO+at-domain email recital. Separate from
+                # last_assistant_text so a later non-NATO turn (order
+                # confirmation, allergen response, etc.) cannot wipe it
+                # before reconcile_email_with_recital reads it.
+                # (NATO email recital을 별도 latch — 덮어쓰기 방지)
+                "last_email_recital_text": "",
                 # Wave A.3 — modifier index reused across every create_order /
                 # modify_order in the call (built once at session.update above).
                 # (modifier index — 통화 단위 캐시, tool 호출마다 REST 우회)
@@ -866,6 +891,16 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             # to its own correct spoken NATO recital.
                             # (마지막 bot 발화 보관 → NATO 추출용)
                             session_state["last_assistant_text"] = agent_text
+
+                            # Latch only NATO-email-bearing agent texts in a
+                            # separate slot. last_assistant_text is overwritten
+                            # every turn so by the time create_order fires the
+                            # NATO recital is usually 1-2 turns stale and gone.
+                            # This slot survives across intervening turns and
+                            # becomes the source-of-truth for email reconcile.
+                            # (NATO 추출 가능한 agent text만 별도 latch — 후속 turn 덮어쓰기 방지)
+                            if extract_email_from_recital(agent_text):
+                                session_state["last_email_recital_text"] = agent_text
 
                             # CRM Wave 1 — latch usual_offered the first time
                             # the agent emits "the usual" anywhere in a turn.
