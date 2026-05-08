@@ -52,10 +52,35 @@ def _success_page(
         "We've already received this payment. Your order is on its way."
     )
 
+    # Group code → human label for modifier display ("milk" → "Milk", etc.)
+    # Mirrors the email template so the receipt across email + browser
+    # has consistent terminology.
+    # (그룹 코드를 사람 읽기 좋은 라벨로 — 이메일/페이지 일관성)
+    group_label = {
+        "size":         "Size",
+        "temperature":  "Temperature",
+        "temp":         "Temperature",
+        "milk":         "Milk",
+        "syrup":        "Syrup",
+        "foam":         "Foam",
+        "shot":         "Shot",
+        "extra":        "Extra",
+        "topping":      "Topping",
+        "sweetener":    "Sweetener",
+        "ice":          "Ice",
+    }
+
+    def _humanize(g: str) -> str:
+        if not g:
+            return ""
+        gl = g.strip().lower()
+        return group_label.get(gl, gl.replace("_", " ").title())
+
     receipt_block = ""
     if items and total_cents > 0:
-        line_rows = []
-        for it in items:
+        item_cards: list[str] = []
+        last_idx = len(items) - 1
+        for idx, it in enumerate(items):
             try:
                 qty   = int(it.get("quantity") or 1)
                 nm    = (it.get("name") or "item").strip()
@@ -68,50 +93,108 @@ def _success_page(
             except (AttributeError, ValueError, TypeError):
                 continue
 
-            # Modifier breakdown rendered under the item name.
-            # (item 이름 아래 modifier 표시 — 영수증 정확성)
+            # Modifier rows — one per modifier with group label on the left
+            # and value+price-delta on the right. Same visual language as the
+            # email template.
+            # (modifier별 1줄 — 좌측 그룹 라벨, 우측 값+가격 변동)
             modifier_lines = it.get("modifier_lines") or []
-            mod_html = ""
-            if modifier_lines:
-                parts = []
-                for ml in modifier_lines:
-                    label = (ml.get("label") or "").strip()
-                    if not label:
-                        continue
-                    try:
-                        delta = float(ml.get("price_delta") or 0)
-                    except (TypeError, ValueError):
-                        delta = 0.0
-                    if delta:
-                        sign = "+" if delta > 0 else "-"
-                        parts.append(f"{label} ({sign}${abs(delta):.2f})")
-                    else:
-                        parts.append(label)
-                if parts:
-                    mod_html = (
-                        '<div style="font-size:12px;color:#6b7280;margin-top:2px;'
-                        'line-height:1.4;">' + " · ".join(parts) + '</div>'
+            mod_rows: list[str] = []
+            for ml in modifier_lines:
+                label = (ml.get("label") or "").strip()
+                if not label:
+                    continue
+                try:
+                    delta = float(ml.get("price_delta") or 0)
+                except (TypeError, ValueError):
+                    delta = 0.0
+                group = _humanize(ml.get("group") or "")
+                delta_html = ""
+                if delta:
+                    sign = "+" if delta > 0 else "-"
+                    color = "#15803d" if delta > 0 else "#9ca3af"
+                    delta_html = (
+                        f'<span style="margin-left:8px;color:{color};font-size:12px;'
+                        f'font-weight:500;font-variant-numeric:tabular-nums;">'
+                        f'{sign}${abs(delta):.2f}</span>'
                     )
+                if group:
+                    row_inner = (
+                        f'<span style="display:inline-block;min-width:88px;'
+                        f'color:#94a3b8;font-size:11px;font-weight:600;'
+                        f'letter-spacing:0.04em;text-transform:uppercase;">'
+                        f'{group}</span>'
+                        f'<span style="color:#475569;font-size:13px;font-weight:500;">'
+                        f'{label}</span>{delta_html}'
+                    )
+                else:
+                    row_inner = (
+                        f'<span style="color:#475569;font-size:13px;font-weight:500;">'
+                        f'{label}</span>{delta_html}'
+                    )
+                mod_rows.append(
+                    f'<div style="padding:4px 0;line-height:1.5;">{row_inner}</div>'
+                )
+            mod_block = ""
+            if mod_rows:
+                mod_block = (
+                    '<div style="margin-top:10px;padding:10px 12px;background:#f8fafc;'
+                    'border-left:3px solid #cbd5e1;border-radius:4px;">'
+                    + "".join(mod_rows) + '</div>'
+                )
 
-            line_rows.append(
-                f'<tr><td style="padding:6px 0;color:#374151;font-size:14px;text-align:left;">'
-                f'{qty} × {nm}{mod_html}</td>'
-                f'<td style="padding:6px 0;color:#374151;font-size:14px;text-align:right;'
-                f'font-variant-numeric:tabular-nums;vertical-align:top;">${line_total:.2f}</td></tr>'
+            qty_pill = ""
+            if qty > 1:
+                qty_pill = (
+                    '<span style="display:inline-block;margin-left:10px;'
+                    'padding:2px 9px;background:#e0f2fe;color:#075985;'
+                    'border-radius:999px;font-size:12px;font-weight:700;'
+                    f'letter-spacing:0.02em;">×{qty}</span>'
+                )
+
+            unit_line = ""
+            if qty > 1:
+                unit_line = (
+                    '<div style="margin-top:2px;color:#94a3b8;font-size:11px;'
+                    'font-weight:500;font-variant-numeric:tabular-nums;">'
+                    f'${unit:.2f} each</div>'
+                )
+
+            border = "" if idx == last_idx else "border-bottom:1px solid #e5e7eb;"
+
+            item_cards.append(
+                f'<div style="padding:18px 20px;{border}">'
+                f'  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">'
+                f'    <div style="flex:1;font-size:16px;font-weight:600;color:#0f172a;line-height:1.35;">'
+                f'      {nm}{qty_pill}'
+                f'    </div>'
+                f'    <div style="text-align:right;white-space:nowrap;">'
+                f'      <div style="font-size:16px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.35;">'
+                f'        ${line_total:.2f}'
+                f'      </div>'
+                f'      {unit_line}'
+                f'    </div>'
+                f'  </div>'
+                f'  {mod_block}'
+                f'</div>'
             )
-        rows_html = "".join(line_rows)
+
+        cards_html = "".join(item_cards)
         receipt_block = (
-            '<div style="background:#fff;border:1px solid #d1fae5;border-radius:8px;'
-            'padding:18px 22px;margin-bottom:24px;text-align:left;">'
-            '<div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Receipt</div>'
-            '<table style="width:100%;border-collapse:collapse;">'
-            f'{rows_html}'
-            '<tr><td colspan="2" style="border-top:1px dashed #d1fae5;padding-top:8px;"></td></tr>'
-            '<tr>'
-            '<td style="padding-top:6px;color:#15803d;font-size:15px;font-weight:bold;">Total paid</td>'
-            f'<td style="padding-top:6px;color:#15803d;font-size:15px;font-weight:bold;text-align:right;font-variant-numeric:tabular-nums;">${total_cents/100:.2f}</td>'
-            '</tr>'
-            '</table>'
+            '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;'
+            'margin-bottom:24px;text-align:left;overflow:hidden;'
+            'box-shadow:0 1px 2px rgba(15,23,42,0.04);">'
+            '<div style="padding:14px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">'
+            '<span style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;'
+            'color:#475569;font-weight:700;">Order summary</span>'
+            '</div>'
+            f'{cards_html}'
+            '<div style="padding:18px 20px;background:#f0fdf4;border-top:1px solid #d1fae5;'
+            'display:flex;justify-content:space-between;align-items:center;">'
+            '<span style="font-size:13px;color:#15803d;font-weight:600;letter-spacing:0.05em;'
+            'text-transform:uppercase;">Total paid</span>'
+            f'<span style="font-size:22px;font-weight:700;color:#15803d;'
+            f'font-variant-numeric:tabular-nums;line-height:1;">${total_cents/100:.2f}</span>'
+            '</div>'
             '</div>'
         )
     elif total_cents > 0:

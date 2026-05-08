@@ -42,73 +42,156 @@ def _format_delta(delta: float) -> str:
     return f"{sign}${abs(delta):.2f}"
 
 
+_GROUP_LABEL = {
+    "size":         "Size",
+    "temperature":  "Temperature",
+    "temp":         "Temperature",
+    "milk":         "Milk",
+    "syrup":        "Syrup",
+    "foam":         "Foam",
+    "shot":         "Shot",
+    "extra":        "Extra",
+    "topping":      "Topping",
+    "sweetener":    "Sweetener",
+    "ice":          "Ice",
+}
+
+
+def _humanize_group(group: str) -> str:
+    """'milk' → 'Milk', 'temperature' → 'Temperature' for receipt display.
+    (group 코드 → 사람 읽기 좋은 라벨)
+    """
+    if not group:
+        return ""
+    g = group.strip().lower()
+    return _GROUP_LABEL.get(g, g.replace("_", " ").title())
+
+
 def _modifier_text_html(modifier_lines: list[dict[str, Any]]) -> str:
-    """Inline modifier breakdown rendered under the item name.
-    (item 이름 아래 modifier 표시 — '20oz (+$1.00) · Iced · Almond milk (+$0.75)')
+    """Modifier breakdown — one row per modifier with optional group label
+    on the left, value+delta on the right. Compatible with Gmail/Outlook/
+    iOS Mail (no flex/grid; pure inline styles).
+
+    (item 이름 아래 modifier 표시 — modifier별 1줄, 깔끔한 row 레이아웃)
 
     Phase 7-A.D Wave A.2-G: items_json carries modifier_lines populated by
     services/menu/match.resolve_items_against_menu. Each entry has a
-    display label + signed price_delta. Empty list → no extra rows.
+    display label, group code, option code, and signed price_delta.
+    Empty list → no rows.
     """
     if not modifier_lines:
         return ""
-    parts: list[str] = []
+    rows: list[str] = []
     for ml in modifier_lines:
         label = (ml.get("label") or "").strip()
         if not label:
             continue
+        group = _humanize_group(ml.get("group") or "")
         try:
             delta = float(ml.get("price_delta") or 0)
         except (TypeError, ValueError):
             delta = 0.0
+        delta_html = ""
         if delta:
-            parts.append(f"{label} ({_format_delta(delta)})")
+            delta_color = "#15803d" if delta > 0 else "#9ca3af"
+            delta_html = (
+                f'<span style="margin-left:8px;color:{delta_color};font-size:12px;'
+                f'font-weight:500;font-variant-numeric:tabular-nums;">'
+                f'{_format_delta(delta)}</span>'
+            )
+        if group:
+            label_html = (
+                f'<span style="display:inline-block;min-width:88px;color:#94a3b8;'
+                f'font-size:11px;font-weight:600;letter-spacing:0.04em;'
+                f'text-transform:uppercase;">{group}</span>'
+                f'<span style="color:#475569;font-size:13px;font-weight:500;">'
+                f'{label}</span>{delta_html}'
+            )
         else:
-            parts.append(label)
-    if not parts:
+            label_html = (
+                f'<span style="color:#475569;font-size:13px;font-weight:500;">'
+                f'{label}</span>{delta_html}'
+            )
+        rows.append(
+            f'<div style="padding:4px 0;line-height:1.5;">{label_html}</div>'
+        )
+    if not rows:
         return ""
-    text = " · ".join(parts)
-    return (f'<div style="margin-top:4px;color:#6b7280;font-size:13px;font-weight:400;'
-            f'line-height:1.45;">{text}</div>')
+    return (
+        f'<div style="margin-top:10px;padding:10px 12px;background:#f8fafc;'
+        f'border-left:3px solid #cbd5e1;border-radius:4px;">{"".join(rows)}</div>'
+    )
 
 
 def _items_rows_html(items: list[dict[str, Any]]) -> str:
-    """Render line items as table rows for desktop + a stacked card variant
-    for mobile (CSS toggles between them via media query).
-    (라인 항목을 데스크톱 테이블 / 모바일 카드 양쪽 형태로 출력 — CSS가 분기)
+    """Render line items as a card per item — name + qty pill on top, modifier
+    panel underneath, subtotal in the corner. Email-client safe (table+inline).
+    (라인 항목 카드형 — 항목별 명확 분리, modifier panel로 가독성 ↑)
 
     Phase 7-A.D Wave A.2-G: subtotal uses effective_price (base + Σ
-    modifier price_delta) when present, falling back to base price for
-    legacy items. Modifier lines render under the item name so the
-    customer can verify size / milk / syrup choices on the receipt
-    that arrives in their inbox before they tap the pay link.
+    modifier price_delta) when present. Each modifier line renders on
+    its own row inside a soft-grey panel so customers can verify
+    size/milk/syrup at a glance instead of scanning a dot-separated
+    string.
     """
     if not items:
         return ""
     rows: list[str] = []
-    for it in items:
-        name           = (it.get("name") or "").strip() or "Item"
-        qty            = int(it.get("quantity") or 1)
-        # Prefer effective_price (base + modifier surcharges); fall back to
-        # base price for legacy items pre-Phase-7-A.C.
+    last_idx = len(items) - 1
+    for idx, it in enumerate(items):
+        name = (it.get("name") or "").strip() or "Item"
+        qty  = int(it.get("quantity") or 1)
         try:
             unit = float(it.get("effective_price") or it.get("price") or 0)
         except (TypeError, ValueError):
             unit = float(it.get("price") or 0)
         sub_cents      = int(round(unit * qty * 100))
+        unit_cents     = int(round(unit * 100))
         modifier_block = _modifier_text_html(it.get("modifier_lines") or [])
+
+        # Quantity pill — tiny rounded badge next to item name. qty=1 hides
+        # the badge so single-item orders stay clean.
+        qty_pill = ""
+        if qty > 1:
+            qty_pill = (
+                f'<span style="display:inline-block;margin-left:10px;padding:2px 9px;'
+                f'background:#e0f2fe;color:#075985;border-radius:999px;font-size:12px;'
+                f'font-weight:700;letter-spacing:0.02em;">×{qty}</span>'
+            )
+
+        # When qty > 1 we also show the unit price under the subtotal so the
+        # customer can double-check the math without doing it in their head.
+        unit_line = ""
+        if qty > 1:
+            unit_line = (
+                f'<div style="margin-top:2px;color:#94a3b8;font-size:11px;'
+                f'font-weight:500;font-variant-numeric:tabular-nums;">'
+                f'{_format_money(unit_cents)} each</div>'
+            )
+
+        # Bottom border between cards, removed for the last entry so it
+        # joins the table footer cleanly.
+        border = "" if idx == last_idx else "border-bottom:1px solid #e5e7eb;"
+
         rows.append(f"""
-        <tr class="item-row">
-          <td class="item-name" style="padding:14px 20px;border-bottom:1px solid #e5e7eb;font-size:15px;color:#111827;line-height:1.4;">
-            <span style="font-weight:600;">{name}</span>
-            <span class="item-qty-mobile" style="display:none;color:#6b7280;font-size:13px;font-weight:400;"> · qty {qty}</span>
+        <tr>
+          <td style="padding:18px 20px;{border}" class="item-cell">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" style="padding-right:12px;">
+                  <div style="font-size:16px;font-weight:600;color:#0f172a;line-height:1.35;">
+                    {name}{qty_pill}
+                  </div>
+                </td>
+                <td valign="top" align="right" style="white-space:nowrap;">
+                  <div style="font-size:16px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums;line-height:1.35;">
+                    {_format_money(sub_cents)}
+                  </div>
+                  {unit_line}
+                </td>
+              </tr>
+            </table>
             {modifier_block}
-          </td>
-          <td class="item-qty" style="padding:14px 16px;border-bottom:1px solid #e5e7eb;font-size:15px;color:#374151;text-align:center;width:60px;">
-            {qty}
-          </td>
-          <td class="item-sub" style="padding:14px 20px;border-bottom:1px solid #e5e7eb;font-size:15px;color:#111827;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;width:90px;">
-            {_format_money(sub_cents)}
           </td>
         </tr>""")
     return "\n".join(rows)
@@ -228,28 +311,37 @@ def compose_pay_link_email_html(
                   </td>
                 </tr>
 
-                <!-- Items table -->
+                <!-- Order summary card — 1 row per item with quantity pill,
+                     modifier panel underneath, subtotal in the corner. Cleaner
+                     than a Item|Qty|Subtotal table when items have many
+                     modifiers (cafe latte with size + temp + milk + foam). -->
                 <tr>
                   <td style="padding:0 24px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="border:1px solid #e5e7eb;border-radius:10px;border-collapse:separate;overflow:hidden;">
-                      <thead>
-                        <tr>
-                          <th align="left"   style="background:#f9fafb;padding:11px 20px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;">Item</th>
-                          <th align="center" class="item-qty" style="background:#f9fafb;padding:11px 16px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;">Qty</th>
-                          <th align="right"  style="background:#f9fafb;padding:11px 20px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;">Subtotal</th>
-                        </tr>
-                      </thead>
+                           style="border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate;overflow:hidden;background:#ffffff;">
+                      <tr>
+                        <td style="padding:14px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+                          <span style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#475569;font-weight:700;">
+                            Order summary
+                          </span>
+                        </td>
+                      </tr>
                       <tbody>
                         {rows}
                       </tbody>
                       <tfoot>
                         <tr>
-                          <td colspan="2" align="right" style="padding:16px 20px;font-size:14px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
-                            Total
-                          </td>
-                          <td align="right" class="total-amount" style="padding:16px 20px;font-size:20px;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;">
-                            {total}
+                          <td style="padding:18px 20px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                              <tr>
+                                <td valign="middle" style="font-size:13px;color:#475569;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">
+                                  Total
+                                </td>
+                                <td valign="middle" align="right" class="total-amount" style="font-size:22px;font-weight:700;color:#15803d;font-variant-numeric:tabular-nums;line-height:1;">
+                                  {total}
+                                </td>
+                              </tr>
+                            </table>
                           </td>
                         </tr>
                       </tfoot>
