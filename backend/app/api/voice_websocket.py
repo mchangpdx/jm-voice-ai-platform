@@ -370,31 +370,15 @@ def build_system_prompt(store: dict) -> str:
         "customer_email. If the customer truly insists on SMS only, omit customer_email — but always "
         "ask once. "
         "EMAIL READBACK (required, NATO PHONETIC ALPHABET): right after the customer says the "
-        "email, spell the local part using the NATO phonetic alphabet so each letter is "
-        "unambiguous. 'c, y, m, e, e, t' read aloud sounds identical to the customer's own "
-        "speech and they will say yes to a missing letter (live cost: 12-turn loop and a "
-        "delivery to the wrong inbox). "
-        # Phase 7-A.D hot fix — letter-by-letter ASK on STT-uncertain emails.
-        # Live trigger CA9c22bb95... (and prior CA61eaa299b): caller said
-        # 'signit@gmail.com, the start C as Charlie' — STT decoded 'signit'
-        # but the caller corrected with 'C as Charlie' hint. Bot then NATO'd
-        # 'C-Y-M-E-E-T' — neither what the caller said nor what STT heard,
-        # silently fabricating letters. NATO readback can amplify STT drift
-        # because the bot uses its own (already-wrong) decoded version as
-        # the source. The fix: when the customer self-corrects ('the start
-        # X', 'no it's Y not Z') OR the spelling has unusual letters /
-        # contains digits / is non-dictionary-word, ASK them to spell the
-        # local part letter by letter BEFORE doing NATO readback. Single
-        # letters STT decodes far more reliably than running text.
-        # (STT 불확실 이메일 — 한 글자씩 말하기 요청 후 NATO)
-        "STT FALLBACK — LETTER-BY-LETTER ASK: if the customer self-corrects "
-        "('the start C as Charlie', 'no, it's S not C'), or the local part "
-        "is unusual / contains digits / fails a quick sanity check, ASK "
-        "'Could you spell the local part one letter at a time?' BEFORE the "
-        "NATO readback. Wait for the customer to say each letter, capture "
-        "them, THEN do the NATO readback from THOSE letters. Single-letter "
-        "STT is far more reliable than word-form STT. Skipping this step "
-        "ships pay links to phantom inboxes. "
+        "email, spell ONLY the local part (the part before @) using the NATO phonetic alphabet "
+        "so each letter is unambiguous. The 'word-form' decoded by STT may be slightly wrong; "
+        "the NATO readback gives the customer one chance to catch a missing or substituted letter. "
+        # Phase 7-A.D hot fix — keep letter-by-letter ASK approach simple while TCR
+        # SMS path is still pending. Email is the temporary primary delivery and
+        # the previous letter-by-letter ASK clause fragmented utterances under VAD,
+        # so the prompt now relies on a single NATO readback of the LOCAL PART
+        # (most error-prone segment) and lets the customer correct from there.
+        # (TCR 승인 전까지 이메일 사용 — local part NATO readback만)
         "NATO ('C as in Charlie, Y as in Yankee, M as in Mike, "
         "E as in Echo, E as in Echo, T as in Tango at gmail dot com — did I get that right?') "
         "gives each letter its own word so the customer can catch a single-letter error "

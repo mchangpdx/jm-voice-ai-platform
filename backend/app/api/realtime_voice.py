@@ -563,18 +563,28 @@ async def realtime_bridge(ws: WebSocket) -> None:
                     "instructions": instructions,
                     "tools": OPENAI_REALTIME_TOOLS,
                     "tool_choice": "auto",
-                    # Semantic VAD with low eagerness — the model decides when
-                    # the caller is truly done speaking (semantic boundary), not
-                    # a fixed silence timer. Drops false-positive triggers from
-                    # mid-utterance pauses + background noise. Fixes 75% silent
-                    # response.done rate observed across CA82876bb / CAe0f29142.
-                    # (Phase 4 — semantic_vad eagerness=low: 자연스러운 대화 pause
-                    #  허용, 백그라운드 노이즈로 인한 false trigger 감소)
+                    # Server VAD with extended silence window — Phase 7-A.D quality fix.
+                    # Live trigger: 4 calls 2026-05-07 16:52-17:00 (CA9c22bb95,
+                    # CA55035ea4, CA941741f6, CAf6e2e1ee). All showed >=1.0
+                    # barge-in clears per turn — every utterance was cancelling
+                    # bot audio. semantic_vad/low fragmented letter-by-letter
+                    # email spelling ('C as Charlie [pause] Y as Yankee...')
+                    # into 3-4 separate turns because the semantic model
+                    # treated each pause as utterance completion.
+                    # server_vad with silence_duration_ms=1200 holds the turn
+                    # open through natural inter-letter pauses (PSTN 8kHz μ-law
+                    # callers pause 600-1100ms between letters). threshold=0.5
+                    # is OpenAI's default and works well in moderate noise.
+                    # prefix_padding_ms=300 captures the first phoneme so the
+                    # leading letter isn't clipped.
+                    # (server_vad 1200ms — letter-by-letter pause 허용)
                     "turn_detection": {
-                        "type": "semantic_vad",
-                        "eagerness": "low",
-                        "create_response":    True,   # auto-fire response.create on speech_stopped
-                        "interrupt_response": True,   # cancel ongoing audio on barge-in
+                        "type":                 "server_vad",
+                        "threshold":            0.5,
+                        "prefix_padding_ms":    300,
+                        "silence_duration_ms":  1200,
+                        "create_response":      True,   # auto-fire response.create on speech_stopped
+                        "interrupt_response":   True,   # cancel ongoing audio on barge-in
                     },
                     # Enable user audio transcription so debug log shows what
                     # the model heard. Critical for diagnosing tool-not-firing
@@ -589,7 +599,7 @@ async def realtime_bridge(ws: WebSocket) -> None:
             _dbg(f"[realtime] ✓ session.update sent (g711_ulaw, "
                  f"system_prompt={len(instructions)}B, "
                  f"tools={len(OPENAI_REALTIME_TOOLS)}, "
-                 f"vad=semantic_vad/low + whisper transcription)")
+                 f"vad=server_vad/silence=1200ms + whisper transcription)")
 
             # Phase 4 — trigger initial agent greeting BEFORE caller speaks.
             # OpenAI Realtime with server VAD waits for input by default; we
@@ -626,6 +636,14 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 "user_turns": 0,
                 "first_response_ttft_ms": None,
                 "speech_stop_ts": None,
+                # Phase 7-A.D quality fix — track whether bot is mid-utterance
+                # so barge-in clears only fire on TRUE interrupts (not on
+                # caller utterances that begin while the bot is idle, e.g. a
+                # 'Hello?' after the bot finished).
+                # Set True on response.audio.delta (first audio frame leaving
+                # OpenAI) and reset on response.done.
+                # (bot 발화 중 추적 — 진짜 끼어들기일 때만 clear)
+                "bot_speaking": False,
             }
 
             # Per-call state for tool snapshots (recall_order / cancel recital
@@ -692,22 +710,34 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             _dbg(f"[oai→twilio] event #{event_count} type={etype}")
 
                         if etype == "input_audio_buffer.speech_started":
-                            # Caller barge-in: clear Twilio's outbound buffer to
-                            # stop currently-playing assistant audio. Without
-                            # this, customer hears tail of agent voice for
-                            # ~200-500ms after they start speaking.
-                            # (사용자 끼어들기 — Twilio 출력 버퍼 즉시 비움)
+                            # Caller speech detected. Two paths:
+                            #   bot_speaking=True  → real barge-in: clear Twilio's
+                            #     outbound buffer so customer doesn't hear bot
+                            #     finish a sentence over them.
+                            #   bot_speaking=False → bot is idle (greeting / last
+                            #     response.done already fired). Sending a clear
+                            #     here is a no-op but historically created the
+                            #     fragmented-turn pattern observed across 4 calls
+                            #     2026-05-07 (CA9c22bb95 / CA55035ea4 / CA941741f6
+                            #     / CAf6e2e1ee — barge-in clears 1.0/turn). Skip
+                            #     the clear so post-bot caller utterances ('Hello?',
+                            #     'Did you get that?') don't generate empty
+                            #     response.done turn=N events.
+                            # (bot 발화 중일 때만 clear — false-positive 끼어들기 차단)
                             stats["user_turns"] += 1
                             stats["speech_stop_ts"] = None
                             stats["first_response_ttft_ms"] = None
-                            try:
-                                await ws.send_text(json.dumps({
-                                    "event": "clear",
-                                    "streamSid": stream_sid,
-                                }))
-                            except Exception:
-                                pass
-                            _dbg("[oai→twilio] caller speech_started — sent clear")
+                            if stats.get("bot_speaking"):
+                                try:
+                                    await ws.send_text(json.dumps({
+                                        "event": "clear",
+                                        "streamSid": stream_sid,
+                                    }))
+                                except Exception:
+                                    pass
+                                _dbg("[oai→twilio] caller speech_started — sent clear (bot was speaking)")
+                            else:
+                                _dbg("[oai→twilio] caller speech_started — bot idle, skipping clear")
 
                         elif etype == "input_audio_buffer.speech_stopped":
                             stats["speech_stop_ts"] = time.monotonic()
@@ -722,6 +752,9 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                 ttft = (time.monotonic() - stats["speech_stop_ts"]) * 1000
                                 stats["first_response_ttft_ms"] = ttft
                                 _dbg(f"[oai→twilio] turn={stats['user_turns']} TTFT={ttft:.0f}ms")
+                            # Bot is now mid-utterance — barge-in clear is valid
+                            # if a caller speech_started follows.
+                            stats["bot_speaking"] = True
                             # Forward audio delta as Twilio media frame
                             await ws.send_text(json.dumps({
                                 "event": "media",
@@ -820,6 +853,11 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                      f"{type(exc).__name__}: {exc}")
 
                         elif etype == "response.done":
+                            # Bot finished its turn — caller utterances after
+                            # this point are NOT barge-ins, so the clear should
+                            # be skipped (see speech_started handler).
+                            # (bot 발화 종료 — 이후 caller 발화는 barge-in 아님)
+                            stats["bot_speaking"] = False
                             _dbg(f"[oai→twilio] response.done turn={stats['user_turns']}")
 
                         elif etype == "error":
