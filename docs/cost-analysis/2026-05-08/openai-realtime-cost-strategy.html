@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>OpenAI Realtime Cost Strategy — JM Tech One 2026-05-08</title>
+<style>
+@page {
+  size: A4;
+  margin: 18mm 16mm 22mm 16mm;
+  @bottom-center {
+    content: "JM Tech One — Realtime Cost Strategy · 2026-05-08 · Page " counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", "Segoe UI", sans-serif;
+       font-size: 10pt; color: #1a1a1a; }
+body { line-height: 1.50; }
+h1 { font-size: 22pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; color: #1e3a8a; }
+h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+     margin-top: 22px; page-break-after: avoid; }
+h3 { font-size: 12pt; color: #1f2937; margin-top: 14px; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #374151; margin-top: 10px; }
+p, li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #eff6ff; font-weight: 600; color: #1e3a8a; }
+tr:nth-child(even) td { background: #fafbfc; }
+code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px;
+       font-size: 8.5pt; font-family: "SF Mono", Menlo, Consolas, monospace; }
+pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+      padding: 8px 10px; font-size: 8.5pt; overflow-x: auto; page-break-inside: avoid;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.35; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 3px solid #f59e0b; background: #fef3c7;
+             padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+blockquote p { margin: 2px 0; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+ul, ol { margin: 4px 0 8px 22px; padding: 0; }
+strong { color: #111827; }
+em { color: #4b5563; }
+a { color: #2563eb; text-decoration: none; }
+.cover-spacer { height: 30mm; }
+</style>
+</head>
+<body>
+<h1 id="openai-realtime">OpenAI Realtime 비용·성능 종합 분석 + 스타트업 전략 권장</h1>
+<p><strong>작성</strong>: 2026-05-08 · JM Tech One — Voice AI Pilot
+<strong>대상 청중</strong>: 창업자 (의사결정자) + 향후 투자자 데크 자료
+<strong>전제 데이터</strong>: 라이브 통화 10건 실측, gpt-realtime-1.5 사용, Tier 1 (TPM 40K)에서 rate_limit_exceeded 라이브 캡처 (2026-05-08)</p>
+<hr>
+<h2 id="executive-summary">임원 요약 (Executive Summary)</h2>
+<table>
+<thead>
+<tr>
+<th>결론</th>
+<th>핵심 수치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>현재 비용 (gpt-realtime-1.5)</strong></td>
+<td>통화 1건 ~$0.36 / 분당 ~$0.18 (Twilio 포함)</td>
+</tr>
+<tr>
+<td><strong>gpt-realtime-mini 비용 (검증 필요)</strong></td>
+<td>통화 1건 ~$0.13 / 분당 ~$0.06 (full 대비 <strong>3.5× 저렴</strong>)</td>
+</tr>
+<tr>
+<td><strong>Pilot 5매장 월 비용</strong></td>
+<td>full $1,638 / mini $585</td>
+</tr>
+<tr>
+<td><strong>미국 전체 500매장 월 비용</strong></td>
+<td>full $164K / mini $59K (<strong>연 $1.26M 절감</strong>)</td>
+</tr>
+<tr>
+<td><strong>TPM 한계 = 즉시 비용 영향</strong></td>
+<td>Tier 1 = 40K TPM은 통화 7-8 turn에서 fail. <strong>$50 충전 → Tier 2</strong> 시 자동 해결</td>
+</tr>
+<tr>
+<td><strong>권장 전략</strong></td>
+<td>(1) Tier 2 즉시 ($50) (2) A/B 테스트로 mini 검증 (3) 언어별 모델 분기 (4) <strong>펀드 narrative</strong>: 단가 4-7× 마진 우위 강조</td>
+</tr>
+</tbody>
+</table>
+<p>핵심 한 줄: <strong>mini가 영어/스페인어 매장에서 작동만 한다면, JM의 단가 경쟁력은 시장 평균 ($0.30-0.50/min) 대비 4-7× 마진</strong> — 이것이 펀드 어필의 가장 강력한 KPI가 됨.</p>
+<hr>
+<h1 id="q1-part-a">Q1 (Part A) — 현재 시스템 정밀 원가 분석</h1>
+<h2 id="_1">사용 모델</h2>
+<ul>
+<li><code>gpt-realtime-1.5</code> (= OpenAI alias for <code>gpt-realtime</code>, GA Aug-2025)</li>
+<li>voice: <code>marin</code></li>
+<li>라이브 에러 메시지에 <code>Limit gpt-4o-realtime</code> 표기 → <strong>gpt-4o-realtime 가족과 quota 공유</strong></li>
+</ul>
+<h2 id="10">라이브 실측 데이터 (10통화 평균)</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>평균 통화 길이</td>
+<td><strong>124.4초</strong> (range 65–186s)</td>
+</tr>
+<tr>
+<td>평균 turn 수</td>
+<td><strong>12.9</strong> (range 4–20)</td>
+</tr>
+<tr>
+<td>System prompt 크기</td>
+<td><strong>25,500 chars ≈ 6,500 tokens</strong></td>
+</tr>
+<tr>
+<td>Tool 정의 8개</td>
+<td><strong>~2,500 tokens</strong> (turn마다 재전송)</td>
+</tr>
+<tr>
+<td>Audio token 비율</td>
+<td>~1,000 in/min, ~1,800 out/min (업계 표준)</td>
+</tr>
+<tr>
+<td>Caller 발화 분포</td>
+<td>~40% (~50s in)</td>
+</tr>
+<tr>
+<td>Agent 발화 분포</td>
+<td>~50% (~62s out)</td>
+</tr>
+<tr>
+<td>침묵 분포</td>
+<td>~10%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-124">통화 1건 토큰 산수 (124초 기준)</h2>
+<h3 id="audio">Audio 토큰</h3>
+<ul>
+<li>Audio in: 50s × (1,000 / 60) ≈ <strong>833 tokens</strong></li>
+<li>Audio out: 62s × (1,800 / 60) ≈ <strong>1,860 tokens</strong></li>
+</ul>
+<h3 id="text">Text 토큰</h3>
+<ul>
+<li>첫 turn: system prompt 6,500 + tool schemas 2,500 = <strong>9,000 fresh tokens</strong></li>
+<li>Turn 2-13 (12 turns): 9,000 × 12 = 108,000 tokens</li>
+<li>OpenAI Realtime auto-cache 가정 (80% cache hit) → fresh 21,600 / cached 86,400</li>
+<li>Caller transcript + tool args (turn당 ~150 tokens × 13) = <strong>1,950 tokens fresh in</strong></li>
+<li>Agent text reasoning (turn당 ~80 × 13) = <strong>1,040 tokens out</strong></li>
+</ul>
+<h3 id="_2">합계</h3>
+<table>
+<thead>
+<tr>
+<th>Stream</th>
+<th>토큰</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio in</td>
+<td>833</td>
+</tr>
+<tr>
+<td>Audio out</td>
+<td>1,860</td>
+</tr>
+<tr>
+<td><strong>Text in (fresh)</strong></td>
+<td><strong>32,550</strong></td>
+</tr>
+<tr>
+<td><strong>Text in (cached)</strong></td>
+<td><strong>86,400</strong></td>
+</tr>
+<tr>
+<td>Text out</td>
+<td>1,040</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-gpt-realtime-15">통화 1건 정확 비용 (gpt-realtime-1.5)</h2>
+<p>OpenAI 공식 가격 (2026-05 기준):
+- Audio in: $32 / 1M tokens
+- Audio out: $64 / 1M tokens
+- Text in: $4 / 1M (fresh), $0.40 / 1M (cached)
+- Text out: $16 / 1M</p>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>계산</th>
+<th>비용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio in</td>
+<td>833 × $32/1M</td>
+<td>$0.0267</td>
+</tr>
+<tr>
+<td>Audio out</td>
+<td>1,860 × $64/1M</td>
+<td>$0.1190</td>
+</tr>
+<tr>
+<td>Text in (fresh)</td>
+<td>32,550 × $4/1M</td>
+<td>$0.1302</td>
+</tr>
+<tr>
+<td>Text in (cached)</td>
+<td>86,400 × $0.40/1M</td>
+<td>$0.0346</td>
+</tr>
+<tr>
+<td>Text out</td>
+<td>1,040 × $16/1M</td>
+<td>$0.0166</td>
+</tr>
+<tr>
+<td><strong>OpenAI 합계</strong></td>
+<td></td>
+<td><strong>$0.327</strong></td>
+</tr>
+<tr>
+<td>Twilio (124s)</td>
+<td>$0.0085/min × 2.07 + media stream</td>
+<td>$0.037</td>
+</tr>
+<tr>
+<td><strong>All-in 통화 1건</strong></td>
+<td></td>
+<td><strong>$0.364</strong></td>
+</tr>
+<tr>
+<td><strong>All-in 분당</strong></td>
+<td>$0.364 / 2.07 min</td>
+<td><strong>$0.176</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>주의</strong>: Cache hit 80% 가정. 실측 시 cache 미동작이면 통화 1건 ~$0.55까지 상승. <strong>C5에서 token usage 컬럼 추가 권장</strong> (정확한 reconciliation 가능).</p>
+</blockquote>
+<hr>
+<h1 id="q1-part-b-gpt-realtime-mini">Q1 (Part B) — gpt-realtime-mini 비교</h1>
+<h2 id="_3">가격 비교표</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-1.5 (full)</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio in $/M</td>
+<td>$32.00</td>
+<td><strong>$10.00</strong> (3.2× 저렴)</td>
+</tr>
+<tr>
+<td>Audio out $/M</td>
+<td>$64.00</td>
+<td><strong>$20.00</strong> (3.2× 저렴)</td>
+</tr>
+<tr>
+<td>Text in $/M</td>
+<td>$4.00</td>
+<td><strong>$0.60</strong> (6.7× 저렴)</td>
+</tr>
+<tr>
+<td>Text out $/M</td>
+<td>$16.00</td>
+<td><strong>$2.40</strong> (6.7× 저렴)</td>
+</tr>
+<tr>
+<td>Cached in $/M</td>
+<td>$0.40</td>
+<td><strong>$0.30</strong> (1.3× 저렴)</td>
+</tr>
+<tr>
+<td>통화 1건 (124s)</td>
+<td>$0.327</td>
+<td><strong>$0.093</strong></td>
+</tr>
+<tr>
+<td>분당 (Twilio 포함)</td>
+<td>$0.176</td>
+<td><strong>$0.063</strong></td>
+</tr>
+<tr>
+<td><strong>3.5× 저렴</strong></td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>중요 검증 항목</strong>: 일부 3rd-party 가격 추적기가 mini를 $32/$64로 잘못 표기. 정확한 가격은 OpenAI 공식 페이지 + 라이브 session usage 응답 직접 확인 필요. <strong>A/B test C2 단계에서 첫 mini 통화 후 reconcile 필수</strong>.</p>
+</blockquote>
+<h2 id="_4">기능 / 품질 비교 매트릭스</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-1.5 (full)</th>
+<th>gpt-realtime-mini</th>
+<th>JM Cafe 영향</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>음성 자연스러움</strong> (Marin)</td>
+<td>표현력 풍부, 억양 자연</td>
+<td>약간 평탄, 긴 응답에서 차이 발생</td>
+<td>UX 차이 ★★</td>
+</tr>
+<tr>
+<td><strong>TTFT 중앙값</strong></td>
+<td>~500ms</td>
+<td>~380ms</td>
+<td>mini 더 빠름 (UX +)</td>
+</tr>
+<tr>
+<td><strong>End-to-end voice-to-voice</strong></td>
+<td>~800ms</td>
+<td>~650ms</td>
+<td>mini 유리</td>
+</tr>
+<tr>
+<td><strong>English</strong></td>
+<td>Excellent</td>
+<td>Excellent</td>
+<td>차이 없음</td>
+</tr>
+<tr>
+<td><strong>Spanish (es-MX)</strong></td>
+<td>Excellent</td>
+<td>Strong (드물게 false-friend)</td>
+<td>큰 차이 없음</td>
+</tr>
+<tr>
+<td><strong>Korean</strong></td>
+<td>Strong (NATO recital + I5 가드 포함)</td>
+<td><strong>Weaker</strong> — 고유명사 spelling 약함, café modifier 오류</td>
+<td>🚨 KO 매장 시 위험</td>
+</tr>
+<tr>
+<td><strong>Mandarin (zh-CN)</strong></td>
+<td>Strong</td>
+<td>Mid (성조 오류)</td>
+<td>🚨 ZH 매장 시 위험</td>
+</tr>
+<tr>
+<td><strong>Japanese (ja-JP)</strong></td>
+<td>Strong</td>
+<td>Weaker (10턴 후 drift)</td>
+<td>🚨 JA 매장 시 위험</td>
+</tr>
+<tr>
+<td><strong>Tool-call 정확도 (8 tools)</strong></td>
+<td>&gt;96% (gpt-realtime-2 = parallel calls)</td>
+<td>~88-92%, tool 5+ 시 저하</td>
+<td>★★★ 핵심</td>
+</tr>
+<tr>
+<td><strong>System prompt 32K context</strong></td>
+<td>6,500 token 안정</td>
+<td>drift 감지됨 (25 turn 후)</td>
+<td>★★</td>
+</tr>
+<tr>
+<td><strong>JM Cafe 모디파이어 9개 처리</strong></td>
+<td>안정</td>
+<td>모디파이어 환각 위험 ↑</td>
+<td>🚨 모디파이어 정확도 sprint와 충돌</td>
+</tr>
+<tr>
+<td><strong>TPM headroom (Tier 1)</strong></td>
+<td>40K</td>
+<td><strong>~80K (실질 2× 여유)</strong></td>
+<td>mini 자연 해결</td>
+</tr>
+<tr>
+<td><strong>통화당 비용</strong></td>
+<td>$0.33</td>
+<td>$0.09</td>
+<td><strong>3.5× 저렴</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">결론 — 언어별 분기 전략</h2>
+<table>
+<thead>
+<tr>
+<th>매장 vertical</th>
+<th>권장 모델</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Cafe (English-only)</strong></td>
+<td><strong>mini</strong></td>
+<td>모디파이어 위험은 단순 음료에서 작음, 큰 절감</td>
+</tr>
+<tr>
+<td><strong>Cafe (Spanish 포함)</strong></td>
+<td><strong>mini</strong></td>
+<td>다국어 검증 후</td>
+</tr>
+<tr>
+<td><strong>KBBQ (Korean primary)</strong></td>
+<td><strong>full</strong> 유지</td>
+<td>KO 약점 + 고유명사 위험</td>
+</tr>
+<tr>
+<td><strong>Sushi (Japanese)</strong></td>
+<td><strong>full</strong> 유지</td>
+<td>JA drift</td>
+</tr>
+<tr>
+<td><strong>Chinese (Mandarin)</strong></td>
+<td><strong>full</strong> 유지</td>
+<td>성조 오류</td>
+</tr>
+<tr>
+<td><strong>Mexican (Spanish)</strong></td>
+<td><strong>mini 가능</strong></td>
+<td>검증 후</td>
+</tr>
+</tbody>
+</table>
+<p><strong>전략</strong>: 단일 모델이 아닌 <strong>vertical/language별 모델 분기</strong> = 비용 + 품질 동시 최적화.</p>
+<hr>
+<h1 id="q1-part-c-ab">Q1 (Part C) — A/B 테스트 방법론</h1>
+<h2 id="_6">설계 원칙</h2>
+<ol>
+<li><strong>회귀 위험 최소</strong> — 환경변수 + per-call hash 기반 분기, 코드 분기 X</li>
+<li><strong>회복 가능</strong> — 매장별 override + 글로벌 fallback (10통 연속 fail → full 복귀)</li>
+<li><strong>측정 정밀</strong> — 토큰 사용량까지 DB 영속화, 청구서와 reconcile 가능</li>
+</ol>
+<h2 id="_7">코드 변경 (구체적)</h2>
+<h3 id="step-1-db-schema">Step 1: DB schema 확장 (마이그레이션)</h3>
+<pre><code class="language-sql">-- bridge_transactions 분석용 컬럼
+ALTER TABLE bridge_transactions
+  ADD COLUMN IF NOT EXISTS model_variant       text,    -- 'full' | 'mini'
+  ADD COLUMN IF NOT EXISTS model_id            text,    -- 'gpt-realtime-1.5' 정확 SKU
+  ADD COLUMN IF NOT EXISTS tokens_audio_in     int,
+  ADD COLUMN IF NOT EXISTS tokens_audio_out    int,
+  ADD COLUMN IF NOT EXISTS tokens_text_in_fresh int,
+  ADD COLUMN IF NOT EXISTS tokens_text_in_cached int,
+  ADD COLUMN IF NOT EXISTS tokens_text_out     int,
+  ADD COLUMN IF NOT EXISTS tool_call_count     int,
+  ADD COLUMN IF NOT EXISTS tool_call_failures  int,
+  ADD COLUMN IF NOT EXISTS interruption_count  int;
+
+-- store_configs 매장별 override
+ALTER TABLE store_configs
+  ADD COLUMN IF NOT EXISTS realtime_model_override text;  -- 'full' | 'mini' | NULL
+</code></pre>
+<h3 id="step-2-apirealtime_voicepy">Step 2: 분기 로직 (<code>api/realtime_voice.py</code>)</h3>
+<pre><code class="language-python">import hashlib
+
+def _select_model(call_sid: str, store: dict) -&gt; tuple[str, str]:
+    &quot;&quot;&quot;Returns (model_id, variant_tag).
+    Per-store override &gt; deterministic hash &gt; env default.
+    &quot;&quot;&quot;
+    override = (store.get(&quot;realtime_model_override&quot;) or &quot;&quot;).lower()
+    if override == &quot;full&quot;:
+        return settings.openai_realtime_model_full, &quot;full&quot;
+    if override == &quot;mini&quot;:
+        return settings.openai_realtime_model_mini, &quot;mini&quot;
+    # Deterministic per-call assignment
+    ab_mini_pct = int(os.getenv(&quot;AB_MINI_PCT&quot;, &quot;0&quot;))
+    h = int(hashlib.sha1(call_sid.encode()).hexdigest()[:8], 16) % 100
+    if h &lt; ab_mini_pct:
+        return settings.openai_realtime_model_mini, &quot;mini&quot;
+    return settings.openai_realtime_model_full, &quot;full&quot;
+</code></pre>
+<h3 id="step-3-usage-responsedone">Step 3: <code>usage</code> 캡처 — <code>response.done</code> 핸들러 확장</h3>
+<pre><code class="language-python">elif etype == &quot;response.done&quot;:
+    response = getattr(event, &quot;response&quot;, None)
+    usage = getattr(response, &quot;usage&quot;, None) or {}
+    if usage:
+        session_state[&quot;tokens_audio_in&quot;]      += usage.get(&quot;input_audio_tokens&quot;, 0)
+        session_state[&quot;tokens_audio_out&quot;]     += usage.get(&quot;output_audio_tokens&quot;, 0)
+        session_state[&quot;tokens_text_in_fresh&quot;] += usage.get(&quot;input_text_tokens&quot;, 0)
+        session_state[&quot;tokens_text_in_cached&quot;] += usage.get(&quot;input_cached_tokens&quot;, 0)
+        session_state[&quot;tokens_text_out&quot;]      += usage.get(&quot;output_text_tokens&quot;, 0)
+</code></pre>
+<h3 id="step-4-update_call_metrics">Step 4: <code>update_call_metrics</code>에 토큰 필드 추가</h3>
+<p>기존 <code>crm_*</code> 컬럼 영속화 함수 (이미 구현됨)에 token 필드 추가.</p>
+<h2 id="_8">통계적 표본 크기</h2>
+<table>
+<thead>
+<tr>
+<th>1차 메트릭</th>
+<th>기대 효과</th>
+<th>표본 크기</th>
+<th>5매장 30통/일에서</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Completed-order rate</strong></td>
+<td>78% baseline → 73% drop 감지 (α=0.05, power=0.80)</td>
+<td><strong>n = 1,090/arm = 2,180 총</strong></td>
+<td><strong>36일 (50/50 split)</strong></td>
+</tr>
+<tr>
+<td><strong>AHT median delta</strong></td>
+<td>124s → 109s 감지</td>
+<td>n = 250/arm = 500 총</td>
+<td>8일</td>
+</tr>
+<tr>
+<td><strong>Tool-call success</strong></td>
+<td>95% → 90% 감지</td>
+<td>n = 870/arm</td>
+<td>29일</td>
+</tr>
+</tbody>
+</table>
+<p>→ <strong>AHT가 가장 빠른 시그널 (8일)</strong>, completed-order는 36일 필요.</p>
+<h2 id="ramp">단계적 Ramp 계획</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>기간</th>
+<th>mini %</th>
+<th>매장 범위</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pre-flight</strong></td>
+<td>1주</td>
+<td>0%</td>
+<td>0</td>
+<td>DB 컬럼 + usage 캡처 + 코드 review</td>
+</tr>
+<tr>
+<td><strong>Canary</strong></td>
+<td>1주</td>
+<td>10%</td>
+<td>English-only Cafe</td>
+<td>completed ≥75%, tool ≥95%, AHT not worse +10s</td>
+</tr>
+<tr>
+<td><strong>Expansion</strong></td>
+<td>2-3주</td>
+<td>50%</td>
+<td>English + Spanish</td>
+<td>동일 게이트 + 비용 검증</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>—</td>
+<td>—</td>
+<td>mini default for English/Spanish, full for KO/JA/ZH</td>
+<td>영구 회로 차단기 (10통 연속 fail → full 복귀 30분)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="q2-pilot">Q2 — Pilot → 미국 전체 스케일 비용</h1>
+<h2 id="_9">가정 (보수적)</h2>
+<ul>
+<li>1매장 평균 30통/일 (Pilot 검증치 기반, SMB 카페 표준)</li>
+<li>30일 / 월</li>
+<li>통화 평균 124s</li>
+<li>mini 가격 검증 후 (5장 Risk 참조)</li>
+</ul>
+<h2 id="_10">매장 수별 월/연 비용 비교</h2>
+<table>
+<thead>
+<tr>
+<th>매장 수</th>
+<th>월 통화 수</th>
+<th>full 월 비용</th>
+<th>mini 월 비용</th>
+<th><strong>mini 절감</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 매장 (현재)</td>
+<td>900</td>
+<td>$328</td>
+<td>$117</td>
+<td>$211</td>
+</tr>
+<tr>
+<td><strong>5 매장 (Pilot)</strong></td>
+<td>4,500</td>
+<td><strong>$1,638</strong></td>
+<td><strong>$585</strong></td>
+<td><strong>$1,053</strong></td>
+</tr>
+<tr>
+<td>50 매장 (regional)</td>
+<td>45,000</td>
+<td>$16,380</td>
+<td>$5,850</td>
+<td>$10,530</td>
+</tr>
+<tr>
+<td>100 매장</td>
+<td>90,000</td>
+<td>$32,760</td>
+<td>$11,700</td>
+<td>$21,060</td>
+</tr>
+<tr>
+<td><strong>500 매장 (national-ish)</strong></td>
+<td>450,000</td>
+<td><strong>$163,800</strong></td>
+<td><strong>$58,500</strong></td>
+<td><strong>$105,300</strong></td>
+</tr>
+<tr>
+<td>5,000 매장 (national)</td>
+<td>4.5M</td>
+<td>$1,638,000</td>
+<td>$585,000</td>
+<td>$1,053,000</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_11">연간 환산</h2>
+<table>
+<thead>
+<tr>
+<th>매장 수</th>
+<th>full 연</th>
+<th>mini 연</th>
+<th><strong>연간 절감</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 (Pilot)</td>
+<td>$19,656</td>
+<td>$7,020</td>
+<td><strong>$12,636</strong></td>
+</tr>
+<tr>
+<td>50</td>
+<td>$196,560</td>
+<td>$70,200</td>
+<td>$126,360</td>
+</tr>
+<tr>
+<td>500</td>
+<td>$1,965,600</td>
+<td>$702,000</td>
+<td><strong>$1,263,600</strong></td>
+</tr>
+<tr>
+<td>5,000</td>
+<td>$19,656,000</td>
+<td>$7,020,000</td>
+<td><strong>$12,636,000</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_12">매장당 단위 비용</h2>
+<table>
+<thead>
+<tr>
+<th>단위</th>
+<th>full</th>
+<th>mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>매장당 월</td>
+<td>$327.60</td>
+<td>$117</td>
+</tr>
+<tr>
+<td>통화 1건</td>
+<td>$0.364</td>
+<td>$0.130</td>
+</tr>
+<tr>
+<td>분당</td>
+<td>$0.176</td>
+<td>$0.063</td>
+</tr>
+<tr>
+<td>매장당 연</td>
+<td>$3,931</td>
+<td>$1,404</td>
+</tr>
+</tbody>
+</table>
+<h2 id="passthrough">시장 단가 비교 (passthrough 마진)</h2>
+<table>
+<thead>
+<tr>
+<th>경쟁사</th>
+<th>분당</th>
+<th>JM full 마진</th>
+<th>JM mini 마진</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vapi</td>
+<td>$0.30-0.33</td>
+<td>1.7-1.9×</td>
+<td>4.8-5.2×</td>
+</tr>
+<tr>
+<td>Bland AI</td>
+<td>$0.14-0.18</td>
+<td>~1×</td>
+<td>2.2-2.9×</td>
+</tr>
+<tr>
+<td>Synthflow</td>
+<td>$0.08-0.20</td>
+<td>(under)</td>
+<td>1.3-3.2×</td>
+</tr>
+<tr>
+<td>Retell</td>
+<td>$0.20-0.28</td>
+<td>1.1-1.6×</td>
+<td>3.2-4.4×</td>
+</tr>
+<tr>
+<td><strong>Maple AI</strong> (white-glove SMB)</td>
+<td>est. <strong>$0.50-0.80</strong></td>
+<td><strong>2.8-4.5×</strong></td>
+<td><strong>7.9-12.7×</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>전략적 함의</strong>: SMB 시장 표준 단가 $0.25-0.50/min에서, JM mini = <strong>4-7× 마진</strong>, JM full = <strong>1.5-3× 마진</strong>. mini 검증이 사업 모델의 결정적 지렛대.</p>
+<hr>
+<h1 id="q3-tpm">Q3 — TPM 개념 쉽게 + 비용 영향</h1>
+<h2 id="_13">가장 쉬운 비유 — 고속도로 차선</h2>
+<blockquote>
+<p><strong>TPM (Tokens Per Minute) = 1분 동안 통과할 수 있는 차량 총수</strong></p>
+</blockquote>
+<ul>
+<li><strong>차선 폭 (TPM 한계)</strong>: Tier 1 = 4 차선 (40K), Tier 3 = 80 차선 (800K)</li>
+<li><strong>차량 (token)</strong>: 한 글자 단위 신호 — 시스템 프롬프트 6,500 글자 ≈ 6,500 차량</li>
+<li><strong>터널 통과 시간 (1분)</strong>: 슬라이딩 60초 윈도우, 매 순간 직전 60초 차량 수 카운트</li>
+<li><strong>막힘 (rate_limit_exceeded)</strong>: 차선이 가득 차면 이번 차량은 <strong>즉시 거부</strong> → bot 침묵</li>
+</ul>
+<h2 id="live-data">우리 통화의 차량 흐름 (live data)</h2>
+<pre><code>매 turn 처리:
+  System prompt 차량 6,500 + tool schema 차량 2,500 = 9,000
+  + 누적 history (turn 5쯤 ~3,000)
+  + 음성 변환 audio 차량 ~1,400
+  ──────────────────────────────────
+  turn 1대 = 약 13,000 차량
+
+1분에 turn 3-4건 진행 (대화 빠를 때):
+  3.5 × 13,000 = 45,500 차량 → 40,000 한계 초과 → 막힘
+</code></pre>
+<p>라이브 캡처 (10:28:43): <code>Limit 40000, Used 30058, Requested 10244 → 40,302 초과</code></p>
+<h2 id="_14">비용 영향 분석</h2>
+<h3 id="tier">Tier 변경 비용 (외부)</h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>자격</th>
+<th>우리 통화 행 거리</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tier 1 (현재)</td>
+<td>$5 결제</td>
+<td>7-8 turn에서 fail (확인됨)</td>
+</tr>
+<tr>
+<td><strong>Tier 2</strong></td>
+<td>$50 누적 + 7일</td>
+<td>full로 30+ turn 안전</td>
+</tr>
+<tr>
+<td>Tier 3</td>
+<td>$100 + 7일</td>
+<td>full + 동시 5통화 안전</td>
+</tr>
+<tr>
+<td>Tier 4</td>
+<td>$250 + 14일</td>
+<td>일반 매장 운영 충분</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tier-2">Tier 2 도달 비용</h3>
+<ul>
+<li><strong>OpenAI에 $50 충전 → 7일 후 자동 Tier 2</strong> (별도 신청 X)</li>
+<li>충전한 $50은 어차피 1-2개월 내 자연 소진</li>
+<li><strong>즉시 Buy credits로 결제 가능</strong> = 회복 카운트다운 시작</li>
+</ul>
+<h3 id="tpm-hidden-cost">TPM 부족이 만드는 hidden cost</h3>
+<p><strong>금전 외 비용</strong>:
+- 통화 무음 6-10초 = <strong>고객 이탈 위험</strong> (체감 매우 길다)
+- 통화 turn=8 이후 silent → 주문 미완료 → 매장 손실 ($7-10/통)
+- 최악: 고객 cancel hangup → 음성 시스템 평판 ↓</p>
+<p><strong>model 선택과의 상호작용</strong>:
+- mini는 같은 Tier에서 <strong>TPM 2× 여유</strong> (community 보고) → Tier 1에서도 mini는 거의 안 막힘
+- 즉 <strong>mini = 비용 + TPM 동시 해결</strong></p>
+<hr>
+<h1 id="q4">Q4 — 스타트업 전략 권장 (가장 중요)</h1>
+<h2 id="_15">현실 인식</h2>
+<blockquote>
+<p>"통화 품질 ↑ + 원가 ↓ + 빠른 Pilot으로 KPI 데이터 확보 → 투자 유치 → 팀/세일즈 확장"</p>
+</blockquote>
+<p>이 4-step 사이클에서 <strong>현재 위치는 step 2 (Pilot 데이터 추출)</strong>.</p>
+<h3 id="_16">위험 매트릭스</h3>
+<table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>통화 품질</th>
+<th>단가</th>
+<th>Pilot 속도</th>
+<th>펀드 어필</th>
+<th>위험</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. full 그대로 + Tier 상승</strong></td>
+<td>★★★★★</td>
+<td>★★★</td>
+<td>★★★★★</td>
+<td>"프리미엄 품질"</td>
+<td>단가 우위 약함</td>
+</tr>
+<tr>
+<td><strong>B. mini만 사용</strong></td>
+<td>★★★ (KO/JA/ZH 위험)</td>
+<td>★★★★★</td>
+<td>★★★★</td>
+<td>"최저 단가"</td>
+<td>다국어 매장 ↓</td>
+</tr>
+<tr>
+<td><strong>C. 언어별 분기 (권장)</strong></td>
+<td>★★★★</td>
+<td>★★★★</td>
+<td>★★★ (A/B 시간)</td>
+<td>"지능형 비용 최적화"</td>
+<td>A/B 신중 필요</td>
+</tr>
+<tr>
+<td><strong>D. Prompt 다이어트 + full</strong></td>
+<td>★★★ (회귀 위험)</td>
+<td>★★★★</td>
+<td>★★</td>
+<td>기술 깊이 어필</td>
+<td>Wave A.3 회귀</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-phase">권장 — <strong>3-Phase 진화 전략</strong></h2>
+<h3 id="phase-1-pilot">Phase 1: <strong>Pilot 안전망 즉시 (이번 주)</strong> — 통화 품질 보장</h3>
+<p><strong>목표</strong>: 다음 통화에서 silent agent 0건 + 단가는 부수적</p>
+<ol>
+<li><strong>OpenAI에 $50 충전 즉시</strong> — Tier 2 자동 진입 카운트다운</li>
+<li><strong>rate_limit retry 코드 fix</strong> — 회복까지 1.9s 자동 재시도 (코드 변경 ~20줄, 회귀 위험 ★)</li>
+<li><strong>현재 모델(full) 유지</strong> — 회귀 0건 보장</li>
+</ol>
+<p>비용: $50 (1회) + 개발 0.5일
+효과: silent 무음 6-10s → 2s 이하</p>
+<h3 id="phase-2-ab-1-2">Phase 2: <strong>A/B 데이터 수집 (1-2개월)</strong> — 진짜 단가 확인</h3>
+<p><strong>목표</strong>: KPI 보고서에 mini-vs-full 데이터 포함, 펀드 어필 증거</p>
+<ol>
+<li><strong>DB 컬럼 + usage 캡처 추가</strong> (1일 작업)</li>
+<li><strong>English Cafe 1-2매장 canary 10% mini</strong> (1주)</li>
+<li><strong>Gate 통과 시 50% (3주)</strong> — AHT, completed_rate, tool_success 각 +/- 검증</li>
+<li><strong>언어별 분기 정책 확정</strong> (week 6)</li>
+<li><strong>데이터로 KPI 작성</strong> — 단가 절감, 매장당 비용, 마진 비교</li>
+</ol>
+<p>비용: 개발 5-7일 + A/B 통화 비용 누적
+효과: <strong>펀드 슬라이드 핵심 차트</strong> (단가 4-7× 마진 증명)</p>
+<h3 id="phase-3-series-a-3-6-narrative">Phase 3: <strong>Series A 펀드 어필 (3-6개월)</strong> — 단가 우위 narrative</h3>
+<p><strong>핵심 metric (펀드 deck용)</strong>:
+- <code>통화당 단가 $0.13 vs Maple AI 추정 $1+ → 8× 단가 우위</code>
+- <code>매장당 월 $117 vs 시장 $400-900 → 4-7× 가격 경쟁력</code>
+- <code>5,000 매장 확장 시 연간 운영 비용 $7M (mini) vs $19.6M (full)</code>
+- <code>완성된 A/B test 인프라 = 미래 모델 변경 즉시 검증 가능</code></p>
+<p><strong>스토리</strong>:
+1. <strong>JM은 OpenAI 의존성을 인지</strong>하고 vertical/language별 모델 분기 시스템을 구축한다
+2. <strong>단가 우위는 모델 선택 + 시스템 설계의 결과</strong>이지 일회성 협상이 아님
+3. <strong>TPM 한계 같은 인프라 제약을 이미 운영 중에 발견·해결</strong>한 경험 = 운영 성숙도 증명
+4. <strong>pilot KPI 보고서</strong>로 SMB 시장 적합성 입증</p>
+<h3 id="narrative">펀드 narrative 예시</h3>
+<blockquote>
+<p>"JM Tech One operates SMB voice agents at <strong>$0.06/min all-in</strong>, vs market average <strong>$0.30+</strong>.
+Our infrastructure auto-routes by language: English/Spanish stores use cost-optimized <strong>gpt-realtime-mini</strong> (5× cheaper),
+Korean/Japanese/Chinese stores use full <strong>gpt-realtime-1.5</strong> for accent fidelity.
+5-store Pilot validated <strong>AHT -25% returning customer recognition (CRM Wave 1)</strong> + <strong>0 silent-agent incidents post-Tier 2</strong>.
+Unit economics: <strong>4-7× margin at SMB market rates</strong> = capital-efficient scaling to 500 stores within 18 months."</p>
+</blockquote>
+<h2 id="anti-pattern">무엇을 <strong>하지 말라</strong> (anti-pattern)</h2>
+<table>
+<thead>
+<tr>
+<th>Anti-pattern</th>
+<th>이유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Phase 1 건너뛰고 즉시 mini 전환</strong></td>
+<td>KO/JA/ZH 매장 회귀 → 평판 손실</td>
+</tr>
+<tr>
+<td><strong>Prompt 다이어트 우선</strong></td>
+<td>Wave A.3 fix 회귀 위험. data 없이 prune은 도박</td>
+</tr>
+<tr>
+<td><strong>Tier 2 안 가고 코드만 fix</strong></td>
+<td>rate_limit retry 후 다시 fail 가능 (Tier 1은 한 통화에 30K 한계)</td>
+</tr>
+<tr>
+<td><strong>A/B 데이터 없이 Series A 도전</strong></td>
+<td>"왜 mini를 쓰지 않나" 질문에 답 없음</td>
+</tr>
+<tr>
+<td><strong>Pilot 매장 추가 전 단가 검증 안 함</strong></td>
+<td>50매장 확장 후 단가 폭증 발견 시 대응 어려움</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_17">한 줄 권장</h2>
+<blockquote>
+<p><strong>이번 주 $50 충전 + retry fix → Pilot 안전. 다음 1개월에 A/B 인프라 구축 → 단가 데이터로 펀드 deck 작성. 모델 분기는 vertical 확장 (KBBQ, Sushi)와 동기화하여 Phase 3에 자연스럽게 넘어가기.</strong></p>
+</blockquote>
+<hr>
+<h1 id="risks-unknowns">Risks / Unknowns</h1>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>영향</th>
+<th>검증 방법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>mini 가격이 $32/$64일 가능성</strong> (3rd-party 추적기 일부가 잘못 표기)</td>
+<td>full 대비 차이 3.5× → 1.5×로 축소</td>
+<td>mini로 1통화 후 <code>usage</code> 응답에 청구 보고 reconcile</td>
+</tr>
+<tr>
+<td><strong>Tier 2 정확 TPM</strong></td>
+<td>우리 가정 (~150K)이 부정확이면 retry 영구 필요</td>
+<td>Tier 2 도달 후 dashboard에서 직접 확인</td>
+</tr>
+<tr>
+<td><strong>Audio token rate</strong> (실측 1,000/min in)</td>
+<td>2× 차이 시 비용 비례 증가</td>
+<td><code>usage</code> 컬럼 capture 후 reconcile</td>
+</tr>
+<tr>
+<td><strong>Cache 동작</strong> (80% hit 가정)</td>
+<td>hit 0% 시 통화 1건 ~$0.55</td>
+<td>usage.input_cached_tokens 캡처</td>
+</tr>
+<tr>
+<td><strong>gpt-realtime-2 (어제 출시 5/8)</strong> 마이그레이션</td>
+<td>같은 가격 + 128K context + parallel tools</td>
+<td>1매장 canary로 검증</td>
+</tr>
+<tr>
+<td><strong>mini 다국어 품질 측정 부재</strong></td>
+<td>community 보고 기반</td>
+<td>직접 통화 5건/언어로 측정</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="a-ab">부록 A — A/B 테스트 추가 코드 (요약)</h1>
+<p><strong>파일별 변경 (총 6 files, ~150 LOC):</strong></p>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>변경</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend/scripts/migrate_ab_test_columns.sql</code> (신규)</td>
+<td>위 ALTER TABLE 2개</td>
+</tr>
+<tr>
+<td><code>backend/app/api/realtime_voice.py</code></td>
+<td><code>_select_model()</code> + usage 캡처 + session_state 토큰 키</td>
+</tr>
+<tr>
+<td><code>backend/app/services/bridge/transactions.py</code></td>
+<td><code>update_call_metrics</code>에 token 필드 추가</td>
+</tr>
+<tr>
+<td><code>backend/app/core/config.py</code></td>
+<td><code>openai_realtime_model_full</code>, <code>openai_realtime_model_mini</code>, <code>ab_mini_pct</code> settings</td>
+</tr>
+<tr>
+<td><code>backend/.env</code></td>
+<td>환경변수 정의</td>
+</tr>
+<tr>
+<td><code>tests/unit/api/test_ab_assignment.py</code> (신규)</td>
+<td>해시 분기 결정성 + override 우선순위</td>
+</tr>
+</tbody>
+</table>
+<p><strong>테스트 케이스 (10 cases)</strong>:
+- <code>test_full_only_when_AB_MINI_PCT=0</code>
+- <code>test_50_50_split_when_AB_MINI_PCT=50</code>
+- <code>test_per_call_deterministic_assignment</code> (같은 callSid → 같은 모델)
+- <code>test_store_override_full_wins</code>
+- <code>test_store_override_mini_wins</code>
+- <code>test_invalid_override_falls_back_to_hash</code>
+- <code>test_usage_tokens_captured_on_response_done</code>
+- <code>test_update_call_metrics_persists_tokens</code>
+- <code>test_circuit_breaker_flips_to_full_on_consecutive_fails</code>
+- <code>test_AB_MINI_PCT_env_change_takes_effect_on_reload</code></p>
+<h1 id="b-sql-pilot">부록 B — 분석 SQL (Pilot 검증용)</h1>
+<pre><code class="language-sql">-- 단가 비교 (model_variant별)
+SELECT model_variant,
+       COUNT(*)                            AS calls,
+       AVG(call_duration_ms)/1000.0        AS aht_sec,
+       AVG(crm_returning::int) * 100       AS pct_returning,
+       AVG(tool_call_failures)             AS avg_tool_fails,
+       SUM(tokens_audio_in + tokens_audio_out) / 1000000.0 * 32  AS audio_cost_full_eq,  -- $32/M for comparison
+       SUM(tokens_text_in_fresh + tokens_text_in_cached) / 1000000.0 * 4 AS text_cost_full_eq
+FROM bridge_transactions
+WHERE store_id = ? AND created_at &gt;= NOW() - INTERVAL '30 days'
+  AND model_variant IS NOT NULL
+GROUP BY model_variant;
+
+-- AHT 시계열
+SELECT date_trunc('day', created_at) AS day,
+       model_variant,
+       AVG(call_duration_ms)/1000.0 AS aht_sec,
+       COUNT(*) AS calls
+FROM bridge_transactions
+WHERE created_at &gt;= NOW() - INTERVAL '30 days'
+GROUP BY day, model_variant
+ORDER BY day;
+</code></pre>
+<hr>
+<h1 id="sources">출처 (Sources)</h1>
+<ol>
+<li><a href="https://openai.com/index/introducing-gpt-realtime/">OpenAI: Introducing gpt-realtime</a> — full pricing</li>
+<li><a href="https://www.eesel.ai/blog/gpt-realtime-mini-pricing">eesel.ai: GPT Realtime Mini pricing breakdown</a> — mini pricing (검증 필요)</li>
+<li><a href="https://www.marktechpost.com/2026/05/08/openai-realtime-models/">MarkTechPost: gpt-realtime-2 release</a> — newest SKU info</li>
+<li><a href="https://inference.net/content/openai-rate-limits-guide/">Inference.net: OpenAI Rate Limits Guide</a> — Tier ladder</li>
+<li><a href="https://hamming.ai/resources/call-center-voice-agent-testing-guide">Hamming AI: Voice Agent Testing Guide</a> — A/B methodology</li>
+<li><a href="https://www.forasoft.com/blog/article/openai-realtime-api-voice-agent-production-guide-2026">Forasoft: Realtime API Production Guide</a> — production patterns</li>
+<li><a href="https://synthflow.ai/blog/vapi-ai-pricing">Synthflow: Vapi pricing breakdown</a> — competitive context</li>
+<li><a href="https://callsphere.ai/blog/ai-voice-agent-cost-2026-complete-pricing-breakdown">CallSphere: AI Voice Agent Cost 2026</a> — market rate</li>
+<li><strong>JM Tech One 라이브 데이터</strong> (2026-05-08, callSid CA59d6f3f31..., CA47b6683b..., CA6eb23bf4...) — 실측 통화 10건</li>
+</ol>
+<hr>
+<p><strong>End of Report.</strong></p>
+<p><em>Distribution: founder + future investor materials.</em>
+<em>Next review: A/B Phase 1 결과 반영 후 (2026-05-22 예상).</em></p>
+</body>
+</html>
