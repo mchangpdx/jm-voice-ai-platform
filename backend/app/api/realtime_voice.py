@@ -26,6 +26,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 from typing import Any
 
@@ -48,6 +49,8 @@ from app.services.bridge import flows as bridge_flows
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.services.bridge.transactions import update_call_metrics
+from app.services.crm import customer_lookup
 from app.services.handoff.manager_alert import send_tier3_alert
 from app.services.menu.match import build_modifier_index_from_groups
 from app.services.menu.modifiers import (
@@ -187,6 +190,14 @@ async def _dispatch_tool_call(
         if result.get("success"):
             session_state["last_order_items"] = result.get("items") or []
             session_state["last_order_total"] = int(result.get("total_cents") or 0)
+            # CRM Wave 1 — latch the most recent successful tx so the call_end
+            # UPDATE (in the WS finally block) writes call_duration_ms +
+            # crm_* flags to the right row. Last-write-wins if there are
+            # multiple create_orders in one call (rare but legal).
+            # (CRM Wave 1 — call_end UPDATE 대상 tx_id 래치)
+            tx_id_latched = str(result.get("transaction_id") or "")
+            if tx_id_latched:
+                session_state["active_tx_id"] = tx_id_latched
         # Pick lane-aware customer-facing line
         hint = result.get("ai_script_hint") or ("rejected" if not result.get("success") else "pay_first")
         result["message"] = ORDER_SCRIPT_BY_HINT.get(hint, result.get("message", ""))
@@ -412,6 +423,14 @@ import sys
 
 _DEBUG_FILE = "/tmp/realtime_debug.log"
 
+# CRM Wave 1 — heuristic detector for "the usual" offer in agent transcript.
+# Word-bounded so substrings ("usually", "ritual") don't false-positive.
+# Case-insensitive, lookbehind/-ahead unaware (Pilot is good enough — the
+# system prompt only emits this exact phrase when usual_eligible=True).
+# (CRM Wave 1 — agent 발화에서 "the usual" 감지. 단어 경계 + 대소문자 무관)
+_THE_USUAL_RE = re.compile(r"\bthe\s+usual\b", re.IGNORECASE)
+
+
 def _dbg(msg: str) -> None:
     """Print to stderr (unbuffered) AND append to debug file."""
     line = f"{time.strftime('%H:%M:%S')} {msg}"
@@ -571,9 +590,28 @@ async def realtime_bridge(ws: WebSocket) -> None:
         store["modifier_section"] = ""
         session_modifier_index = None
 
-    instructions = build_system_prompt(store)
+    # CRM Wave 1 — phone-keyed lookup before prompt build. The lookup helper
+    # has a hard 500ms internal timeout and full graceful-degrade (anonymous /
+    # 5xx / 4xx / exception → None), so this await never blocks the call for
+    # more than half a second and never raises out. CRM_LOOKUP_ENABLED=false
+    # is the kill switch for emergency rollback (NULLABLE columns means the
+    # only side effect is that returning callers stop being recognized).
+    # (CRM Wave 1 — 전화번호 lookup 1회 후 프롬프트에 주입. 환경변수로 비상 차단)
+    customer_ctx = None
+    if os.getenv("CRM_LOOKUP_ENABLED", "true").lower() != "false":
+        try:
+            customer_ctx = await customer_lookup(store_id, caller_phone or None)
+        except Exception as exc:
+            # Defensive — customer_lookup already swallows everything, this is
+            # an extra ring against unforeseen import-time / settings issues.
+            _dbg(f"[crm] lookup_unexpected_top_level err={type(exc).__name__}: {exc}")
+            customer_ctx = None
+
+    instructions = build_system_prompt(store, customer_context=customer_ctx)
     _dbg(f"[realtime] store loaded id={store_id} name={store_name!r} "
-         f"prompt_len={len(instructions)} modifier_groups={mod_group_count}")
+         f"prompt_len={len(instructions)} modifier_groups={mod_group_count} "
+         f"crm_returning={customer_ctx is not None and customer_ctx.visit_count > 0} "
+         f"crm_visits={customer_ctx.visit_count if customer_ctx else 0}")
 
     # 3) Open OpenAI Realtime session
     # (OpenAI Realtime 세션 오픈 — g711_ulaw 양방향 + server VAD)
@@ -697,6 +735,21 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # modify_order in the call (built once at session.update above).
                 # (modifier index — 통화 단위 캐시, tool 호출마다 REST 우회)
                 "modifier_index":   session_modifier_index,
+                # CRM Wave 1 — analytics state. call_started_at_ms is the wall-
+                # clock anchor for AHT (matches t_accept's monotonic clock for
+                # duration but uses time.time so the persisted ms is comparable
+                # across processes). active_tx_id latches the LAST successful
+                # create_order so the call_end UPDATE writes its analytics flags
+                # to the row that actually represents the order. usual_offered
+                # is regex-detected from agent transcripts; usual_accepted is
+                # left None for Pilot (Wave 2 will infer from accepted vs
+                # recent[0] item match).
+                # (CRM Wave 1 — 분석용 상태. call_end에서 사용)
+                "call_started_at_ms": int(time.time() * 1000),
+                "customer_context":   customer_ctx,
+                "active_tx_id":       None,
+                "usual_offered":      False,
+                "usual_accepted":     None,
             }
 
             async def twilio_to_openai() -> None:
@@ -813,6 +866,17 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             # to its own correct spoken NATO recital.
                             # (마지막 bot 발화 보관 → NATO 추출용)
                             session_state["last_assistant_text"] = agent_text
+
+                            # CRM Wave 1 — latch usual_offered the first time
+                            # the agent emits "the usual" anywhere in a turn.
+                            # Once-true-stays-true so a follow-up turn that
+                            # doesn't mention it still keeps the analytics
+                            # flag set for the call_end UPDATE.
+                            # (CRM Wave 1 — "the usual" 발화 감지 시 latch)
+                            if (not session_state.get("usual_offered")
+                                    and _THE_USUAL_RE.search(agent_text or "")):
+                                session_state["usual_offered"] = True
+                                _dbg(f"[crm] usual_offered=true detected in agent_text")
 
                         elif etype == "conversation.item.input_audio_transcription.completed":
                             user_text = getattr(event, 'transcript', '') or ""
@@ -941,11 +1005,48 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 await asyncio.gather(*pending, return_exceptions=True)
             finally:
                 duration = time.monotonic() - t_accept
+                duration_ms = int(duration * 1000)
                 _dbg(
                     f"[realtime] call done — duration={duration:.1f}s "
                     f"callSid={call_sid} twilio_in={stats['twilio_media_in']} "
                     f"openai_out={stats['openai_audio_out']} turns={stats['user_turns']}"
                 )
+
+                # CRM Wave 1 — call_end analytics. Single grep-friendly log
+                # line + fire-and-forget UPDATE on bridge_transactions when
+                # we have a tx_id binding (mid-call hangup → no_tx_skip path
+                # logged inside update_call_metrics). Both paths are safe
+                # against any failure — we are exiting the WS handler and
+                # the caller has already disconnected.
+                # (CRM Wave 1 — 통화 종료 분석 영속화 + grep용 단일 로그 라인)
+                _crm_ctx       = session_state.get("customer_context")
+                _crm_visits    = _crm_ctx.visit_count if _crm_ctx else 0
+                _crm_returning = _crm_ctx is not None and _crm_visits > 0
+                _crm_tx        = session_state.get("active_tx_id") or ""
+                _crm_offered   = bool(session_state.get("usual_offered"))
+                _crm_accepted  = session_state.get("usual_accepted")
+
+                _dbg(
+                    f"[perf] call_end tx={_crm_tx or '-'} aht_ms={duration_ms} "
+                    f"returning={_crm_returning} visits={_crm_visits} "
+                    f"usual_offered={_crm_offered} usual_accepted={_crm_accepted}"
+                )
+
+                if _crm_tx:
+                    try:
+                        asyncio.create_task(update_call_metrics(
+                            transaction_id     = _crm_tx,
+                            call_duration_ms   = duration_ms,
+                            crm_returning      = _crm_returning,
+                            crm_visit_count    = _crm_visits,
+                            crm_usual_offered  = _crm_offered,
+                            crm_usual_accepted = _crm_accepted,
+                        ))
+                    except Exception as exc:
+                        _dbg(f"[perf] call_end_persist_dispatch_error: {exc}")
+                else:
+                    _dbg(f"[perf] call_end no_tx_skip_update aht_ms={duration_ms}")
+
                 # B4 — fire deferred reservation email if payload pending
                 # (예약 이메일 deferred-fire — make/modify로 set, cancel로 clear)
                 pending = session_state.get("pending_reservation_email")
