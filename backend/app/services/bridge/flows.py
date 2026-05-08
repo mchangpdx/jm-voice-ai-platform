@@ -538,11 +538,20 @@ async def _fire_pos_async(
     is now an operator concern. This coroutine MUST NOT raise into the
     asyncio loop — wrapping each step in try/except keeps the task quiet.
     (모든 예외는 흡수 — operator alert + daily reconcile로 복구)
+
+    Single bg_done line at exit captures the only stage that varies in
+    practice (Loyverse pos_ms) plus terminal state — that's what
+    operators grep for when investigating slow/failed orders.
+    (운영 모니터링: pos_ms + state 두 신호만 핵심 — 한 줄 출력)
     """
-    _t2 = time.monotonic()
+    pos_ms       = 0
+    final_state  = State.FAILED
+    fail_reason  = ""
+
     try:
         adapter = await get_pos_adapter_for_store(store_id)
     except Exception as exc:
+        fail_reason = "adapter_lookup"
         log.error("POS adapter lookup failed (background) tx=%s: %s", txn_id, exc)
         try:
             await transactions.advance_state(
@@ -554,10 +563,10 @@ async def _fire_pos_async(
             )
         except Exception as inner:
             log.error("FAILED transition write also failed tx=%s: %s", txn_id, inner)
+        _perf(f"create_order bg_done tx={txn_id[:8]} pos_ms=0 total_bg={int((time.monotonic()-t0_total)*1000)} state=failed reason={fail_reason}")
         return
-    _perf(f"create_order adapter_lookup_done txid={txn_id[:8]} ms={(time.monotonic()-_t2)*1000:.0f}")
 
-    _t3 = time.monotonic()
+    pos_t = time.monotonic()
     try:
         pos_object_id = await adapter.create_pending(
             vertical="restaurant",
@@ -570,8 +579,10 @@ async def _fire_pos_async(
                 "bridge_tx_id":    txn_id,
             },
         )
-        _perf(f"create_order pos_create_done txid={txn_id[:8]} pos_id={pos_object_id} ms={(time.monotonic()-_t3)*1000:.0f}")
+        pos_ms = int((time.monotonic() - pos_t) * 1000)
     except Exception as exc:
+        pos_ms      = int((time.monotonic() - pos_t) * 1000)
+        fail_reason = "pos_create"
         log.error("POS create_pending failed (background) tx=%s: %s", txn_id, exc)
         try:
             await transactions.advance_state(
@@ -583,18 +594,16 @@ async def _fire_pos_async(
             )
         except Exception as inner:
             log.error("FAILED transition write also failed tx=%s: %s", txn_id, inner)
+        _perf(f"create_order bg_done tx={txn_id[:8]} pos_ms={pos_ms} total_bg={int((time.monotonic()-t0_total)*1000)} state=failed reason={fail_reason}")
         return
 
-    _t4 = time.monotonic()
     try:
         await transactions.set_pos_object_id(txn_id, pos_object_id)
     except Exception as exc:
         log.error("set_pos_object_id failed (background) tx=%s pos_id=%s: %s — "
                   "Loyverse has the receipt; bridge row is drifted, needs reconcile.",
                   txn_id, pos_object_id, exc)
-    _perf(f"create_order set_pos_id_done txid={txn_id[:8]} ms={(time.monotonic()-_t4)*1000:.0f}")
 
-    _t5 = time.monotonic()
     try:
         await transactions.advance_state(
             transaction_id = txn_id,
@@ -603,11 +612,18 @@ async def _fire_pos_async(
             actor          = "tool_call:create_order:async",
             extra_fields   = {"fired_at": datetime.now(timezone.utc).isoformat()},
         )
+        final_state = State.FIRED_UNPAID
     except Exception as exc:
         log.error("advance_state(FIRED_UNPAID) failed (background) tx=%s: %s — "
                   "Loyverse receipt %s exists; needs reconcile.",
                   txn_id, exc, pos_object_id)
-    _perf(f"create_order advance_state_done txid={txn_id[:8]} ms={(time.monotonic()-_t5)*1000:.0f} BG_TOTAL_ms={(time.monotonic()-t0_total)*1000:.0f}")
+        # Bridge UPDATE failed but Loyverse already has the receipt — final_state
+        # stays at the default (FAILED) for our log signal even though the
+        # business outcome is closer to drifted than failed. Operator reconcile
+        # uses pos_object_id presence to disambiguate.
+        # (state 컬럼 갱신 실패 = 사실상 drifted — 운영 reconcile 시 pos_object_id 존재로 구별)
+
+    _perf(f"create_order bg_done tx={txn_id[:8]} pos_ms={pos_ms} total_bg={int((time.monotonic()-t0_total)*1000)} state={final_state}")
 
 
 async def create_order(
@@ -711,7 +727,7 @@ async def create_order(
     # Note: when the idempotency probe hits (rare — same caller redials
     # within 5 min), the resolve + threshold work is wasted. The savings on
     # the common non-idempotent path far outweigh that occasional waste.
-    _t0 = time.monotonic()  # Wave A.3 diag — stage breakdown
+    _t0 = time.monotonic()  # Wave A.3 — stage breakdown for sync_done log
     resolved, existing, threshold_cents = await asyncio.gather(
         resolve_items_against_menu(
             store_id       = store_id,
@@ -726,7 +742,7 @@ async def create_order(
         ),
         read_threshold_cents(store_id),
     )
-    _perf(f"create_order gather_done ms={(time.monotonic()-_t0)*1000:.0f}")
+    _gather_ms = int((time.monotonic() - _t0) * 1000)
 
     # ── 3. Refusal gates: unknown items first, then sold_out ──────────────
     unknown = [r for r in resolved if r.get("missing")]
@@ -830,8 +846,8 @@ async def create_order(
         payment_lane    = lane,
         items_json      = resolved,
     )
-    txn_id = txn["id"]
-    _perf(f"create_order tx_insert_done txid={txn_id[:8]} ms={(time.monotonic()-_t1)*1000:.0f}")
+    txn_id     = txn["id"]
+    _tx_ins_ms = int((time.monotonic() - _t1) * 1000)
 
     # ── 8. Lane branch ───────────────────────────────────────────────────
     if lane == "fire_immediate":
@@ -855,7 +871,7 @@ async def create_order(
             phone_e164  = phone_e164,
             t0_total    = _t0,
         ))
-        _perf(f"create_order fire_async_dispatched txid={txn_id[:8]} TOTAL_ms={(time.monotonic()-_t0)*1000:.0f}")
+        _perf(f"create_order sync_done tx={txn_id[:8]} ms={int((time.monotonic()-_t0)*1000)} (gather={_gather_ms} tx_ins={_tx_ins_ms}) lane=fire_immediate")
 
         return {
             "success":         True,
@@ -877,6 +893,7 @@ async def create_order(
     # route picks it up on customer click → advances PAYMENT_SENT → PAID and
     # injects to POS. We don't call the POS adapter here.
     # (pay_first: PENDING 유지 — pay link route가 결제 후 POS 인젝션)
+    _perf(f"create_order sync_done tx={txn_id[:8]} ms={int((time.monotonic()-_t0)*1000)} (gather={_gather_ms} tx_ins={_tx_ins_ms}) lane=pay_first")
     return {
         "success":         True,
         "transaction_id":  txn_id,
