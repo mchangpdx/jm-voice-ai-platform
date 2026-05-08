@@ -492,9 +492,10 @@ def _success_message(args: dict[str, Any], customer: str, party_size: int) -> st
 
 async def create_order(
     *,
-    store_id:    str,
-    args:        dict[str, Any],
-    call_log_id: Optional[str] = None,
+    store_id:       str,
+    args:           dict[str, Any],
+    call_log_id:    Optional[str] = None,
+    modifier_index: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Top-level order flow for the restaurant vertical.
     (식당 버티컬 주문 최상위 흐름)
@@ -580,9 +581,14 @@ async def create_order(
     customer   = raw_name
 
     # ── 2. Resolve items against menu_items (catalog enrichment) ──────────
+    # Wave A.3: caller may pass a pre-built modifier_index (from
+    # realtime_voice.py session.update) so resolve_items_against_menu
+    # skips its own modifier REST round-trip — saves ~400-500ms.
+    # (사전 로드된 modifier_index 전달 — create_order 핫패스 단축)
     resolved = await resolve_items_against_menu(
-        store_id=store_id,
-        items=raw_items,
+        store_id       = store_id,
+        items          = raw_items,
+        modifier_index = modifier_index,
     )
 
     # ── 3. Refusal gates: unknown items first, then sold_out ──────────────
@@ -896,6 +902,7 @@ async def modify_order(
     args:              dict[str, Any],
     caller_phone_e164: str,
     call_log_id:       Optional[str] = None,
+    modifier_index:    dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Update the items on an in-flight order.
     (in-flight 주문의 items 교체 — Phase 2-C.B1)
@@ -953,9 +960,13 @@ async def modify_order(
                 "ai_script_hint":  "modify_too_late"}
 
     # 4. Resolve the new items against the live menu catalogue.
+    # Wave A.3: pre-loaded modifier_index from realtime_voice (same call) is
+    # forwarded so the modify path also skips the modifier REST round-trip.
+    # (modify 경로도 사전 로드된 modifier_index 사용 — REST 우회)
     resolved = await resolve_items_against_menu(
-        store_id = store_id,
-        items    = raw_items,
+        store_id       = store_id,
+        items          = raw_items,
+        modifier_index = modifier_index,
     )
     unknown = [r for r in resolved if r.get("missing")]
     if unknown:

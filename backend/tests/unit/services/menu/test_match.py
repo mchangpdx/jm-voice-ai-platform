@@ -322,3 +322,147 @@ async def test_resolve_items_modifier_load_failure_falls_back_to_base():
         )
     # Modifier index unavailable → effective == base
     assert resolved[0]["effective_price"] == 5.50
+
+
+# ── Phase 7-A.D Wave A.3 — Pre-loaded modifier_index reuse ────────────────────
+# realtime_voice.py already calls fetch_modifier_groups() at session.update to
+# build the system-prompt modifier_section. Re-fetching the same data inside
+# create_order adds ~400-500ms per order. These tests pin the contract that
+# resolve_items_against_menu accepts a pre-built index and skips the second
+# round-trip when given one — without changing the price-delta math.
+
+def _single_resp(*bodies):
+    """Like _multi_resp but asserts exactly len(bodies) GETs were issued."""
+    aiter = iter(bodies)
+    call_count = {"n": 0}
+    async def _next_get(*a, **k):
+        call_count["n"] += 1
+        body = next(aiter)
+        r = AsyncMock(); r.status_code = 200; r.json = lambda: body
+        return r
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__  = AsyncMock(return_value=False)
+    client.get = _next_get
+    return client, call_count
+
+
+@pytest.mark.asyncio
+async def test_build_modifier_index_from_groups_converts_shape():
+    """Helper turns fetch_modifier_groups output into {(gcode, ocode): opt} index."""
+    from app.services.menu.match import build_modifier_index_from_groups
+
+    groups = [
+        {"id": "g-size", "code": "size", "options": [
+            {"id": "o-l", "group_id": "g-size", "code": "large",
+             "price_delta": 1.00, "display_name": "Large 20oz"},
+        ]},
+        {"id": "g-milk", "code": "milk", "options": [
+            {"id": "o-oat", "group_id": "g-milk", "code": "oat",
+             "price_delta": 0.75, "display_name": "Oat milk"},
+        ]},
+    ]
+    idx = build_modifier_index_from_groups(groups)
+
+    assert ("size", "large") in idx
+    assert ("milk", "oat")   in idx
+    assert idx[("size", "large")]["price_delta"] == 1.00
+    assert idx[("milk", "oat")]["display_name"]  == "Oat milk"
+
+
+@pytest.mark.asyncio
+async def test_build_modifier_index_handles_empty_and_missing_codes():
+    """Empty groups → empty index. Group/option missing code → skipped (no crash)."""
+    from app.services.menu.match import build_modifier_index_from_groups
+
+    assert build_modifier_index_from_groups([]) == {}
+    assert build_modifier_index_from_groups(None) == {}  # type: ignore[arg-type]
+
+    bad = [
+        {"id": "g-x", "code": "", "options": [{"code": "z", "price_delta": 0}]},
+        {"id": "g-y", "code": "milk", "options": [{"code": "", "price_delta": 0}]},
+    ]
+    idx = build_modifier_index_from_groups(bad)
+    assert idx == {}
+
+
+@pytest.mark.asyncio
+async def test_resolve_items_with_preloaded_index_skips_modifier_db_calls():
+    """Pre-loaded modifier_index → only menu_items GET fires (1 round-trip vs 3).
+    effective_price still computed correctly from the passed-in index.
+    (사전 로드된 index → modifier REST 우회, price_delta 계산은 동일)
+    """
+    from app.services.menu.match import resolve_items_against_menu
+
+    client, calls = _single_resp(_menu_rows())  # ONLY menu_items expected
+    pre_index = {
+        ("size", "large"):  {"code": "large",  "price_delta": 1.00,
+                             "display_name": "Large 20oz"},
+        ("milk", "almond"): {"code": "almond", "price_delta": 0.75,
+                             "display_name": "Almond milk"},
+    }
+
+    with patch("app.services.menu.match.httpx.AsyncClient", return_value=client):
+        resolved = await resolve_items_against_menu(
+            store_id="STORE",
+            items=[{
+                "name": "Cafe Latte",
+                "quantity": 1,
+                "selected_modifiers": [
+                    {"group": "size", "option": "large"},
+                    {"group": "milk", "option": "almond"},
+                ],
+            }],
+            modifier_index=pre_index,
+        )
+
+    assert calls["n"] == 1, f"expected 1 GET (menu_items only), got {calls['n']}"
+    line = resolved[0]
+    assert line["effective_price"] == 7.25  # 5.50 + 1.00 + 0.75
+    assert line["modifier_lines"][0]["label"] == "Large 20oz"
+
+
+@pytest.mark.asyncio
+async def test_resolve_items_falls_back_to_db_load_when_index_none():
+    """Backward compat — modifier_index=None preserves Phase 7-A.C behavior."""
+    from app.services.menu.match import resolve_items_against_menu
+
+    client, calls = _single_resp(_menu_rows(), _modifier_groups(), _modifier_options())
+
+    with patch("app.services.menu.match.httpx.AsyncClient", return_value=client):
+        resolved = await resolve_items_against_menu(
+            store_id="STORE",
+            items=[{
+                "name": "Cafe Latte",
+                "quantity": 1,
+                "selected_modifiers": [{"group": "size", "option": "large"}],
+            }],
+            modifier_index=None,
+        )
+
+    assert calls["n"] == 3, "expected menu + groups + options round-trips"
+    assert resolved[0]["effective_price"] == 6.50  # 5.50 + 1.00
+
+
+@pytest.mark.asyncio
+async def test_resolve_items_with_empty_preloaded_index_falls_back_to_base():
+    """Empty {} index (e.g. store has no modifier system) → effective == base, no DB load.
+    (빈 index → base price + 추가 REST 안 함)
+    """
+    from app.services.menu.match import resolve_items_against_menu
+
+    client, calls = _single_resp(_menu_rows())
+
+    with patch("app.services.menu.match.httpx.AsyncClient", return_value=client):
+        resolved = await resolve_items_against_menu(
+            store_id="STORE",
+            items=[{
+                "name": "Cafe Latte",
+                "quantity": 1,
+                "selected_modifiers": [{"group": "size", "option": "large"}],
+            }],
+            modifier_index={},
+        )
+
+    assert calls["n"] == 1
+    assert resolved[0]["effective_price"] == 5.50  # unknown mod silently dropped

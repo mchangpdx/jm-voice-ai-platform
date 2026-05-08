@@ -49,6 +49,7 @@ from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
 from app.services.handoff.manager_alert import send_tier3_alert
+from app.services.menu.match import build_modifier_index_from_groups
 from app.services.menu.modifiers import (
     fetch_modifier_groups,
     format_modifier_block,
@@ -156,9 +157,10 @@ async def _dispatch_tool_call(
 
     if tool_name == "create_order":
         result = await bridge_flows.create_order(
-            store_id    = store_id,
-            args        = tool_args,
-            call_log_id = None,
+            store_id       = store_id,
+            args           = tool_args,
+            call_log_id    = None,
+            modifier_index = session_state.get("modifier_index"),
         )
         # Snapshot for recall_order
         if result.get("success"):
@@ -211,6 +213,7 @@ async def _dispatch_tool_call(
             args              = tool_args,
             caller_phone_e164 = caller_phone_e164,
             call_log_id       = None,
+            modifier_index    = session_state.get("modifier_index"),
         )
         if result.get("success"):
             session_state["last_order_items"] = result.get("items") or session_state.get("last_order_items") or []
@@ -527,16 +530,25 @@ async def realtime_bridge(ws: WebSocket) -> None:
     # oat latte" — see live trigger CA90b88e... 2026-05-07.
     # (Phase 7-A.B — modifier 사전 로드 + 시스템 프롬프트 주입)
     mod_group_count = 0
+    # Wave A.3 — build the (group_code, option_code) → option index once at
+    # session start so create_order / modify_order can skip their per-call
+    # modifier_groups + modifier_options REST round-trip (~400-500ms saved).
+    # session_state["modifier_index"] is the source of truth for the call;
+    # legacy callers that pass None still get the lazy fetch path.
+    # (세션 시작 시 modifier index 1회 빌드 → 매 tool 호출의 REST 우회)
+    session_modifier_index: dict[tuple[str, str], dict[str, Any]] | None = None
     try:
         mod_groups = await fetch_modifier_groups(store_id)
         mod_group_count = len(mod_groups)
         store["modifier_section"] = format_modifier_block(mod_groups)
+        session_modifier_index = build_modifier_index_from_groups(mod_groups)
     except Exception as exc:
         # Modifier load is best-effort. A failure must not abort the call —
         # fall back to base-menu-only behavior (pre-Phase 7-A.B).
         # (modifier 로드 실패는 통화 중단 사유 아님 — base menu only로 fallback)
         _dbg(f"[realtime] ⚠ modifier load failed: {type(exc).__name__}: {exc}")
         store["modifier_section"] = ""
+        session_modifier_index = None
 
     instructions = build_system_prompt(store)
     _dbg(f"[realtime] store loaded id={store_id} name={store_name!r} "
@@ -660,6 +672,10 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # (Tier 3 매니저 알림 상태 — 통화당 1회만 발송)
                 "last_user_text":   "",
                 "tier3_alerted":    False,
+                # Wave A.3 — modifier index reused across every create_order /
+                # modify_order in the call (built once at session.update above).
+                # (modifier index — 통화 단위 캐시, tool 호출마다 REST 우회)
+                "modifier_index":   session_modifier_index,
             }
 
             async def twilio_to_openai() -> None:

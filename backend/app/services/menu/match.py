@@ -49,8 +49,9 @@ _REST = f"{settings.supabase_url}/rest/v1"
 
 async def resolve_items_against_menu(
     *,
-    store_id: str,
-    items:    list[dict[str, Any]],
+    store_id:       str,
+    items:          list[dict[str, Any]],
+    modifier_index: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Enrich a list of {name, quantity, selected_modifiers?} items with menu_items
     catalog data and per-line effective prices.
@@ -66,6 +67,14 @@ async def resolve_items_against_menu(
     metadata is preserved on the line so the pay_link replay can later
     upgrade Loyverse line items with line_modifiers. A REST hiccup falls
     back to base price (effective_price == price) — never blocks the order.
+
+    Phase 7-A.D Wave A.3: callers that already loaded modifier groups (e.g.
+    realtime_voice.py at session.update for the system-prompt block) may
+    pass a pre-built `modifier_index` to skip the per-call REST fetch — saves
+    ~400-500ms per create_order on the hot path. Pass {} to indicate "store
+    has no modifiers" (skip fetch, fall back to base price). Pass None to
+    keep the legacy behavior (lazy fetch on first modifier-bearing item).
+    (사전 로드된 modifier_index 재사용 — create_order 핫패스에서 modifier REST 우회)
     """
     if not items:
         return []
@@ -104,14 +113,15 @@ async def resolve_items_against_menu(
         if nm and nm not in by_name:
             by_name[nm] = r
 
-    # Modifier index — loaded only if at least one item carries selected_modifiers.
-    # Skipping the load on the legacy path keeps the per-call latency unchanged
-    # for stores/menus that don't use the modifier system.
-    # (modifier가 명시된 항목이 하나라도 있을 때만 인덱스 로드 — perf 보존)
+    # Modifier index — loaded only if at least one item carries selected_modifiers
+    # AND the caller didn't pass a pre-built index. Skipping the load on the
+    # legacy path keeps the per-call latency unchanged for stores/menus that
+    # don't use the modifier system; using the pre-built index from
+    # realtime_voice's session.update saves ~400-500ms on the hot path.
+    # (modifier 인덱스: 사전 로드 우선 → 레거시 경로는 lazy fetch 유지)
     needs_modifiers = any((it.get("selected_modifiers") or []) for it in items)
-    modifier_index: dict[tuple[str, str], dict[str, Any]] = {}
-    if needs_modifiers:
-        modifier_index = await _load_modifier_index(store_id)
+    if modifier_index is None:
+        modifier_index = await _load_modifier_index(store_id) if needs_modifiers else {}
 
     catalog_keys = list(by_name.keys())
     enriched: list[dict[str, Any]] = []
@@ -197,6 +207,35 @@ async def resolve_items_against_menu(
         })
 
     return enriched
+
+
+def build_modifier_index_from_groups(
+    groups: list[dict[str, Any]] | None,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Convert fetch_modifier_groups() output into the index shape that
+    resolve_items_against_menu consumes. Lets the realtime layer build the
+    index once at session.update (when groups are already fetched for the
+    system-prompt block) and reuse it across every create_order /
+    modify_order in the call.
+    (modifiers.fetch_modifier_groups 결과 → match.py가 쓰는 (gcode,ocode)→opt 인덱스로 변환)
+
+    Skips groups/options with empty `code` defensively — those rows can't be
+    referenced from selected_modifiers anyway, and including them would
+    create unmatchable index entries.
+    """
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    if not groups:
+        return index
+    for g in groups:
+        gcode = (g.get("code") or "").strip()
+        if not gcode:
+            continue
+        for o in (g.get("options") or []):
+            ocode = (o.get("code") or "").strip()
+            if not ocode:
+                continue
+            index[(gcode, ocode)] = o
+    return index
 
 
 async def _load_modifier_index(
