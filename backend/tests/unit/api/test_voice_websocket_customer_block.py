@@ -1,0 +1,233 @@
+# CRM Wave 1 — customer_context prompt block unit tests (Tier 2, P1–P5)
+# (CRM Wave 1 — system prompt customer_context 블록 단위 테스트)
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.api.voice_websocket import (
+    _format_last_visit,
+    _render_customer_context_block,
+    _summarize_recent_items,
+    build_system_prompt,
+)
+from app.services.crm import CustomerContext
+
+
+# ── Test fixtures ─────────────────────────────────────────────────────────────
+
+STORE = {
+    "id":              "PDX-cafe-01",
+    "system_prompt":   "You are the host at JM Cafe.",
+    "menu_cache":      "Latte $5.00\nDrip $3.50",
+    "modifier_section": "",
+    "business_hours":  "8am-6pm",
+}
+
+
+def _ctx(visit_count: int = 1, *, recent=None,
+         usual_eligible: bool = False,
+         name: str | None = "Jamie",
+         email: str | None = "jamie@x.com") -> CustomerContext:
+    return CustomerContext(
+        visit_count    = visit_count,
+        recent         = recent or [],
+        usual_eligible = usual_eligible,
+        name           = name,
+        email          = email,
+    )
+
+
+def _yesterday_iso() -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+
+# ── P1: customer_context=None → byte-identical to pre-CRM build ───────────────
+
+def test_p1_none_context_is_byte_identical_to_default():
+    a = build_system_prompt(STORE)
+    b = build_system_prompt(STORE, customer_context=None)
+    assert a == b
+    assert "CUSTOMER CONTEXT" not in b
+    assert "CRM RULES" not in b
+
+
+# ── P2: visit_count=0 → no block injected ─────────────────────────────────────
+
+def test_p2_visit_count_zero_skips_block():
+    ctx = _ctx(visit_count=0, recent=[], name=None, email=None)
+    a = build_system_prompt(STORE)
+    b = build_system_prompt(STORE, customer_context=ctx)
+    assert a == b
+    assert "CUSTOMER CONTEXT" not in b
+
+
+# ── P3: visit_count=1, no usual ───────────────────────────────────────────────
+
+def test_p3_one_visit_renders_welcome_back_no_usual():
+    ctx = _ctx(
+        visit_count=1,
+        recent=[{
+            "created_at": _yesterday_iso(),
+            "items_json": [{"name": "iced oat latte", "quantity": 1,
+                            "modifier_lines": [{"label": "Iced"}, {"label": "Oat"}]}],
+            "total_cents": 650,
+        }],
+        usual_eligible=False,
+    )
+    p = build_system_prompt(STORE, customer_context=ctx)
+    assert "=== CUSTOMER CONTEXT" in p
+    assert "Name: Jamie" in p
+    assert "Welcome back" in p
+    assert "Visits: 1" in p
+    assert "yesterday" in p
+    assert "Email on file: jamie@x.com" in p
+    assert "Usual eligible: NO" in p
+    assert "Would you like the usual" not in p
+    # INVARIANTS still present and AFTER the customer block
+    assert "=== CORE TRUTHFULNESS INVARIANTS" in p
+    assert p.find("=== CUSTOMER CONTEXT") < p.find("=== CORE TRUTHFULNESS INVARIANTS")
+
+
+# ── P4: visit_count=2, usual_eligible=True → usual offer line present ─────────
+
+def test_p4_usual_eligible_renders_usual_offer():
+    same_items = [{"name": "iced oat latte", "quantity": 1,
+                   "modifier_lines": [{"label": "Iced"}, {"label": "Oat"}]}]
+    ctx = _ctx(
+        visit_count=2,
+        recent=[
+            {"created_at": _yesterday_iso(),
+             "items_json": same_items, "total_cents": 650},
+            {"created_at": "2026-05-02",
+             "items_json": same_items, "total_cents": 650},
+        ],
+        usual_eligible=True,
+    )
+    p = build_system_prompt(STORE, customer_context=ctx)
+    assert "Usual eligible: YES" in p
+    assert "Would you like the usual" in p
+    assert "iced oat latte" in p
+    # The usual offer should reference the rendered items, not be malformed
+    assert "Would you like the usual, " in p  # comma-separated
+
+
+# ── P5: visit_count=2, items differ → usual_eligible=False, no usual ──────────
+
+def test_p5_two_visits_different_items_no_usual():
+    ctx = _ctx(
+        visit_count=2,
+        recent=[
+            {"created_at": _yesterday_iso(),
+             "items_json": [{"name": "latte", "quantity": 1}],
+             "total_cents": 500},
+            {"created_at": "2026-05-02",
+             "items_json": [{"name": "drip", "quantity": 1}],
+             "total_cents": 350},
+        ],
+        usual_eligible=False,
+    )
+    p = build_system_prompt(STORE, customer_context=ctx)
+    assert "Usual eligible: NO" in p
+    assert "Would you like the usual" not in p
+
+
+# ── Helper unit tests (pure functions) ────────────────────────────────────────
+
+class TestSummarizeItems:
+    def test_empty(self):
+        assert _summarize_recent_items(None) == "(no items)"
+        assert _summarize_recent_items([]) == "(no items)"
+
+    def test_single_item_no_modifiers(self):
+        out = _summarize_recent_items([{"name": "latte", "quantity": 1}])
+        assert out == "latte"
+
+    def test_quantity_prefix_when_gt_one(self):
+        out = _summarize_recent_items([{"name": "muffin", "quantity": 3}])
+        assert out == "3x muffin"
+
+    def test_modifier_labels_appended(self):
+        out = _summarize_recent_items([{
+            "name": "latte", "quantity": 1,
+            "modifier_lines": [{"label": "Iced"}, {"label": "Oat"}],
+        }])
+        assert out == "latte (Iced, Oat)"
+
+    def test_invalid_dict_filtered(self):
+        out = _summarize_recent_items([
+            "garbage",
+            {"name": "latte", "quantity": 1},
+        ])
+        assert out == "latte"
+
+
+class TestFormatLastVisit:
+    def test_today(self):
+        now = datetime.now(timezone.utc).isoformat()
+        assert _format_last_visit(now) == "today"
+
+    def test_yesterday(self):
+        y = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        assert _format_last_visit(y) == "yesterday"
+
+    def test_n_days_ago(self):
+        n = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        assert _format_last_visit(n) == "7 days ago"
+
+    def test_z_suffix_iso(self):
+        # Some serializers use 'Z' instead of '+00:00'
+        ts = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+        assert _format_last_visit(ts) == "2 days ago"
+
+    def test_garbage_returns_empty_string(self):
+        assert _format_last_visit(None) == ""
+        assert _format_last_visit("") == ""
+        assert _format_last_visit("not a date") == ""
+        assert _format_last_visit(12345) == ""  # type: ignore[arg-type]
+
+    def test_clock_skew_future_returns_today(self):
+        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        assert _format_last_visit(future) == "today"
+
+
+# ── Render block direct unit tests (extra coverage) ───────────────────────────
+
+class TestRenderBlock:
+    def test_none_returns_empty_string(self):
+        assert _render_customer_context_block(None) == ""
+
+    def test_visit_count_zero_returns_empty_string(self):
+        ctx = CustomerContext(visit_count=0, recent=[], usual_eligible=False,
+                              name=None, email=None)
+        assert _render_customer_context_block(ctx) == ""
+
+    def test_no_email_omits_email_line(self):
+        ctx = _ctx(visit_count=1, email=None,
+                   recent=[{"created_at": _yesterday_iso(),
+                            "items_json": [{"name": "x", "quantity": 1}],
+                            "total_cents": 100}])
+        out = _render_customer_context_block(ctx)
+        assert "Email on file" not in out
+
+    def test_no_name_omits_name_line(self):
+        ctx = _ctx(visit_count=1, name=None,
+                   recent=[{"created_at": _yesterday_iso(),
+                            "items_json": [{"name": "x", "quantity": 1}],
+                            "total_cents": 100}])
+        out = _render_customer_context_block(ctx)
+        assert "Name:" not in out
+
+    def test_recent_block_numbers_orders(self):
+        ctx = _ctx(visit_count=3, recent=[
+            {"created_at": "2026-05-05", "items_json": [{"name": "a"}], "total_cents": 100},
+            {"created_at": "2026-05-04", "items_json": [{"name": "b"}], "total_cents": 200},
+            {"created_at": "2026-05-03", "items_json": [{"name": "c"}], "total_cents": 300},
+        ])
+        out = _render_customer_context_block(ctx)
+        assert "1. 2026-05-05" in out
+        assert "2. 2026-05-04" in out
+        assert "3. 2026-05-03" in out
+        assert "$1.00" in out and "$2.00" in out and "$3.00" in out
