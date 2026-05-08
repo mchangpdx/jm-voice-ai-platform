@@ -756,6 +756,12 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # before reconcile_email_with_recital reads it.
                 # (NATO email recital을 별도 latch — 덮어쓰기 방지)
                 "last_email_recital_text": "",
+                # Auto-retry budget for response.create after a
+                # rate_limit_exceeded. Capped at 3 total per call to
+                # bound runaway recovery loops while still covering the
+                # 1-2 expected throttles in a long Tier-1 call.
+                # (rate_limit retry 회로 차단기)
+                "_rate_limit_retries": 0,
                 # Wave A.3 — modifier index reused across every create_order /
                 # modify_order in the call (built once at session.update above).
                 # (modifier index — 통화 단위 캐시, tool 호출마다 REST 우회)
@@ -1053,6 +1059,58 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             )
                             if r_status_details:
                                 _dbg(f"[oai→twilio] response.status_details={r_status_details!r}")
+
+                            # Auto-retry on rate_limit_exceeded — turns the
+                            # silent-agent failure mode into a 1-2s pause
+                            # instead of waiting for the caller to break the
+                            # silence themselves. Live trigger 2026-05-08
+                            # callSid CA6eb23bf4... at turn=8: post-tool
+                            # response failed with rate_limit_exceeded; the
+                            # error message includes "try again in N.NNNs"
+                            # — we honor that hint with a small safety
+                            # margin and re-fire response.create exactly
+                            # once per failed response. Capped at 3 total
+                            # retries per call so a wedge doesn't spin
+                            # forever; capped at 5s per wait so a runaway
+                            # number doesn't hold the WS open. interrupt
+                            # handling (caller starts speaking during the
+                            # wait) is preserved by OpenAI's own VAD layer.
+                            # (rate_limit_exceeded 자동 재시도 — silent agent
+                            #  6-10s → 1-2s, 회로 차단기로 무한 retry 방지)
+                            if r_status == "failed" and r_status_details is not None:
+                                err_obj = getattr(r_status_details, "error", None)
+                                err_code = getattr(err_obj, "code", "") if err_obj else ""
+                                if err_code == "rate_limit_exceeded":
+                                    retry_count = session_state.get("_rate_limit_retries", 0)
+                                    if retry_count >= 3:
+                                        _dbg(f"[oai→twilio] rate_limit_retry_budget_exhausted "
+                                             f"count={retry_count} response_id={r_id}")
+                                    else:
+                                        err_msg = getattr(err_obj, "message", "") or ""
+                                        m = re.search(r"try again in ([\d.]+)s", err_msg)
+                                        wait_s = min(
+                                            (float(m.group(1)) if m else 2.0) + 0.2,
+                                            5.0,
+                                        )
+                                        session_state["_rate_limit_retries"] = retry_count + 1
+                                        _dbg(
+                                            f"[oai→twilio] rate_limit_retry "
+                                            f"attempt={retry_count + 1}/3 wait={wait_s:.2f}s "
+                                            f"response_id={r_id}"
+                                        )
+
+                                        async def _delayed_retry(client=oai, delay=wait_s, rid=r_id):
+                                            try:
+                                                await asyncio.sleep(delay)
+                                                await client.response.create()
+                                                _dbg(f"[oai→twilio] rate_limit_retry_sent "
+                                                     f"after_response_id={rid}")
+                                            except Exception as ex:
+                                                _dbg(f"[oai→twilio] rate_limit_retry_failed "
+                                                     f"after_response_id={rid} "
+                                                     f"err={type(ex).__name__}: {ex}")
+
+                                        asyncio.create_task(_delayed_retry())
 
                         elif etype == "error":
                             err = getattr(event, "error", None)
