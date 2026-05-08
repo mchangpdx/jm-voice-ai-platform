@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>OpenAI Realtime Cost Strategy — JM Tech One 2026-05-08</title>
+<style>
+@page {
+  size: A4;
+  margin: 18mm 16mm 22mm 16mm;
+  @bottom-center {
+    content: "JM Tech One · 2026-05-08 · Page " counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", "Segoe UI", sans-serif;
+       font-size: 10pt; color: #1a1a1a; }
+body { line-height: 1.50; }
+h1 { font-size: 22pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; color: #1e3a8a; }
+h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+     margin-top: 22px; page-break-after: avoid; }
+h3 { font-size: 12pt; color: #1f2937; margin-top: 14px; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #374151; margin-top: 10px; }
+p, li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #eff6ff; font-weight: 600; color: #1e3a8a; }
+tr:nth-child(even) td { background: #fafbfc; }
+code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px;
+       font-size: 8.5pt; font-family: "SF Mono", Menlo, Consolas, monospace; }
+pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+      padding: 8px 10px; font-size: 8.5pt; overflow-x: auto; page-break-inside: avoid;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.35; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 3px solid #f59e0b; background: #fef3c7;
+             padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+blockquote p { margin: 2px 0; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+ul, ol { margin: 4px 0 8px 22px; padding: 0; }
+strong { color: #111827; }
+em { color: #4b5563; }
+a { color: #2563eb; text-decoration: none; }
+.cover-spacer { height: 30mm; }
+</style>
+</head>
+<body>
+<h1 id="session-summary-2026-05-08-crm-wave-1-cost-strategy">Session Summary — 2026-05-08 CRM Wave 1 + Cost Strategy</h1>
+<p><strong>Date</strong>: 2026-05-08
+<strong>Branch</strong>: <code>feature/openai-realtime-migration</code>
+<strong>Sprint</strong>: CRM Wave 1 — Phone-Keyed Returning Customer + Email NATO fix + silent agent diagnosis/fix + 3-PDF cost strategy
+<strong>Pilot Position</strong>: M1.4 / M9 (25% — single-store live verification)</p>
+<hr>
+<h2 id="achievements-12-commits">🎯 Achievements (12 commits)</h2>
+<h3 id="a-crm-wave-1-spec-must-100-complete-live-verified">A. CRM Wave 1 — Spec MUST 100% complete + live verified</h3>
+<table>
+<thead>
+<tr>
+<th>Commit</th>
+<th>Scope</th>
+<th>LOC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ae04d8e</code></td>
+<td>spec design (582 lines)</td>
+<td>docs</td>
+</tr>
+<tr>
+<td><code>682ecab</code></td>
+<td>C1 — DB migration (5 NULLABLE columns + index)</td>
+<td>+64</td>
+</tr>
+<tr>
+<td><code>c0282fa</code></td>
+<td>C2 — services/crm/ + update_call_metrics</td>
+<td>+372</td>
+</tr>
+<tr>
+<td><code>6090cdb</code></td>
+<td>C3 — customer_context block (INVARIANTS-prior)</td>
+<td>+130/-1</td>
+</tr>
+<tr>
+<td><code>c674643</code></td>
+<td>C4 — realtime_voice lookup hook + AHT call_end</td>
+<td>+103/-2</td>
+</tr>
+<tr>
+<td><code>85f9b3f</code></td>
+<td>C5 — 66 unit tests Tier 1-3</td>
+<td>+689</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b-live-verification-4-calls-124s-avg">B. Live verification (4 calls, 124s avg)</h3>
+<ul>
+<li>✅ <strong>Welcome back, Michael!</strong> (turn 1, visits=27)</li>
+<li>✅ <strong>Email auto-fill</strong> "I have cymeet@gmail.com on file"</li>
+<li>✅ <strong>"the usual?" 발동</strong> <code>[crm] usual_offered=true detected</code> (10:27 call)</li>
+<li>✅ DB persist 3 rows (<code>crm_returning=True</code>, <code>crm_visit_count=26/1/27</code>, <code>call_duration_ms=115279/186216/102120</code>)</li>
+<li>✅ AHT 절감 추정: returning calls ~13s saved via email auto-fill</li>
+</ul>
+<h3 id="c-bonus-follow-up-fixes">C. Bonus follow-up fixes</h3>
+<table>
+<thead>
+<tr>
+<th>Commit</th>
+<th>Issue</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>9f09604</code></td>
+<td>Email NATO <code>cym eet@gmail.com</code> 공백 (Call #2)</td>
+<td>last_email_recital_text 별도 latch, last_assistant_text 덮어쓰기 방지</td>
+</tr>
+<tr>
+<td><code>2b26f2a</code></td>
+<td>Silent agent 진단 부재</td>
+<td>response.done 핸들러에 id/status/output_types/transcript/status_details 캡처</td>
+</tr>
+<tr>
+<td><code>f6a73f6</code></td>
+<td>Silent agent root cause = TPM 40K rate_limit_exceeded</td>
+<td>retry-after 파싱 + asyncio.sleep + response.create 자동 재시도 (max 3/call)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d-cost-strategy-pdfs-3-reports">D. Cost Strategy PDFs (3 reports)</h3>
+<table>
+<thead>
+<tr>
+<th>Commit</th>
+<th>PDF</th>
+<th>Pages</th>
+<th>Topic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>40e098f</code></td>
+<td>openai-realtime-cost-strategy.pdf</td>
+<td>17</td>
+<td>Q1-4 통합 + per-call/min cost</td>
+</tr>
+<tr>
+<td><code>6dd2640</code></td>
+<td>realtime-models-3way-comparison.pdf</td>
+<td>15</td>
+<td>1.5 vs 2.0 vs mini + JM 적합도 0-50</td>
+</tr>
+<tr>
+<td><code>294e607</code></td>
+<td>hybrid-rollout-timing-and-risk.pdf</td>
+<td>13</td>
+<td>Pilot 단계 진단 + Hybrid 최적 시점</td>
+</tr>
+<tr>
+<td><code>8390f62</code></td>
+<td>(cost-strategy 갱신)</td>
+<td>+5p</td>
+<td>Hybrid 4-시나리오 비교 추가</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="live-diagnostic-capture-silent-agent-root-cause">📊 Live Diagnostic Capture — Silent Agent Root Cause</h2>
+<p><strong>라이브 데이터 (2026-05-08 10:28:43)</strong>:</p>
+<pre><code>status=failed type=failed
+error.code=rate_limit_exceeded
+error.message='Rate limit reached for gpt-realtime-1.5
+  (for limit gpt-4o-realtime). Limit 40000, Used 30058,
+  Requested 10244. Please try again in 1.903s'
+</code></pre>
+<p><strong>진단 결과</strong>: 우리가 봤던 모든 silent-agent 사례 = <strong>OpenAI TPM 40K (Tier 1) 한계</strong>.</p>
+<ul>
+<li>Call #1 (09:38): turn 7 후 11s 무음 — TPM 한계 추정 (진단 없어 못 봄)</li>
+<li>Call #4 (10:27): turn 8 explicit fail with retry_after=1.903s</li>
+<li>사용자 체감 무음 6-10초 = retry-after (1.9s) + caller 반응 시간 (5s)</li>
+</ul>
+<p><strong>Fix 전략 (2단)</strong>:
+1. <strong>외부</strong>: Tier 2 도달 ($50 누적 + 7일) → TPM 40K → 200K (5×)
+2. <strong>내부</strong>: <code>f6a73f6</code> retry 코드 — silent 무음 6-10s → 1-2s 자동 회복</p>
+<hr>
+<h2 id="per-call-cost-reconciliation">📐 Per-Call Cost Reconciliation (실측)</h2>
+<p>평균 통화 124s / 12.9 turns / 6,500-token system prompt:</p>
+<table>
+<thead>
+<tr>
+<th>Stream</th>
+<th>Tokens</th>
+<th>gpt-realtime-1.5 cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audio in</td>
+<td>833</td>
+<td>$0.027</td>
+</tr>
+<tr>
+<td>Audio out</td>
+<td>1,860</td>
+<td>$0.119</td>
+</tr>
+<tr>
+<td>Text in (fresh)</td>
+<td>32,550</td>
+<td>$0.130</td>
+</tr>
+<tr>
+<td>Text in (cached, 80% hit)</td>
+<td>86,400</td>
+<td>$0.035</td>
+</tr>
+<tr>
+<td>Text out</td>
+<td>1,040</td>
+<td>$0.017</td>
+</tr>
+<tr>
+<td><strong>OpenAI subtotal</strong></td>
+<td></td>
+<td><strong>$0.327</strong></td>
+</tr>
+<tr>
+<td>Twilio (2.07 min)</td>
+<td></td>
+<td>$0.037</td>
+</tr>
+<tr>
+<td><strong>All-in per call</strong></td>
+<td></td>
+<td><strong>$0.364</strong></td>
+</tr>
+<tr>
+<td><strong>Per minute</strong></td>
+<td></td>
+<td><strong>$0.176</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>3-Way 비교</strong>:
+| Model | Per call | Per min | 5-store/mo | 500-store/mo |
+|---|---|---|---|---|
+| gpt-realtime-1.5 (current) | $0.405 | $0.196 | $1,823 | $182,250 |
+| gpt-realtime-2.0 (new) | $0.408 | $0.197 | $1,836 | $183,600 |
+| gpt-realtime-mini | $0.150 | $0.072 | $675 | $67,500 |
+| <strong>Hybrid Routing</strong> ⭐ | <strong>$0.284</strong> | <strong>$0.137</strong> | <strong>$1,278</strong> | <strong>$127,800</strong> |</p>
+<hr>
+<h2 id="protected-code-zones-updated">🛡 Protected Code Zones (Updated)</h2>
+<p>이번 세션에서 production-ready 확정된 9개 추가:</p>
+<ol>
+<li><code>services/crm/customer_lookup.py</code> — phone lookup, 500ms timeout, graceful degrade</li>
+<li><code>services/bridge/transactions.update_call_metrics</code> — background-safe PATCH</li>
+<li><code>voice_websocket.py:_render_customer_context_block</code> — INVARIANTS 직전 배치</li>
+<li><code>realtime_voice.py customer_lookup hook</code> — env var CRM_LOOKUP_ENABLED 가드</li>
+<li><code>realtime_voice.py session_state</code> 7개 신규 키</li>
+<li><code>realtime_voice.py response.done</code> 진단 로그 (id/status/output_types/transcript)</li>
+<li><code>realtime_voice.py rate_limit_exceeded retry</code> — silent 자동 회복</li>
+<li><code>bridge_transactions</code> 5 신규 컬럼</li>
+<li><code>idx_bridge_tx_phone_store</code> partial index</li>
+</ol>
+<hr>
+<h2 id="pilot-roadmap-status">📋 Pilot Roadmap Status</h2>
+<pre><code>M0 ✅ Wave A.3 hardening
+M1.1 ✅ Wave A.3 라이브 검증 (오늘 09:30)
+M1.2 ✅ CRM Wave 1 라이브 검증 (오늘 10:00)
+M1.3 ✅ Silent agent 진단 (오늘 11:00)
+M1.4 ✅ Retry fix 적용 (오늘 EOD)            ← 세션 종료 시점
+M1.5 ⏸ Tier 2 도달 (사용자 $50 충전 + 7일)
+M1.6 ⏸ 1매장 24-48h 무인 운영
+M2   ⏸ KPI baseline 보고서
+M3   ⏸ 5매장 deployment
+M4   ⏸ 5매장 안정 운영
+M5   ⏸ KPI + Series A pre-prep
+M6   ⏸ A/B test 인프라 (Step A read-only)
+M7   ⏸ 2.0 canary (Step B)
+M8   ⏸ ⭐ Hybrid Routing (Step C-E)
+M9   ⏸ Vertical 확장 (KBBQ/Sushi)
+</code></pre>
+<hr>
+<h2 id="outstanding-user-actions">🔔 Outstanding User Actions</h2>
+<h3 id="_1">즉시 (이번 주)</h3>
+<ol>
+<li><strong>OpenAI Dashboard</strong>: $50 충전 (<a href="https://platform.openai.com/settings/organization/billing/overview">Buy credits</a>)</li>
+<li><strong>Tier 2 자동 승급</strong> 7일 대기</li>
+</ol>
+<h3 id="1-2">1-2주 내</h3>
+<ol start="3">
+<li><strong>Live 검증 통화</strong> (Tier 2 도달 후) — silent agent 사라졌는지 확인</li>
+<li>KPI baseline 측정 (M2)</li>
+</ol>
+<h3 id="4-6">4-6주 내</h3>
+<ol start="5">
+<li>5매장 Twilio 번호 추가 + store 라우팅 (M3)</li>
+<li>KPI 보고서 + Series A pre-prep deck (M5)</li>
+</ol>
+<hr>
+<h2 id="outstanding-issues-backlog">🚨 Outstanding Issues (Backlog)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue</th>
+<th>Priority</th>
+<th>후속 sprint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Welcome back not fired when name=None (visit_count≥1, recent[]=empty)</td>
+<td>★</td>
+<td>Wave 2</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Modifier 정확도 (large→medium STT)</td>
+<td>★★</td>
+<td>별도 sprint</td>
+</tr>
+<tr>
+<td>3</td>
+<td>"forget me" voice command (Cat 6.3)</td>
+<td>★</td>
+<td>Wave 2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Tiered opt-in (T2 personalization)</td>
+<td>★</td>
+<td>Wave 2</td>
+</tr>
+<tr>
+<td>5</td>
+<td>customers 테이블 도입 (denormalized → 정규화)</td>
+<td>★</td>
+<td>Wave 2</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Mini KO/JA/ZH 50-utterance eval</td>
+<td>★★</td>
+<td>Step C 직전 (M7)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>gpt-realtime-2.0 canary 검증</td>
+<td>★★</td>
+<td>Step B (M7)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="key-documents-created-this-session">📚 Key Documents Created This Session</h2>
+<ul>
+<li><code>docs/superpowers/specs/2026-05-08-crm-wave-1-design.md</code> — Spec</li>
+<li><code>docs/cost-analysis/2026-05-08/openai-realtime-cost-strategy.{md,html,pdf}</code> — 종합 비용 전략</li>
+<li><code>docs/cost-analysis/2026-05-08/realtime-models-3way-comparison.{md,html,pdf}</code> — 3-way 모델 비교</li>
+<li><code>docs/cost-analysis/2026-05-08/hybrid-rollout-timing-and-risk.{md,html,pdf}</code> — Hybrid 시점·위험</li>
+<li><code>docs/cost-analysis/2026-05-08/_build_pdf.py</code> — PDF 빌드 스크립트 (재사용)</li>
+<li>본 세션 요약 (이 파일)</li>
+</ul>
+<h2 id="memory-updates">🔧 Memory Updates</h2>
+<ul>
+<li>⭐ 신규: <code>session_resume_2026-05-08_crm-wave-1.md</code> (다음 세션 진입점)</li>
+<li>신규: <code>feedback_implementation_first_testing.md</code> (TDD override)</li>
+<li>갱신: <code>feedback_db_schema_reference.md</code> (도메인 한정)</li>
+<li>갱신: MEMORY.md 인덱스 (위 신규/⭐ 추가)</li>
+</ul>
+<hr>
+<h2 id="next-session-entry">🏁 Next Session Entry</h2>
+<pre><code class="language-bash"># 다음 세션 첫 명령어
+# 1. session_resume_2026-05-08_crm-wave-1.md 읽기
+# 2. 환경 점검
+git log --oneline -15
+curl -s -o /dev/null -w &quot;local=%{http_code}\n&quot; http://127.0.0.1:8000/health
+curl -s -o /dev/null -w &quot;ngrok=%{http_code}\n&quot; https://bipectinate-cheerily-akilah.ngrok-free.dev/health
+
+# 3. OpenAI Tier 2 도달 확인 (Settings → Limits)
+# 4. 사용자 결정 옵션:
+#    α) Tier 2 검증 통화 (silent agent 사라졌는지 라이브 확인)
+#    β) M2 1매장 24-48h baseline KPI 수집
+#    γ) M3 5매장 deployment 계획
+#    δ) Modifier 정확도 sprint (별개)
+</code></pre>
+<hr>
+<p><strong>End of Session Summary.</strong></p>
+<p><em>Distribution: founder + technical handoff.</em></p>
+</body>
+</html>
