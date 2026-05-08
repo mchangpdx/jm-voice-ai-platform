@@ -285,6 +285,61 @@ async def update_items_and_total(
         )
 
 
+async def update_call_metrics(
+    *,
+    transaction_id:     str,
+    call_duration_ms:   int,
+    crm_returning:      Optional[bool] = None,
+    crm_visit_count:    Optional[int]  = None,
+    crm_usual_offered:  Optional[bool] = None,
+    crm_usual_accepted: Optional[bool] = None,
+) -> None:
+    """Persist Wave 1 CRM call metrics on a finalized bridge_transaction.
+    (Wave 1 CRM — 통화 종료 시 AHT 및 재방문 분석 필드 영속화)
+
+    Called from realtime_voice's WebSocket close handler as a background
+    task (asyncio.create_task) — must never raise into the caller, since
+    by definition the call has already ended and a thrown exception would
+    only pollute logs without changing user impact. Failures are warn-logged
+    with the keyword [perf] call_end_persist_failed for grep-based
+    monitoring (Wave A.3 pattern).
+
+    Skips silently if transaction_id is empty (mid-call hangup before
+    create_order populated session_state['active_tx_id']).
+    """
+    if not transaction_id:
+        log.info("[perf] call_end no_tx_skip_update aht_ms=%d", call_duration_ms)
+        return
+
+    payload: dict[str, Any] = {
+        "call_duration_ms": int(call_duration_ms),
+        "updated_at":       datetime.now(timezone.utc).isoformat(),
+    }
+    if crm_returning      is not None: payload["crm_returning"]      = bool(crm_returning)
+    if crm_visit_count    is not None: payload["crm_visit_count"]    = int(crm_visit_count)
+    if crm_usual_offered  is not None: payload["crm_usual_offered"]  = bool(crm_usual_offered)
+    if crm_usual_accepted is not None: payload["crm_usual_accepted"] = bool(crm_usual_accepted)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.patch(
+                f"{_REST}/bridge_transactions",
+                headers={**_SUPABASE_HEADERS, "Prefer": "return=minimal"},
+                params={"id": f"eq.{transaction_id}"},
+                json=payload,
+            )
+        if resp.status_code not in (200, 204):
+            log.warning(
+                "[perf] call_end_persist_failed tx=%s status=%d body=%s",
+                transaction_id, resp.status_code, resp.text[:200],
+            )
+    except Exception as exc:
+        log.warning(
+            "[perf] call_end_persist_failed tx=%s exc=%s",
+            transaction_id, exc,
+        )
+
+
 async def append_audit(
     *,
     transaction_id: str,
