@@ -54,6 +54,7 @@ from app.services.menu.modifiers import (
     fetch_modifier_groups,
     format_modifier_block,
 )
+from app.services.voice.recital import reconcile_email_with_recital
 from app.skills.menu.allergen import (
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -154,6 +155,26 @@ async def _dispatch_tool_call(
     # (voice_websocket.py:1484 mirror)
     if tool_name in ("create_order", "make_reservation") and caller_phone_e164:
         tool_args["customer_phone"] = caller_phone_e164
+
+    # Wave A.3 Plan E — server-side authoritative email reconciliation.
+    # The bot's NATO recital ('C as in Charlie...') is what the customer
+    # heard and confirmed with 'yes', so it is more trustworthy than the
+    # LLM's separately-generated args.customer_email (which collapses
+    # doubles, drops/reorders letters in 90%+ of live calls 2026-05-08).
+    # Apply to every tool that takes customer_email so the persisted email
+    # and the queued pay-link delivery both go to the verified address.
+    # No-op when no NATO recital was made or when args already match.
+    # (NATO recital이 args보다 권위 — 모든 email-bearing tool에 적용)
+    if tool_name in ("create_order", "modify_order", "make_reservation",
+                     "modify_reservation"):
+        reconciled = reconcile_email_with_recital(
+            args_email          = tool_args.get("customer_email"),
+            last_assistant_text = session_state.get("last_assistant_text"),
+        )
+        if reconciled and reconciled != tool_args.get("customer_email"):
+            _dbg(f"[tool] EMAIL RECONCILED args={tool_args.get('customer_email')!r} "
+                 f"-> recital={reconciled!r}")
+            tool_args["customer_email"] = reconciled
 
     if tool_name == "create_order":
         result = await bridge_flows.create_order(
@@ -780,8 +801,18 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             stats["openai_audio_out"] += 1
 
                         elif etype == "response.audio_transcript.done":
+                            agent_text = getattr(event, 'transcript', '') or ""
                             _dbg(f"[oai→twilio] turn={stats['user_turns']} agent: "
-                                 f"{getattr(event, 'transcript', '')!r}")
+                                 f"{agent_text!r}")
+                            # Wave A.3 Plan E — keep the bot's last response
+                            # so the tool dispatcher can reconcile NATO email
+                            # readback against args.customer_email before
+                            # firing create_order. Live ops 2026-05-08:
+                            # 10/11 emails landed at wrong addresses because
+                            # the LLM's args dropped/added letters relative
+                            # to its own correct spoken NATO recital.
+                            # (마지막 bot 발화 보관 → NATO 추출용)
+                            session_state["last_assistant_text"] = agent_text
 
                         elif etype == "conversation.item.input_audio_transcription.completed":
                             user_text = getattr(event, 'transcript', '') or ""
