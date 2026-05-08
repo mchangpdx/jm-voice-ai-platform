@@ -20,6 +20,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sys
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -100,6 +102,22 @@ def is_placeholder_name(raw_name: str) -> bool:
     return rejoined in PLACEHOLDER_NAMES
 
 log = logging.getLogger(__name__)
+
+# Phase 7-A.D Wave A.3 — diagnostic timing log for create_order stage breakdown.
+# Mirrors realtime_voice._dbg so per-stage timings appear inline with the call
+# timeline in /tmp/realtime_debug.log. Temporary — remove once we identify the
+# Loyverse latency root cause and ship a real fix.
+# (create_order 단계별 측정용 임시 로그 — bottleneck 식별 후 제거 예정)
+_PERF_LOG = "/tmp/realtime_debug.log"
+
+def _perf(msg: str) -> None:
+    line = f"{time.strftime('%H:%M:%S')} [perf] {msg}"
+    try:
+        print(line, file=sys.stderr, flush=True)
+        with open(_PERF_LOG, "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 _SUPABASE_HEADERS = {
     "apikey":        settings.supabase_service_role_key,
@@ -596,6 +614,7 @@ async def create_order(
     # Note: when the idempotency probe hits (rare — same caller redials
     # within 5 min), the resolve + threshold work is wasted. The savings on
     # the common non-idempotent path far outweigh that occasional waste.
+    _t0 = time.monotonic()  # Wave A.3 diag — stage breakdown
     resolved, existing, threshold_cents = await asyncio.gather(
         resolve_items_against_menu(
             store_id       = store_id,
@@ -610,6 +629,7 @@ async def create_order(
         ),
         read_threshold_cents(store_id),
     )
+    _perf(f"create_order gather_done ms={(time.monotonic()-_t0)*1000:.0f}")
 
     # ── 3. Refusal gates: unknown items first, then sold_out ──────────────
     unknown = [r for r in resolved if r.get("missing")]
@@ -689,6 +709,16 @@ async def create_order(
     # replay them into Loyverse after the customer pays without re-querying
     # menu_items (price + variant could drift between order and payment).
     # (items_json — pay_link 시점에 메뉴 재조회 없이 영수증 재구성 가능)
+    # Wave A.3 B.1: persist customer_email so post-call audit can prove which
+    # address the pay-link email reached. Live 2026-05-08: 10 of 11 sends went
+    # to NATO-drift-corrupted addresses (cymeet/cyeet/cyeemt) and the DB row
+    # had email=NULL — no way to recover the destination after log rotation.
+    # Empty/missing strings normalize to None (column is nullable).
+    # (이메일 NATO drift 감사용 — DB에 영속화)
+    raw_email      = (args.get("customer_email") or "").strip()
+    customer_email = raw_email or None
+
+    _t1 = time.monotonic()
     txn = await transactions.create_transaction(
         store_id        = store_id,
         vertical        = "restaurant",
@@ -696,6 +726,7 @@ async def create_order(
         pos_object_id   = "",                    # backfilled after POS create
         customer_phone  = phone_e164,
         customer_name   = customer,
+        customer_email  = customer_email,
         total_cents     = total_cents,
         call_log_id     = call_log_id,
         actor           = "tool_call:create_order",
@@ -703,6 +734,7 @@ async def create_order(
         items_json      = resolved,
     )
     txn_id = txn["id"]
+    _perf(f"create_order tx_insert_done txid={txn_id[:8]} ms={(time.monotonic()-_t1)*1000:.0f}")
 
     # ── 8. Lane branch ───────────────────────────────────────────────────
     if lane == "fire_immediate":
@@ -710,8 +742,11 @@ async def create_order(
         # transaction in PENDING so an operator can recover. Critical
         # invariant: this branch must never raise out to the voice path.
         # (POS 실패 시 PENDING 유지 — 음성 경로 보호)
+        _t2 = time.monotonic()
         adapter = await get_pos_adapter_for_store(store_id)
+        _perf(f"create_order adapter_lookup_done txid={txn_id[:8]} ms={(time.monotonic()-_t2)*1000:.0f}")
         try:
+            _t3 = time.monotonic()
             pos_object_id = await adapter.create_pending(
                 vertical="restaurant",
                 store_id=store_id,
@@ -723,6 +758,7 @@ async def create_order(
                     "bridge_tx_id":    txn_id,
                 },
             )
+            _perf(f"create_order pos_create_done txid={txn_id[:8]} pos_id={pos_object_id} ms={(time.monotonic()-_t3)*1000:.0f}")
         except Exception as exc:
             log.error("POS create_pending failed for tx=%s: %s", txn_id, exc)
             # Advance to FAILED so the idempotency probe in subsequent
@@ -762,12 +798,15 @@ async def create_order(
         # still gets the fire_immediate script, which is accurate (kitchen
         # has the order, pay link is sent).
         # (Loyverse는 이미 매출/재고 처리 — bridge UPDATE 실패해도 침묵 금지)
+        _t4 = time.monotonic()
         try:
             await transactions.set_pos_object_id(txn_id, pos_object_id)
         except Exception as exc:
             log.error("set_pos_object_id failed tx=%s pos_id=%s: %s — "
                       "Loyverse has the receipt; bridge row is drifted, "
                       "needs reconcile.", txn_id, pos_object_id, exc)
+        _perf(f"create_order set_pos_id_done txid={txn_id[:8]} ms={(time.monotonic()-_t4)*1000:.0f}")
+        _t5 = time.monotonic()
         try:
             await transactions.advance_state(
                 transaction_id = txn_id,
@@ -780,6 +819,7 @@ async def create_order(
             log.error("advance_state(FIRED_UNPAID) failed tx=%s: %s — "
                       "Loyverse receipt %s already exists; needs reconcile.",
                       txn_id, exc, pos_object_id)
+        _perf(f"create_order advance_state_done txid={txn_id[:8]} ms={(time.monotonic()-_t5)*1000:.0f} TOTAL_ms={(time.monotonic()-_t0)*1000:.0f}")
 
         return {
             "success":         True,

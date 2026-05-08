@@ -528,8 +528,20 @@ def build_system_prompt(store: dict) -> str:
         "('— did I get that right?' on a spelled-out email) authorizes the "
         "EMAIL only — do NOT route it to create_order/make_reservation. Recite "
         "the order/reservation summary first, then act on the next yes.\n"
-        "Violations of I1/I2/I3/I4 ship wrong food, wrong charges, wrong "
-        "promises, or stranded reservations. They are non-negotiable."
+        "I5. EMAIL-EQUALS-RECITAL — args.customer_email MUST be exactly the "
+        "letters you spelled in your most recent NATO readback ('C as in "
+        "Charlie, Y as in Yankee...'), in the same order, with no letters "
+        "added, removed, or reordered. Example: readback 'C-Y-M-E-T at "
+        "gmail.com' → args MUST be 'cymet@gmail.com'. NEVER pad with extra "
+        "letters and never drop letters. If your transcript shows you spelled "
+        "5 letters, args MUST contain 5 letters before the @. If unsure of "
+        "any letter, re-read the address and ask 'did I get that right?' "
+        "BEFORE firing the tool — never fire a tool with an email you have "
+        "not just verbally verified letter-for-letter against the customer's "
+        "explicit yes.\n"
+        "Violations of I1/I2/I3/I4/I5 ship wrong food, wrong charges, wrong "
+        "promises, undeliverable receipts, or stranded reservations. They "
+        "are non-negotiable."
     )
 
     return "\n\n".join(parts)

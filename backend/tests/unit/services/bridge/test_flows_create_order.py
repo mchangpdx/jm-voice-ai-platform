@@ -269,6 +269,110 @@ async def test_create_order_persists_payment_lane_on_transaction():
     assert captured_kwargs["vertical"]        == "restaurant"
 
 
+# ── customer_email persistence (Phase 7-A.D Wave A.3 — B.1) ───────────────────
+# Live trigger: every email send today (10/11 calls 2026-05-08) went to a
+# slightly-wrong address (cymeet, cyeet, cyeemt — extra/missing letters from
+# the LLM's NATO recital → args drift). The bridge_transactions row had
+# customer_email=NULL on every recent transaction, so post-call audit can't
+# even tell what address the email reached. These tests pin the contract
+# that customer_email lands in the row when the caller provides it.
+
+
+@pytest.mark.asyncio
+async def test_create_order_persists_customer_email_on_transaction():
+    """create_transaction must receive customer_email so we can audit which
+    address each pay-link reached. Live ops 2026-05-08: 10/11 emails today
+    went to wrong addresses — without DB persistence the only record is
+    the realtime debug log (rotated, not queryable).
+    (감사용 — 어떤 주소로 메일 갔는지 DB에 영속화)
+    """
+    from app.services.bridge import flows
+
+    enriched = [
+        {"name": "Latte", "variant_id": "v", "item_id": "i",
+         "price": 4.00, "quantity": 1, "stock_quantity": 5,
+         "missing": False, "sufficient_stock": True},
+    ]
+
+    captured_kwargs: dict = {}
+
+    async def fake_create_tx(**kw):
+        captured_kwargs.update(kw)
+        return {"id": "tx"}
+
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock(return_value="r-1")
+
+    with patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=enriched)), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
+         patch.object(flows, "_find_recent_duplicate",
+                      new=AsyncMock(return_value=None)), \
+         patch.object(flows, "transactions") as mock_tx, \
+         patch.object(flows, "get_pos_adapter_for_store", new=AsyncMock(return_value=pos_adapter)):
+
+        mock_tx.create_transaction = AsyncMock(side_effect=fake_create_tx)
+        mock_tx.set_pos_object_id  = AsyncMock()
+        mock_tx.advance_state      = AsyncMock()
+
+        await flows.create_order(
+            store_id="STORE",
+            args={"items":          [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael",
+                  "customer_email": "cymet@gmail.com"},
+        )
+
+    assert captured_kwargs.get("customer_email") == "cymet@gmail.com"
+
+
+@pytest.mark.asyncio
+async def test_create_order_omits_customer_email_when_caller_did_not_provide():
+    """No customer_email in tool_args → the kwarg is None or absent. The
+    column is nullable; we never want to insert an empty string that masks
+    'this caller didn't share an email' as 'they shared an empty one'.
+    (이메일 미제공 시 None 전달 — 빈 문자열 금지)"""
+    from app.services.bridge import flows
+
+    enriched = [
+        {"name": "Latte", "variant_id": "v", "item_id": "i",
+         "price": 4.00, "quantity": 1, "stock_quantity": 5,
+         "missing": False, "sufficient_stock": True},
+    ]
+
+    captured_kwargs: dict = {}
+
+    async def fake_create_tx(**kw):
+        captured_kwargs.update(kw)
+        return {"id": "tx"}
+
+    pos_adapter = MagicMock()
+    pos_adapter.create_pending = AsyncMock(return_value="r-1")
+
+    with patch.object(flows, "resolve_items_against_menu",
+                      new=AsyncMock(return_value=enriched)), \
+         patch.object(flows, "read_threshold_cents",
+                      new=AsyncMock(return_value=2000)), \
+         patch.object(flows, "_find_recent_duplicate",
+                      new=AsyncMock(return_value=None)), \
+         patch.object(flows, "transactions") as mock_tx, \
+         patch.object(flows, "get_pos_adapter_for_store", new=AsyncMock(return_value=pos_adapter)):
+
+        mock_tx.create_transaction = AsyncMock(side_effect=fake_create_tx)
+        mock_tx.set_pos_object_id  = AsyncMock()
+        mock_tx.advance_state      = AsyncMock()
+
+        await flows.create_order(
+            store_id="STORE",
+            args={"items":          [{"name": "Latte", "quantity": 1}],
+                  "customer_phone": "+15035550100",
+                  "customer_name":  "Michael"},
+        )
+
+    assert captured_kwargs.get("customer_email") in (None, "")
+
+
 # ── POS injection failure handling ────────────────────────────────────────────
 
 @pytest.mark.asyncio

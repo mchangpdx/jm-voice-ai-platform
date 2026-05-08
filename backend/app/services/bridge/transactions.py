@@ -77,6 +77,7 @@ async def create_transaction(
     pos_object_id:   str,
     customer_phone:  str,
     customer_name:   Optional[str] = None,
+    customer_email:  Optional[str] = None,    # Phase 7-A.D Wave A.3 B.1 — pay-link audit trail
     total_cents:     int = 0,
     call_log_id:     Optional[str] = None,
     source:          str = "voice",
@@ -92,6 +93,11 @@ async def create_transaction(
     payment_lane: routing decision for order flows (Phase 2-B.1.7b). Reservation
     flows pass None — the column is nullable for legacy/non-order rows.
     (예약 흐름은 None — 정책 비적용 행)
+
+    customer_email: address used for the pay-link email send. Persisting this
+    is required for post-call audit when NATO recital ↔ args drift produces
+    wrong-address sends — without the column we only have rotated debug logs.
+    (이메일 NATO drift 감사 — DB 영속화로 사후 추적 가능)
     """
     if vertical not in _VERTICALS:
         raise ValueError(f"unknown vertical: {vertical!r}; allowed={sorted(_VERTICALS)}")
@@ -103,6 +109,7 @@ async def create_transaction(
         "pos_object_id":   pos_object_id,
         "customer_phone":  customer_phone,
         "customer_name":   customer_name,
+        "customer_email":  (customer_email or None),   # empty string → NULL
         "total_cents":     int(total_cents),
         "state":           State.PENDING,
         "call_log_id":     call_log_id,
