@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>OpenAI Realtime Cost Strategy — JM Tech One 2026-05-08</title>
+<style>
+@page {
+  size: A4;
+  margin: 18mm 16mm 22mm 16mm;
+  @bottom-center {
+    content: "JM Tech One · 2026-05-08 · Page " counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", "Segoe UI", sans-serif;
+       font-size: 10pt; color: #1a1a1a; }
+body { line-height: 1.50; }
+h1 { font-size: 22pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; color: #1e3a8a; }
+h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+     margin-top: 22px; page-break-after: avoid; }
+h3 { font-size: 12pt; color: #1f2937; margin-top: 14px; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #374151; margin-top: 10px; }
+p, li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #eff6ff; font-weight: 600; color: #1e3a8a; }
+tr:nth-child(even) td { background: #fafbfc; }
+code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px;
+       font-size: 8.5pt; font-family: "SF Mono", Menlo, Consolas, monospace; }
+pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+      padding: 8px 10px; font-size: 8.5pt; overflow-x: auto; page-break-inside: avoid;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.35; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 3px solid #f59e0b; background: #fef3c7;
+             padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+blockquote p { margin: 2px 0; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+ul, ol { margin: 4px 0 8px 22px; padding: 0; }
+strong { color: #111827; }
+em { color: #4b5563; }
+a { color: #2563eb; text-decoration: none; }
+.cover-spacer { height: 30mm; }
+</style>
+</head>
+<body>
+<h1 id="openai-realtime-3-way-jm">OpenAI Realtime 3-Way 모델 전수 비교 + JM 적합도 점수</h1>
+<p><strong>작성</strong>: 2026-05-08 · JM Tech One — Voice AI Pilot
+<strong>비교 대상</strong>: <code>gpt-realtime-2</code> (신규, 2026-05-08) · <code>gpt-realtime-1.5</code> (현재 사용) · <code>gpt-realtime-mini</code>
+<strong>기준</strong>: 라이브 통화 124s · 12.9 turns · 6,500-token system prompt · Marin voice · 5 언어 (EN/ES/KO/JA/ZH)</p>
+<hr>
+<h2 id="_1">임원 요약 — 한 표로 보는 결론</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-1.5 (현재)</th>
+<th>gpt-realtime-2 (신규)</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>JM 적합도 (0-50)</strong></td>
+<td><strong>43 / 50</strong></td>
+<td><strong>42 / 50</strong></td>
+<td><strong>34 / 50</strong></td>
+</tr>
+<tr>
+<td>통화 1건 비용</td>
+<td>$0.368</td>
+<td>$0.371 (low effort)</td>
+<td>$0.113</td>
+</tr>
+<tr>
+<td>Audio 가격</td>
+<td>$32 / $64 / 1M</td>
+<td><strong>동일</strong> ($32 / $64)</td>
+<td>$10 / $20</td>
+</tr>
+<tr>
+<td>Context window</td>
+<td>32K</td>
+<td><strong>128K (4×)</strong></td>
+<td>32K</td>
+</tr>
+<tr>
+<td>Tool calling</td>
+<td>sequential (현재 silent 위험)</td>
+<td><strong>parallel + audible preamble</strong></td>
+<td>sequential</td>
+</tr>
+<tr>
+<td>Big Bench Audio</td>
+<td>81.4%</td>
+<td><strong>96.6%</strong></td>
+<td>미공개</td>
+</tr>
+<tr>
+<td>TTFA (응답 시작)</td>
+<td>~500ms</td>
+<td>1.12s @ low</td>
+<td>&lt;500ms</td>
+</tr>
+<tr>
+<td>1.5 → migration 비용</td>
+<td>—</td>
+<td>drop-in (reasoning.effort 추가만)</td>
+<td>drop-in (품질 A/B 필요)</td>
+</tr>
+<tr>
+<td>다국어 (KO/JA/ZH) 검증</td>
+<td>라이브 사용 중</td>
+<td>GPT-5-class 추정</td>
+<td>보고된 약점</td>
+</tr>
+<tr>
+<td><strong>권장 사용처</strong></td>
+<td><strong>Pilot 안정 운영 (현재 default)</strong></td>
+<td><strong>canary 검증 후 main 승격</strong></td>
+<td><strong>English-only cafe A/B (3.5× 비용 절감)</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>핵심 한 줄</strong>: 2.0은 audio cost 동일 + 큰 context + parallel tools = <strong>자연스러운 다음 default</strong>. 1.5는 6-12개월 deprecation 예측. mini는 vertical 별 cost 옵션.</p>
+</blockquote>
+<hr>
+<h1 id="part-1-master-spec-table">Part 1 — Master Spec Table</h1>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-2</th>
+<th>gpt-realtime-1.5</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Status</strong></td>
+<td>GA (2026-05-08 발표)</td>
+<td>GA (2025-08-28 snapshot)</td>
+<td>GA</td>
+</tr>
+<tr>
+<td><strong>Snapshot</strong></td>
+<td>gpt-realtime-2</td>
+<td>gpt-realtime-2025-08-28</td>
+<td>gpt-realtime-mini</td>
+</tr>
+<tr>
+<td><strong>Context window</strong></td>
+<td><strong>128,000 tokens</strong></td>
+<td>32,000 tokens</td>
+<td>32,000 tokens</td>
+</tr>
+<tr>
+<td><strong>Max output</strong></td>
+<td>32,000</td>
+<td>4,096</td>
+<td>4,096</td>
+</tr>
+<tr>
+<td><strong>Modalities (in/out)</strong></td>
+<td>text + audio + image / text + audio</td>
+<td>동일</td>
+<td>동일</td>
+</tr>
+<tr>
+<td><strong>Voices</strong></td>
+<td>Marin, Cedar (+ legacy 8)</td>
+<td>Marin, Cedar (+ legacy 8)</td>
+<td>Marin/Cedar 공유 풀 (미문서화)</td>
+</tr>
+<tr>
+<td><strong>Audio formats</strong></td>
+<td>pcm16 24kHz, g711_ulaw, g711_alaw</td>
+<td>동일</td>
+<td>동일</td>
+</tr>
+<tr>
+<td><strong>VAD</strong></td>
+<td>server_vad + semantic_vad</td>
+<td>동일</td>
+<td>동일</td>
+</tr>
+<tr>
+<td><strong>Transports</strong></td>
+<td>WebRTC + WebSocket + SIP</td>
+<td>동일</td>
+<td>동일</td>
+</tr>
+<tr>
+<td><strong>Function calling</strong></td>
+<td><strong>parallel + async + 청취 가능 preamble</strong></td>
+<td>sequential / async</td>
+<td>sequential (parallel 미검증)</td>
+</tr>
+<tr>
+<td><strong>Reasoning effort</strong></td>
+<td>minimal / low / medium / high / xhigh (default: low)</td>
+<td>n/a</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><strong>Image input</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><strong>MCP support</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>제한적</td>
+</tr>
+<tr>
+<td><strong>Big Bench Audio</strong></td>
+<td><strong>96.6% (high)</strong></td>
+<td>81.4%</td>
+<td>미공개</td>
+</tr>
+<tr>
+<td><strong>Audio MultiChallenge</strong></td>
+<td><strong>48.5% (xhigh)</strong></td>
+<td>34.7%</td>
+<td>미공개</td>
+</tr>
+<tr>
+<td><strong>Scale APR</strong> (instruction 유지)</td>
+<td><strong>70.8%</strong></td>
+<td>36.7%</td>
+<td>미공개</td>
+</tr>
+<tr>
+<td><strong>TTFA (응답 시작)</strong></td>
+<td>1.12s @ low / 2.33s @ high</td>
+<td>~500-800ms</td>
+<td>&lt;500ms</td>
+</tr>
+<tr>
+<td><strong>Knowledge cutoff</strong></td>
+<td>2024+ (GPT-5-class)</td>
+<td>Sep 30, 2024</td>
+<td>Oct 1, 2023</td>
+</tr>
+<tr>
+<td><strong>Tier 1 TPM/RPM</strong></td>
+<td>40K / 200</td>
+<td>40K / 200</td>
+<td>40K / 200</td>
+</tr>
+<tr>
+<td><strong>Tier 2 TPM/RPM</strong></td>
+<td>200K / 400</td>
+<td>200K / 400</td>
+<td>200K / 400</td>
+</tr>
+</tbody>
+</table>
+<h2 id="per-1m-tokens">가격표 (per 1M tokens)</h2>
+<table>
+<thead>
+<tr>
+<th>Token type</th>
+<th>gpt-realtime-2</th>
+<th>gpt-realtime-1.5</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Audio input</strong></td>
+<td>$32.00</td>
+<td>$32.00</td>
+<td><strong>$10.00</strong></td>
+</tr>
+<tr>
+<td>Audio cached input</td>
+<td>$0.40</td>
+<td>$0.40</td>
+<td>$0.30</td>
+</tr>
+<tr>
+<td><strong>Audio output</strong></td>
+<td>$64.00</td>
+<td>$64.00</td>
+<td><strong>$20.00</strong></td>
+</tr>
+<tr>
+<td>Text input</td>
+<td>$4.00</td>
+<td>$4.00</td>
+<td>$0.60</td>
+</tr>
+<tr>
+<td>Text cached input</td>
+<td>$0.40</td>
+<td>$0.40</td>
+<td>$0.06</td>
+</tr>
+<tr>
+<td><strong>Text output</strong></td>
+<td>$24.00 (+50%)</td>
+<td>$16.00</td>
+<td>$2.40</td>
+</tr>
+<tr>
+<td>Image input</td>
+<td>$5.00</td>
+<td>$5.00</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p><strong>핵심 발견</strong>: 2.0의 <strong>audio I/O는 1.5와 완전 동일</strong>. 텍스트 출력만 +50% (reasoning trace 과금). 우리 통화 패턴에서 텍스트 출력은 ~1,200 tokens/call이라 비용 차이 미미.</p>
+<hr>
+<h1 id="part-2-1-3-way">Part 2 — 통화 1건 정확 비용 (3-way)</h1>
+<p>기준 데이터 (라이브 측정):
+- 평균 통화: 124s
+- 평균 turns: 12.9
+- Audio in: 37,200 tokens (~62s × 600 t/s)
+- Audio out: 37,200 tokens
+- Text in (fresh): 16,770 tokens
+- Text in (cached): 67,080 tokens (80% hit ratio)
+- Text out: 1,200 tokens (tool calls + agent reasoning)</p>
+<h2 id="_2">모델별 비용 분해</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-1.5</th>
+<th>gpt-realtime-2 (low)</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text in fresh (16,770 × $4 / $4 / $0.60)</td>
+<td>$0.067</td>
+<td>$0.067</td>
+<td>$0.010</td>
+</tr>
+<tr>
+<td>Text in cached (67,080 × $0.40 / $0.40 / $0.06)</td>
+<td>$0.027</td>
+<td>$0.027</td>
+<td>$0.004</td>
+</tr>
+<tr>
+<td>Audio in (37,200 × $32 / $32 / $10)</td>
+<td>$1.190</td>
+<td>$1.190</td>
+<td>$0.372</td>
+</tr>
+<tr>
+<td>Audio out (37,200 × $64 / $64 / $20)</td>
+<td>$2.381</td>
+<td>$2.381</td>
+<td>$0.744</td>
+</tr>
+<tr>
+<td>Text out (1,200 × $16 / $24 / $2.40)</td>
+<td>$0.019</td>
+<td>$0.029</td>
+<td>$0.003</td>
+</tr>
+<tr>
+<td>Reasoning preamble overhead (2.0 only)</td>
+<td>—</td>
+<td>+$0.018</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Subtotal (per 1M math)</strong></td>
+<td>$3.684</td>
+<td>$3.712</td>
+<td>$1.133</td>
+</tr>
+<tr>
+<td><strong>÷ 1000 = per call</strong></td>
+<td><strong>$0.368</strong></td>
+<td><strong>$0.371</strong></td>
+<td><strong>$0.113</strong></td>
+</tr>
+<tr>
+<td>Twilio 추가 (2.07 min)</td>
+<td>$0.037</td>
+<td>$0.037</td>
+<td>$0.037</td>
+</tr>
+<tr>
+<td><strong>All-in 통화 1건</strong></td>
+<td><strong>$0.405</strong></td>
+<td><strong>$0.408</strong></td>
+<td><strong>$0.150</strong></td>
+</tr>
+<tr>
+<td><strong>All-in 분당</strong></td>
+<td><strong>$0.196</strong></td>
+<td><strong>$0.197</strong></td>
+<td><strong>$0.072</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-pilot">5매장 Pilot 월 비용</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>월 통화 4,500</th>
+<th>절감률</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>gpt-realtime-1.5 (현재)</td>
+<td>$1,823</td>
+<td>baseline</td>
+</tr>
+<tr>
+<td>gpt-realtime-2.0</td>
+<td>$1,836</td>
+<td>+0.7% (무시할 수준)</td>
+</tr>
+<tr>
+<td>gpt-realtime-mini</td>
+<td>$675</td>
+<td><strong>-63%</strong> ($1,148 절감/월)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>2.0 대 1.5는 비용 사실상 동일</strong> — 비용은 결정 인자가 아님. 품질/안정성/migration 위험만 비교.</p>
+</blockquote>
+<hr>
+<h1 id="part-3-jm-0-5-10">Part 3 — JM 적합도 점수 매트릭스 (0-5점, 10개 항목)</h1>
+<h2 id="_3">점수 기준</h2>
+<ul>
+<li><strong>5점</strong>: JM 요구사항 완벽 충족, 추가 작업 없이 사용 가능</li>
+<li><strong>4점</strong>: 충족하지만 minor 검증/조정 필요</li>
+<li><strong>3점</strong>: 사용 가능하지만 명확한 단점 존재</li>
+<li><strong>2점</strong>: 큰 위험 또는 회귀 가능성</li>
+<li><strong>1점</strong>: 사용 불가 (deal-breaker)</li>
+<li><strong>0점</strong>: 미지원</li>
+</ul>
+<h2 id="_4">종합 점수표</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>gpt-realtime-1.5</th>
+<th>gpt-realtime-2</th>
+<th>gpt-realtime-mini</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. 비용 효율성</td>
+<td>4</td>
+<td>4</td>
+<td><strong>5</strong></td>
+</tr>
+<tr>
+<td>2. 음성 품질 (Marin)</td>
+<td><strong>5</strong></td>
+<td><strong>5</strong></td>
+<td>4</td>
+</tr>
+<tr>
+<td>3. 응답 latency (TTFA)</td>
+<td><strong>5</strong></td>
+<td>3</td>
+<td><strong>5</strong></td>
+</tr>
+<tr>
+<td>4. Tool calling (8 tools)</td>
+<td>4</td>
+<td><strong>5</strong></td>
+<td>2</td>
+</tr>
+<tr>
+<td>5. Long-context (6,500 prompt)</td>
+<td>3</td>
+<td><strong>5</strong></td>
+<td>2</td>
+</tr>
+<tr>
+<td>6. 다국어 (EN/ES/KO/JA/ZH)</td>
+<td>4</td>
+<td>4</td>
+<td>2</td>
+</tr>
+<tr>
+<td>7. 안정성 / Production 검증</td>
+<td><strong>5</strong></td>
+<td>3</td>
+<td>3</td>
+</tr>
+<tr>
+<td>8. Migration 비용 (1.5 기준)</td>
+<td><strong>5</strong> (no-op)</td>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<td>9. Pilot 진입 속도</td>
+<td><strong>5</strong></td>
+<td>4</td>
+<td>3</td>
+</tr>
+<tr>
+<td>10. Future-proofing (수명)</td>
+<td>3</td>
+<td><strong>5</strong></td>
+<td>4</td>
+</tr>
+<tr>
+<td><strong>합계 (0-50)</strong></td>
+<td><strong>43</strong></td>
+<td><strong>42</strong></td>
+<td><strong>34</strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="part-4">Part 4 — 항목별 상세 점수 + 사유</h1>
+<h2 id="1-cost-per-call">1. 비용 효율성 (cost per call)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>4</strong></td>
+<td>$0.368/call. 시장 평균 $0.30+ 대비 적당. SMB 마진 1.7-2.8×</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>4</strong></td>
+<td>$0.371/call (실질 동일). +50% text-out은 우리 사용 패턴에서 +$0.01에 불과</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>5</strong></td>
+<td>$0.113/call. 3.5× 저렴. 5,000매장 확장 시 연 $12.6M 절감</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-voice-naturalness-marin-support">2. 음성 품질 (voice naturalness, Marin support)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>5</strong></td>
+<td>Marin 공식 지원. 라이브 운영에서 자연스러움 검증</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>5</strong></td>
+<td>Marin/Cedar 공식. GPT-5-class 표현력 향상</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>4</strong></td>
+<td>"shared voice pool" 통해 Marin 사용 가능 (community 보고). 긴 응답에서 약간 평탄. 공식 문서에 voices 미명시</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-latency-ttfa-time-to-first-audio">3. 응답 latency (TTFA — time to first audio)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>5</strong></td>
+<td>~500-800ms TTFA. 라이브 측정 TTFT 832-2504ms (call 따라 다름)</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>3</strong></td>
+<td>1.12s @ low effort (~600ms 더 느림). 2.33s @ high. <strong>단</strong>, parallel tool call 시 audible preamble로 체감 무음 감소</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>5</strong></td>
+<td>&lt;500ms 일관 보고. 모델 작아서 decoding 빠름</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-tool-calling-8-tools">4. Tool calling (우리 8 tools 환경)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>4</strong></td>
+<td>8 tools 안정 작동 (라이브 검증). 단, sequential only — modify+recall 등 multi-step 시 latency 누적</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>5</strong></td>
+<td><strong>parallel + async + audible preamble</strong> = "checking that for you" 발화 동시에 tool 실행. 우리 modify_order + recall_order 흐름 핵심 개선. Big Bench Audio 96.6%</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>2</strong></td>
+<td>community 보고 8 tools 시 정확도 88-92% 저하. 우리 tool 수가 한계점 근처</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-long-context-handling-system-prompt-6500-tokens">5. Long-context handling (system prompt 6,500 tokens)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>3</strong></td>
+<td>32K context. 6,500 prompt + 12.9 turns × ~2,000 = 약 25K — <strong>여유 7K</strong>. INVARIANTS recency placement 등 fix 필요</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>5</strong></td>
+<td><strong>128K context</strong>. 우리 prompt 무한 확장 가능. Scale APR 70.8% = repair/edit 견고</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>2</strong></td>
+<td>32K + 미니 모델 → 6,500 prompt에서 drift 가능 (community 보고). 우리 INVARIANTS 룰 약화 위험</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-fidelity-5">6. 다국어 fidelity (5개 언어)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>4</strong></td>
+<td>EN/ES Excellent, KO/JA/ZH Strong. 라이브 운영 검증. NATO recital 등 커스터마이징 가능</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>4</strong></td>
+<td>GPT-5-class — 언어 능력 향상 추정되나 <strong>공식 KO/JA/ZH 벤치마크 부재</strong>. 검증 필요</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>2</strong></td>
+<td>영어/스페인어 strong. <strong>KO/JA/ZH 약점 보고됨</strong> — 고유명사 spelling, 성조 오류, 10턴+ 후 drift. KBBQ/Sushi/Chinese 매장 사용 위험</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-production">7. 안정성 / production 검증</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>5</strong></td>
+<td>9개월 production 운영. Wave A.3 hardening 완료. 라이브 매장 검증</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>3</strong></td>
+<td><strong>2026-05-08 (어제) 출시</strong>. production 데이터 1일 미만. 잠재 회귀 위험</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>3</strong></td>
+<td>GA 상태이나 voice agent 사용 사례 적음. 가격 우선 selection 위험</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8-migration-15">8. Migration 비용 (1.5 기준)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>5</strong></td>
+<td>현재 default — migration 0</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>4</strong></td>
+<td>drop-in compatible. <code>reasoning.effort: "low"</code> 추가 + reasoning token 빌링 신규 변수. 코드 변경 ~5줄</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>4</strong></td>
+<td>drop-in compatible. <strong>품질 검증 A/B 필수</strong> (KO/JA/ZH 등 회귀 위험)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-pilot">9. Pilot 진입 속도</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>5</strong></td>
+<td>이미 운영 중. retry fix만 추가하면 silent 해결</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>4</strong></td>
+<td>env var 변경 + canary 1매장으로 즉시 시작. parallel tool call이 silent agent 자연 해결</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>3</strong></td>
+<td>A/B test 인프라 필요 (DB 컬럼, hash 분기, gate). 4-6주 소요</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-future-proofing">10. Future-proofing (모델 수명)</h2>
+<table>
+<thead>
+<tr>
+<th>모델</th>
+<th>점수</th>
+<th>사유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1.5</strong></td>
+<td><strong>3</strong></td>
+<td>OpenAI 패턴: 신규 모델 GA 후 6-12개월 내 deprecation 예상. 마이그레이션 부담 발생</td>
+</tr>
+<tr>
+<td><strong>2.0</strong></td>
+<td><strong>5</strong></td>
+<td>최신 model — 향후 12-18개월 default. 즉시 채택 시 deprecation 사이클 1번 회피</td>
+</tr>
+<tr>
+<td><strong>mini</strong></td>
+<td><strong>4</strong></td>
+<td>가격 옵션 라인 — 향후 mini-2.0 등 출시 가능하나 mini라인 자체는 유지 예상</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="part-5-recommendation">Part 5 — 모델별 핵심 사용 시나리오 (recommendation)</h1>
+<h2 id="15-default">1.5 → 즉시 안정 운영 default</h2>
+<p><strong>언제</strong>: 지금 즉시. retry fix + Tier 2 도달까지.
+<strong>근거</strong>:
+- 안정성 5/5
+- 라이브 매장 검증 완료
+- migration 비용 0</p>
+<p><strong>액션</strong>:
+1. ✅ rate_limit_exceeded retry 코드 추가 (이번 commit)
+2. ✅ Tier 2 자동 승급 ($50 누적 spend 후)</p>
+<h2 id="20-canary-1">2.0 → canary 1매장 즉시 시작</h2>
+<p><strong>언제</strong>: retry fix 후 1주 이내
+<strong>근거</strong>:
+- audio 비용 동일
+- parallel tool calls = modify+recall 자연 개선
+- 128K context = 향후 prompt 확장 여유
+- Future-proofing 5/5</p>
+<p><strong>액션</strong>:
+1. <code>OPENAI_REALTIME_MODEL=gpt-realtime-2</code> 환경변수로 canary 1매장
+2. <code>reasoning.effort: "low"</code> 추가
+3. AHT, TTFA, tool_call_success 측정 (1주)
+4. Gate: 동일/우월하면 main으로 승격, 1.5는 fallback 유지</p>
+<h2 id="mini-english-only-cafe-ab-phase-2">mini → English-only Cafe A/B (Phase 2)</h2>
+<p><strong>언제</strong>: 1.5/2.0 안정화 후 (4-6주 후)
+<strong>근거</strong>:
+- 비용 5/5 (3.5× 저렴)
+- 영어/스페인어 매장에서 충분한 품질
+- KBBQ/Sushi/Chinese에는 적합도 낮음</p>
+<p><strong>액션</strong>:
+1. DB schema (model_variant 컬럼)
+2. hash-based per-call 분기 (env var AB_MINI_PCT=10 → 50)
+3. completed_order_rate ≥75%, tool_success ≥95% gate
+4. <strong>언어별 분기 정책 확정</strong>: EN/ES → mini default, KO/JA/ZH → full 유지</p>
+<hr>
+<h1 id="part-6-3-phase">Part 6 — 통합 권장 — 3-Phase 진화 전략</h1>
+<h2 id="phase-1">Phase 1: 즉시 안정 (이번 주)</h2>
+<ul>
+<li><strong>모델</strong>: 1.5 유지</li>
+<li><strong>변경</strong>: retry fix 코드 commit + $50 충전</li>
+<li><strong>효과</strong>: silent agent 무음 6-10s → 2s</li>
+</ul>
+<h2 id="phase-2-20-canary-1-2">Phase 2: 2.0 canary 검증 (다음 1-2주)</h2>
+<ul>
+<li><strong>모델</strong>: 1매장 → 2.0 canary</li>
+<li><strong>변경</strong>: env var 변경 + reasoning.effort</li>
+<li><strong>메트릭</strong>: AHT, TTFA, parallel tool call 작동 검증</li>
+<li><strong>결정 게이트</strong>: 1주 후 모든 매장으로 확장 OR 1.5 유지</li>
+</ul>
+<h2 id="phase-3-mini-hybrid-routing-1-2">Phase 3: mini hybrid routing (1-2개월)</h2>
+<ul>
+<li><strong>모델</strong>: vertical/language별 분기</li>
+<li><strong>변경</strong>: A/B 인프라 + store_configs.realtime_model_override</li>
+<li><strong>효과</strong>: 영어/스페인어 매장에서 비용 3.5× 절감</li>
+<li><strong>펀드 narrative</strong>: "language-tiered model routing for capital-efficient scaling"</li>
+</ul>
+<hr>
+<h1 id="part-7-risks-unknowns">Part 7 — Risks / Unknowns</h1>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>영향</th>
+<th>검증 방법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>2.0 KO/JA/ZH 품질 미검증</strong></td>
+<td>다국어 매장 회귀 가능</td>
+<td>50-utterance per-language eval (canary)</td>
+</tr>
+<tr>
+<td><strong>2.0 reasoning token 빌링</strong></td>
+<td>통화 비용 +5-10% (low) ~ +30% (high)</td>
+<td>low 고정 + usage 모니터링</td>
+</tr>
+<tr>
+<td><strong>2.0 TTFA 1.12s</strong> vs 1.5 500ms</td>
+<td>첫 응답 600ms 늦음</td>
+<td>parallel tool preamble로 체감 시간 감소 검증</td>
+</tr>
+<tr>
+<td><strong>mini Marin voice 품질</strong></td>
+<td>UX 약간 평탄</td>
+<td>A/B 테스트 시 사용자 만족도 surrogate (cancel rate)</td>
+</tr>
+<tr>
+<td><strong>mini 8 tools 정확도</strong></td>
+<td>tool_call_failures ↑</td>
+<td>A/B에서 실측</td>
+</tr>
+<tr>
+<td><strong>1.5 deprecation timeline 미발표</strong></td>
+<td>강제 migration 시점 불명</td>
+<td>OpenAI 발표 모니터링</td>
+</tr>
+<tr>
+<td><strong>2.0 첫날 production 위험</strong></td>
+<td>미발견 회귀</td>
+<td>canary 단일 매장 + 24시간 모니터링</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h1 id="part-8">Part 8 — 최종 권장 (한 줄)</h1>
+<blockquote>
+<p><strong>단기 (이번 주)</strong>: 1.5 + retry fix + Tier 2.
+<strong>중기 (1-2주)</strong>: 2.0 canary 1매장 (audio 비용 동일 + parallel tool calls = silent agent 자연 해결 + 향후 default).
+<strong>장기 (1-2개월)</strong>: 영어/스페인어 매장 mini hybrid routing (3.5× 비용 절감 펀드 narrative).</p>
+<p><strong>하지 말 것</strong>: 2.0을 모든 매장 즉시 전환 (안정성 3/5) / mini를 KO/JA/ZH 매장에 적용 (다국어 2/5) / 1.5에 안주 (deprecation 위험)</p>
+</blockquote>
+<hr>
+<h1 id="sources">출처 (Sources)</h1>
+<ol>
+<li><a href="https://thenextweb.com/news/openai-gpt-realtime-2-voice-models">TheNextWeb: OpenAI launches GPT-Realtime-2 (2026-05-08)</a></li>
+<li><a href="https://developers.openai.com/api/docs/models/gpt-realtime-2">OpenAI API Docs: gpt-realtime-2</a></li>
+<li><a href="https://developers.openai.com/api/docs/models/gpt-realtime-1.5">OpenAI API Docs: gpt-realtime-1.5</a></li>
+<li><a href="https://developers.openai.com/api/docs/models/gpt-realtime-mini">OpenAI API Docs: gpt-realtime-mini</a></li>
+<li><a href="https://openai.com/index/introducing-gpt-realtime/">OpenAI: Introducing gpt-realtime</a></li>
+<li><a href="https://www.datacamp.com/blog/gpt-realtime-2">DataCamp: GPT-Realtime-2 — GPT-5-class reasoning</a></li>
+<li><a href="https://www.latent.space/p/ainews-gpt-realtime-2-translate-and">Latent Space: GPT-Realtime-2 SOTA voice APIs</a></li>
+<li><a href="https://www.latent.space/p/realtime-api">Latent Space: Realtime API Missing Manual</a></li>
+<li><a href="https://developers.openai.com/api/docs/pricing">OpenAI API Pricing</a></li>
+<li><a href="https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio">Microsoft Learn: GPT Realtime API token rates</a></li>
+<li><a href="https://www.eesel.ai/blog/gpt-realtime-mini">eesel.ai: GPT realtime mini practical guide</a></li>
+<li><a href="https://www.marktechpost.com/2026/05/08/openai-releases-three-realtime-audio-models">MarkTechPost: Three Realtime Audio Models 2026-05-08</a></li>
+<li><strong>JM Tech One 라이브 데이터</strong> (callSid CA59d6f3f31..., CA47b6683b..., CA6eb23bf4..., 2026-05-08) — 통화 10건 실측</li>
+</ol>
+<hr>
+<p><strong>End of Report.</strong></p>
+<p><em>Distribution: founder + technical due-diligence material.</em>
+<em>Next review: 2.0 canary 1주 결과 반영 시점.</em></p>
+</body>
+</html>

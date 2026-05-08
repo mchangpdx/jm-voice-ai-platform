@@ -13,16 +13,19 @@ import subprocess
 import markdown                # python-markdown
 
 HERE = Path(__file__).parent
-MD = HERE / "openai-realtime-cost-strategy.md"
-HTML_OUT = HERE / "openai-realtime-cost-strategy.html"
-PDF_OUT = HERE / "openai-realtime-cost-strategy.pdf"
+# Switch via CLI arg: python _build_pdf.py [base-name-without-extension]
+DEFAULT = "openai-realtime-cost-strategy"
+BASE = sys.argv[1] if len(sys.argv) > 1 else DEFAULT
+MD = HERE / f"{BASE}.md"
+HTML_OUT = HERE / f"{BASE}.html"
+PDF_OUT = HERE / f"{BASE}.pdf"
 
 CSS = """
 @page {
   size: A4;
   margin: 18mm 16mm 22mm 16mm;
   @bottom-center {
-    content: "JM Tech One — Realtime Cost Strategy · 2026-05-08 · Page " counter(page) " / " counter(pages);
+    content: "JM Tech One · 2026-05-08 · Page " counter(page) " / " counter(pages);
     font-size: 8pt;
     color: #6b7280;
   }
