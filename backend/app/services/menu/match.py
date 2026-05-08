@@ -70,17 +70,25 @@ async def resolve_items_against_menu(
     if not items:
         return []
 
-    # Single round-trip: pull every variant for the store, then match in
-    # Python. menu_items per store is small (<300 rows in practice) so an
-    # in-memory dict is faster + cheaper than N PostgREST queries.
-    # (DB는 한 번만 호출 — 매장당 메뉴는 작아서 in-memory 매칭이 쌈)
+    # Single round-trip: pull every AVAILABLE variant for the store, then
+    # match in Python. menu_items per store is small (<300 rows in practice)
+    # so an in-memory dict is faster + cheaper than N PostgREST queries.
+    # is_available filter (Phase 7-A.D Wave A.2-F): pre-modifier-system
+    # imports left legacy 'Medium'/'Large' size variants on the same item
+    # that the modifier system now handles via size price_delta. Excluding
+    # is_available=false stops match from picking those legacy rows and
+    # double-charging the customer (live trigger CA0459df13... — bot recited
+    # $7.25 from menu_cache lowest price, backend charged $7.75 because
+    # match picked the 'Medium' variant with $6.00 base instead).
+    # (is_available 필터 — legacy size 변형 picking 차단)
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(
             f"{_REST}/menu_items",
             headers=_SUPABASE_HEADERS,
             params={
-                "store_id": f"eq.{store_id}",
-                "select":   "name,variant_id,pos_item_id,price,stock_quantity",
+                "store_id":     f"eq.{store_id}",
+                "is_available": "eq.true",
+                "select":       "name,variant_id,pos_item_id,price,stock_quantity",
             },
         )
     rows: list[dict[str, Any]] = resp.json() if resp.status_code == 200 else []
@@ -142,8 +150,13 @@ async def resolve_items_against_menu(
 
         # Modifier price_delta accumulation. Unknown (group, option) pairs are
         # silently skipped — same defensive contract as compute_effective_allergens.
-        # (모르는 modifier는 침묵 무시 — LLM 환각 방지)
+        # modifier_lines is a parallel render-friendly list for the pay link
+        # email and the post-payment receipt page (Wave A.2-G): each entry
+        # carries the operator-curated display_name + signed price_delta so
+        # downstream surfaces can show "20oz (+$1.00)" without re-querying.
+        # (모르는 modifier는 침묵 무시 + display 라인은 영수증/이메일용 동봉)
         applied_mods: list[dict[str, Any]] = []
+        modifier_lines: list[dict[str, Any]] = []
         delta_total = 0.0
         for sel in sel_mods:
             if not isinstance(sel, dict):
@@ -155,10 +168,17 @@ async def resolve_items_against_menu(
             if opt is None:
                 continue
             try:
-                delta_total += float(opt.get("price_delta") or 0)
+                delta = float(opt.get("price_delta") or 0)
             except (TypeError, ValueError):
-                pass
+                delta = 0.0
+            delta_total += delta
             applied_mods.append({"group": gcode, "option": ocode})
+            modifier_lines.append({
+                "label":       opt.get("display_name") or ocode,
+                "group":       gcode,
+                "option":      ocode,
+                "price_delta": delta,
+            })
 
         effective = round(base_price + delta_total, 2)
 
@@ -170,6 +190,7 @@ async def resolve_items_against_menu(
             "price":              base_price,             # base — preserved
             "effective_price":    effective,              # base + Σ(price_delta)
             "selected_modifiers": applied_mods,           # validated subset only
+            "modifier_lines":     modifier_lines,         # display rows for email/receipt
             "stock_quantity":     stock,
             "missing":            False,
             "sufficient_stock":   sufficient,
@@ -205,7 +226,7 @@ async def _load_modifier_index(
                 headers=_SUPABASE_HEADERS,
                 params={
                     "group_id": "in.(" + ",".join(gid_to_code.keys()) + ")",
-                    "select":   "group_id,code,price_delta",
+                    "select":   "group_id,code,price_delta,display_name",
                 },
             )
             if o_resp.status_code != 200:

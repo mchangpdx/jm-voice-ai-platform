@@ -59,13 +59,45 @@ def _success_page(
             try:
                 qty   = int(it.get("quantity") or 1)
                 nm    = (it.get("name") or "item").strip()
-                price = float(it.get("price") or 0)
-                line_total = price * qty
+                # Phase 7-A.D Wave A.2-G — prefer effective_price so the
+                # receipt subtotal matches what was actually charged. Fall
+                # back to base price for legacy items pre-Phase-7-A.C.
+                # (effective_price 우선 — modifier surcharge 반영된 subtotal)
+                unit  = float(it.get("effective_price") or it.get("price") or 0)
+                line_total = unit * qty
             except (AttributeError, ValueError, TypeError):
                 continue
+
+            # Modifier breakdown rendered under the item name.
+            # (item 이름 아래 modifier 표시 — 영수증 정확성)
+            modifier_lines = it.get("modifier_lines") or []
+            mod_html = ""
+            if modifier_lines:
+                parts = []
+                for ml in modifier_lines:
+                    label = (ml.get("label") or "").strip()
+                    if not label:
+                        continue
+                    try:
+                        delta = float(ml.get("price_delta") or 0)
+                    except (TypeError, ValueError):
+                        delta = 0.0
+                    if delta:
+                        sign = "+" if delta > 0 else "-"
+                        parts.append(f"{label} ({sign}${abs(delta):.2f})")
+                    else:
+                        parts.append(label)
+                if parts:
+                    mod_html = (
+                        '<div style="font-size:12px;color:#6b7280;margin-top:2px;'
+                        'line-height:1.4;">' + " · ".join(parts) + '</div>'
+                    )
+
             line_rows.append(
-                f'<tr><td style="padding:6px 0;color:#374151;font-size:14px;text-align:left;">{qty} × {nm}</td>'
-                f'<td style="padding:6px 0;color:#374151;font-size:14px;text-align:right;font-variant-numeric:tabular-nums;">${line_total:.2f}</td></tr>'
+                f'<tr><td style="padding:6px 0;color:#374151;font-size:14px;text-align:left;">'
+                f'{qty} × {nm}{mod_html}</td>'
+                f'<td style="padding:6px 0;color:#374151;font-size:14px;text-align:right;'
+                f'font-variant-numeric:tabular-nums;vertical-align:top;">${line_total:.2f}</td></tr>'
             )
         rows_html = "".join(line_rows)
         receipt_block = (

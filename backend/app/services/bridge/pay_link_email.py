@@ -34,24 +34,75 @@ def _format_money(cents: int) -> str:
     return f"${cents / 100:.2f}"
 
 
+def _format_delta(delta: float) -> str:
+    """Render a price_delta with a sign so customers don't misread a discount."""
+    if not delta:
+        return ""
+    sign = "+" if delta > 0 else "-"
+    return f"{sign}${abs(delta):.2f}"
+
+
+def _modifier_text_html(modifier_lines: list[dict[str, Any]]) -> str:
+    """Inline modifier breakdown rendered under the item name.
+    (item 이름 아래 modifier 표시 — '20oz (+$1.00) · Iced · Almond milk (+$0.75)')
+
+    Phase 7-A.D Wave A.2-G: items_json carries modifier_lines populated by
+    services/menu/match.resolve_items_against_menu. Each entry has a
+    display label + signed price_delta. Empty list → no extra rows.
+    """
+    if not modifier_lines:
+        return ""
+    parts: list[str] = []
+    for ml in modifier_lines:
+        label = (ml.get("label") or "").strip()
+        if not label:
+            continue
+        try:
+            delta = float(ml.get("price_delta") or 0)
+        except (TypeError, ValueError):
+            delta = 0.0
+        if delta:
+            parts.append(f"{label} ({_format_delta(delta)})")
+        else:
+            parts.append(label)
+    if not parts:
+        return ""
+    text = " · ".join(parts)
+    return (f'<div style="margin-top:4px;color:#6b7280;font-size:13px;font-weight:400;'
+            f'line-height:1.45;">{text}</div>')
+
+
 def _items_rows_html(items: list[dict[str, Any]]) -> str:
     """Render line items as table rows for desktop + a stacked card variant
     for mobile (CSS toggles between them via media query).
     (라인 항목을 데스크톱 테이블 / 모바일 카드 양쪽 형태로 출력 — CSS가 분기)
+
+    Phase 7-A.D Wave A.2-G: subtotal uses effective_price (base + Σ
+    modifier price_delta) when present, falling back to base price for
+    legacy items. Modifier lines render under the item name so the
+    customer can verify size / milk / syrup choices on the receipt
+    that arrives in their inbox before they tap the pay link.
     """
     if not items:
         return ""
     rows: list[str] = []
     for it in items:
-        name      = (it.get("name") or "").strip() or "Item"
-        qty       = int(it.get("quantity") or 1)
-        unit      = float(it.get("price") or 0)
-        sub_cents = int(round(unit * qty * 100))
+        name           = (it.get("name") or "").strip() or "Item"
+        qty            = int(it.get("quantity") or 1)
+        # Prefer effective_price (base + modifier surcharges); fall back to
+        # base price for legacy items pre-Phase-7-A.C.
+        try:
+            unit = float(it.get("effective_price") or it.get("price") or 0)
+        except (TypeError, ValueError):
+            unit = float(it.get("price") or 0)
+        sub_cents      = int(round(unit * qty * 100))
+        modifier_block = _modifier_text_html(it.get("modifier_lines") or [])
         rows.append(f"""
         <tr class="item-row">
           <td class="item-name" style="padding:14px 20px;border-bottom:1px solid #e5e7eb;font-size:15px;color:#111827;line-height:1.4;">
             <span style="font-weight:600;">{name}</span>
             <span class="item-qty-mobile" style="display:none;color:#6b7280;font-size:13px;font-weight:400;"> · qty {qty}</span>
+            {modifier_block}
           </td>
           <td class="item-qty" style="padding:14px 16px;border-bottom:1px solid #e5e7eb;font-size:15px;color:#374151;text-align:center;width:60px;">
             {qty}
