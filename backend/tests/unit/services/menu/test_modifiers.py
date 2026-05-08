@@ -230,6 +230,48 @@ def test_format_optional_group_marker():
     assert "Syrup (optional" in block
 
 
+def test_format_renders_code_prefix_when_display_diverges_from_code():
+    """Phase 7-A.D Wave A.1 — size options have code='large' / display_name=
+    '20oz', and the bot can't bind a customer's 'large' utterance to
+    option='large' unless the prompt shows the mapping. Render as
+    'code=Display' so the LLM sees both forms.
+    Live trigger CAc4250831...: caller said 'large iced almond cafe latte',
+    bot asked 'what size — 12oz, 16oz, or 20oz?', customer answered
+    'twenty ounces', bot's recital said '20 ounce' but selected_modifiers
+    shipped without the size entry. Size code was invisible to the LLM."""
+    from app.services.menu.modifiers import format_modifier_block
+
+    g = {**_milk_group(), "code": "size", "display_name": "Size",
+         "options": [
+             _opt("g-milk", "small",  "12oz", sort_order=1),
+             _opt("g-milk", "medium", "16oz", price_delta=0.5, sort_order=2),
+             _opt("g-milk", "large",  "20oz", price_delta=1.0, sort_order=3),
+         ]}
+    block = format_modifier_block([g])
+
+    # Code/display mapping must be explicit so 'large' → option='large'
+    assert "small=12oz" in block
+    assert "medium=16oz" in block
+    assert "large=20oz" in block
+
+
+def test_format_skips_code_prefix_when_redundant():
+    """When display already starts with the code (milk: oat=Oat milk,
+    syrup: vanilla=Vanilla), the prefix would just clutter — keep
+    display only."""
+    from app.services.menu.modifiers import format_modifier_block
+
+    g = {**_milk_group(), "options": [
+        _opt("g-milk", "oat",     "Oat milk",     sort_order=1),
+        _opt("g-milk", "vanilla", "Vanilla",      sort_order=2),
+    ]}
+    block = format_modifier_block([g])
+    assert "Oat milk" in block
+    assert "oat=Oat milk" not in block
+    assert "Vanilla" in block
+    assert "vanilla=Vanilla" not in block
+
+
 def test_format_dedupes_marker_when_display_name_contains_it():
     """JM Cafe DB has a group with display_name='Milk (optional)' and
     is_required=False. Naively appending '(optional)' yields the ugly

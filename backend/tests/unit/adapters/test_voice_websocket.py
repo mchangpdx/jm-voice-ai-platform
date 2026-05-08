@@ -314,18 +314,21 @@ def test_build_system_prompt_has_args_email_truthfulness_gate():
     inbox = customer trust cost. (NATO readback과 args_email 일치 강제)"""
     from app.api.voice_websocket import build_system_prompt
     prompt = build_system_prompt(MOCK_STORE)
-    # Wave A compaction: clauses renamed; semantic content preserved.
+    # Wave A compaction: clauses renamed; Wave A.1 added a NATO-SOURCE GATE
+    # in addition to the ARGS-EMAIL GATE (two-layer defense — NATO letters
+    # come from STT decoded text, args come from NATO readback).
+    pl = prompt.lower()
     assert "ARGS-EMAIL GATE" in prompt
     assert "EXACT character sequence" in prompt
-    # Live-observed STT substitutions that must be guarded against
+    # NATO-SOURCE GATE — bot must NATO the STT-decoded letters, not its
+    # own inference. Defends against the live regression where STT decoded
+    # 'bymeet' but bot read NATO 'C-Y-M-E-E-T' (substituted first letter).
+    assert "NATO-SOURCE GATE" in prompt
+    assert "bymeet" in pl
+    # The "never substitute the first letter" guard
+    assert "never substitute" in pl
+    # Live-observed STT example (kept as part of NATO-SOURCE example)
     assert "mchang" in prompt
-    assert "cymeet" in prompt
-    # The "re-derive from your own readback, never raw STT" instruction.
-    # Wave A formats this across line breaks in the checklist, so check the
-    # two key phrases independently.
-    pl = prompt.lower()
-    assert "re-derive from your" in pl
-    assert "never blindly trust raw stt" in pl
 
 
 def test_build_system_prompt_has_nato_domain_rule():

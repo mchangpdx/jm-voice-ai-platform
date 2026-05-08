@@ -176,8 +176,26 @@ def format_modifier_block(groups: list[dict[str, Any]]) -> str:
 
 
 def _render_option(o: dict[str, Any]) -> str:
-    """Render one option: 'Display name (+$0.50, +nuts -dairy)'."""
-    name = o.get("display_name") or o.get("code") or "?"
+    """Render one option as 'code=Display (+$0.50, +nuts -dairy)'.
+    (옵션 렌더링 — code/display 매핑 명시)
+
+    Phase 7-A.D Wave A.1: code is now prefixed to display so the LLM can
+    map natural-language modifier words ('large', '20 ounce', 'oat milk')
+    onto the option code that selected_modifiers expects. Without this
+    mapping the bot heard 'large' but had no way to bind it to option=
+    'large' — items_json shipped without the size entry (live trigger
+    CAc4250831...). When code and display are equal (e.g. milk: oat=Oat
+    milk), the duplication is suppressed for readability.
+    """
+    code     = (o.get("code") or "").strip()
+    display  = (o.get("display_name") or o.get("code") or "?").strip()
+    # Suppress code= prefix when it adds no information (display already
+    # starts with the code, case-insensitive). Keeps milk/syrup terse while
+    # making size unambiguous.
+    if code and not display.lower().startswith(code.lower()):
+        name = f"{code}={display}"
+    else:
+        name = display
 
     inner: list[str] = []
     delta = o.get("price_delta")
