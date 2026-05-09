@@ -211,6 +211,23 @@ class TestRenderBlock:
                             "total_cents": 100}])
         out = _render_customer_context_block(ctx)
         assert "Email on file" not in out
+        # Bug #2 fix: no email → no plain-text email confirmation rule either
+        assert "BEFORE create_order" not in out
+
+    def test_email_on_file_renders_plain_text_confirmation_rule(self):
+        # Bug #2 fix (2026-05-08): when email is on file, the prompt MUST
+        # instruct the agent to read the address aloud before create_order.
+        # Without this, agents skip NATO recital AND never speak the address,
+        # so customers can't catch a stale CRM cache email.
+        ctx = _ctx(visit_count=2, email="cymeet@gmail.com",
+                   recent=[{"created_at": _yesterday_iso(),
+                            "items_json": [{"name": "latte", "quantity": 1}],
+                            "total_cents": 500}])
+        out = _render_customer_context_block(ctx)
+        assert "BEFORE create_order" in out
+        assert "cymeet@gmail.com" in out
+        assert "should I send the receipt there" in out
+        assert "fall back to NATO recital" in out
 
     def test_no_name_omits_name_line(self):
         ctx = _ctx(visit_count=1, name=None,

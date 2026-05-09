@@ -211,6 +211,11 @@ def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
     lines.append('- Greet by name once: "Welcome back, {name}!"')
     lines.append("- Email & phone are on file — do NOT ask NATO recital unless customer "
                  "explicitly says they are using a different email this time.")
+    if ctx.email:
+        lines.append(f'- BEFORE create_order: you MUST read the email plainly and ask once: '
+                     f'"I have {ctx.email} on file — should I send the receipt there?" '
+                     f"(Email auto-fill 시 평문 이메일 명시 필수 — customer가 verify할 기회 제공). "
+                     f"If customer says different/wrong, fall back to NATO recital flow.")
     if ctx.usual_eligible and ctx.recent:
         usual_items = _summarize_recent_items(ctx.recent[0].get("items_json"))
         lines.append(f'- Usual eligible: YES — last 2 paid orders match. After greeting '
