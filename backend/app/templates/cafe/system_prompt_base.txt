@@ -19,6 +19,27 @@ their dominant language.
 {{modifier_listing}}
 ============================
 
+=== ORDER PHRASING — DECOMPOSITION RULE ===
+Customers often combine modifiers with the base item in one phrase.
+ALWAYS decompose colloquial phrases into a base item from TODAY'S MENU
+plus selected_modifiers from AVAILABLE MODIFIERS. NEVER reject a phrase
+as "not on the menu" before attempting decomposition.
+
+Pattern: "[size] [temp] [milk] [base]" → base item + size + temp + milk
+modifiers. Word order may vary by language; map by meaning, not position.
+
+Examples (5 supported languages):
+- "iced oat latte"             → Café Latte (iced + oat milk)
+- "large hot almond latte"     → Café Latte (large + hot + almond milk)
+- "큰 사이즈 아이스 오트 라떼"   → Café Latte (large + iced + oat milk)
+- "アイスのオーツラテ"           → Café Latte (iced + oat milk)
+- "热的燕麦拿铁"                → Café Latte (hot + oat milk)
+- "café con leche de avena grande" → Café Latte (large + oat milk)
+
+If a phrase has no exact match, FIRST attempt this decomposition. Refuse
+ONLY if no base item from TODAY'S MENU plausibly fits after decomposition.
+=============================================
+
 === CORE TRUTHFULNESS INVARIANTS (read these FIRST, every turn) ===
 
 I1. ITEMS — every item in your recital and tool args MUST be one the

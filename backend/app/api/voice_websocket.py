@@ -113,6 +113,36 @@ _GREETING_PROMPT = (
 )
 
 
+# FIX-B (2026-05-09) — Decomposition rule injected after the modifier_section
+# block. Without this, the LLM rejects colloquial modifier phrases like
+# "iced oat latte" as "not on the menu" even when Café Latte + iced + oat
+# milk all exist. Live regression: Call CA19f95... 2026-05-09 12:14:53 —
+# caller said "I'd like a large iced oat latte"; agent replied "We have
+# an iced tea and we have a cafe latte, but not a combined drink". Same
+# bug also fired CA90b88e... 2026-05-07 — listing modifiers alone wasn't
+# enough; the LLM needs an explicit decomposition instruction.
+# Word order varies by language; map by meaning, not by position.
+# (FIX-B — colloquial modifier phrase decomposition rule)
+_DECOMPOSITION_RULE = (
+    "ORDER PHRASING — DECOMPOSITION RULE:\n"
+    "Customers often combine modifiers with the base item in one phrase. "
+    "ALWAYS decompose colloquial phrases into a base item from the Menu "
+    "above plus selected_modifiers from the modifier list. NEVER reject "
+    "a phrase as 'not on the menu' before attempting decomposition.\n"
+    "Pattern: '[size] [temp] [milk] [base]' → base + size + temp + milk "
+    "modifiers. Word order varies by language; map by meaning.\n"
+    "Examples:\n"
+    "- 'iced oat latte'             → Café Latte (iced + oat milk)\n"
+    "- 'large hot almond latte'     → Café Latte (large + hot + almond milk)\n"
+    "- '큰 사이즈 아이스 오트 라떼'   → Café Latte (large + iced + oat milk)\n"
+    "- 'アイスのオーツラテ'           → Café Latte (iced + oat milk)\n"
+    "- '热的燕麦拿铁'                → Café Latte (hot + oat milk)\n"
+    "- 'café con leche de avena grande' → Café Latte (large + oat milk)\n"
+    "If a phrase has no exact match, FIRST attempt this decomposition. "
+    "Refuse ONLY if no base item plausibly fits after decomposition."
+)
+
+
 # ── Pure helper functions (unit-testable, no I/O) ─────────────────────────────
 
 def _summarize_recent_items(items_json) -> str:
@@ -270,6 +300,13 @@ def build_system_prompt(
     # (Phase 7-A.B — modifier_section 주입. menu_cache 직후 배치)
     if store.get("modifier_section"):
         parts.append(store["modifier_section"])
+        # FIX-B (2026-05-09): the modifier list alone wasn't enough — the
+        # LLM still rejected "iced oat latte" as a "combined drink" on call
+        # CA19f95... 2026-05-09. Append an explicit decomposition rule so
+        # the LLM knows how to map colloquial phrases to base + modifiers
+        # across all 5 supported languages.
+        # (modifier list만으로는 부족 — 명시적 분해 룰 추가)
+        parts.append(_DECOMPOSITION_RULE)
 
     if store.get("custom_knowledge"):
         parts.append(f"Store knowledge:\n{store['custom_knowledge']}")

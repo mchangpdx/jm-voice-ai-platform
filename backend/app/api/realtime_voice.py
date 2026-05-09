@@ -213,8 +213,19 @@ async def _dispatch_tool_call(
             # crm_* flags to the right row. Last-write-wins if there are
             # multiple create_orders in one call (rare but legal).
             # (CRM Wave 1 — call_end UPDATE 대상 tx_id 래치)
+            #
+            # FIX-C (2026-05-09): skip the latch when this branch is an
+            # idempotent re-hit — the tx already belongs to a PRIOR call
+            # within the 5-min dedup window (flows.py:_find_recent_duplicate).
+            # Latching here would let call_end overwrite the prior call's
+            # AHT + CRM flags. Live regression caught 2026-05-09 with two
+            # tx_id pairs reused across redials (f4394c1c, 44cca8e7). The
+            # in-call snapshots above (last_order_items / last_order_total)
+            # are still required for recall_order / modify_order follow-ups
+            # in THIS call so they stay outside the guard.
+            # (Idempotent hit는 prior call의 tx — call_end UPDATE 대상에서 제외)
             tx_id_latched = str(result.get("transaction_id") or "")
-            if tx_id_latched:
+            if tx_id_latched and not result.get("idempotent"):
                 session_state["active_tx_id"] = tx_id_latched
         # Pick lane-aware customer-facing line
         hint = result.get("ai_script_hint") or ("rejected" if not result.get("success") else "pay_first")
@@ -442,11 +453,24 @@ import sys
 _DEBUG_FILE = "/tmp/realtime_debug.log"
 
 # CRM Wave 1 — heuristic detector for "the usual" offer in agent transcript.
-# Word-bounded so substrings ("usually", "ritual") don't false-positive.
-# Case-insensitive, lookbehind/-ahead unaware (Pilot is good enough — the
-# system prompt only emits this exact phrase when usual_eligible=True).
-# (CRM Wave 1 — agent 발화에서 "the usual" 감지. 단어 경계 + 대소문자 무관)
-_THE_USUAL_RE = re.compile(r"\bthe\s+usual\b", re.IGNORECASE)
+# Multilingual coverage (en/ko/ja/zh/es) so usual_offered DB column stays
+# accurate when the agent matches the caller's language. English pattern
+# remains word-bounded so substrings ("usually", "ritual") don't false-
+# positive. CJK/Spanish patterns rely on lexical specificity (these phrases
+# are stable order-flow expressions, not common filler words).
+# Live regression caught 2026-05-09 KO call (visits=29) where agent said
+# "평소 드시던 20온스 뜨거운 오트밀크 카페라떼로 하실까요" but DB column
+# stayed False because regex was English-only.
+# (CRM Wave 1 — 5개 언어 "the usual" 감지. 영어는 word boundary, 그 외는 어휘 특이성)
+_THE_USUAL_RE = re.compile(
+    r"\bthe\s+usual\b"                       # English
+    r"|평소(?:처럼|\s*드시던|\s*같이)?"        # Korean: 평소 / 평소처럼 / 평소 드시던 / 평소 같이
+    r"|이전과\s*같이|똑같이"                  # Korean variants
+    r"|いつもの|前回と同じ"                   # Japanese
+    r"|老样子|和上次一样"                     # Chinese (Mandarin)
+    r"|lo\s+de\s+siempre|lo\s+usual",        # Spanish
+    re.IGNORECASE
+)
 
 
 def _dbg(msg: str) -> None:
@@ -1124,6 +1148,43 @@ async def realtime_bridge(ws: WebSocket) -> None:
                     _dbg(f"[oai→twilio] events seen: {event_types_seen}")
                     _dbg(f"[oai→twilio] traceback:\n{traceback.format_exc()}")
 
+            # FIX-A (2026-05-09) — Twilio Media Streams keepalive.
+            # Live regression: 5x WebSocket Abnormal Closure (1006) on
+            # 2026-05-09 between 11:26 and 12:09, all clustered in idle
+            # windows (20-30s of caller silence after a turn). 1006 means
+            # the TCP connection was severed without a WS close frame —
+            # typical of carrier-level RTP idle timeouts or NAT eviction.
+            # Twilio Media Streams does NOT support standard WS ping
+            # frames, but it DOES support 'mark' events (application
+            # layer). Sending a mark every 15s keeps bidirectional
+            # traffic flowing (Twilio echoes the mark back), which
+            # prevents intermediate hops from declaring the connection
+            # idle. Failure of the keepalive task itself MUST NOT
+            # terminate the call — it runs as a fire-and-forget side
+            # task and is explicitly cancelled in the cleanup block.
+            # (Twilio mark 15s 주기 발송 — 1006 abnormal closure 방지)
+            async def twilio_mark_keepalive() -> None:
+                interval_s = 15.0
+                seq = 0
+                try:
+                    while True:
+                        await asyncio.sleep(interval_s)
+                        if not stream_sid:
+                            continue  # start event not yet processed
+                        seq += 1
+                        try:
+                            await ws.send_text(json.dumps({
+                                "event":     "mark",
+                                "streamSid": stream_sid,
+                                "mark":      {"name": f"ka-{seq}"},
+                            }))
+                        except Exception as exc:
+                            _dbg(f"[keepalive] send failed seq={seq} "
+                                 f"{type(exc).__name__}: {exc}")
+                            return  # WS likely dead — exit task quietly
+                except asyncio.CancelledError:
+                    return
+
             _dbg("[realtime] starting bidirectional pumps")
             try:
                 # FIRST_COMPLETED + cancel pending — when Twilio stop event
@@ -1134,6 +1195,11 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # (한쪽 종료 시 다른 쪽 즉시 cancel — finally 블록 보장)
                 t_twilio = asyncio.create_task(twilio_to_openai(), name="twilio_pump")
                 t_openai = asyncio.create_task(openai_to_twilio(), name="openai_pump")
+                # FIX-A keepalive runs alongside but is NOT part of the
+                # FIRST_COMPLETED set — its termination should never
+                # trigger pump cancellation cascade.
+                t_keepalive = asyncio.create_task(
+                    twilio_mark_keepalive(), name="keepalive")
                 done, pending = await asyncio.wait(
                     {t_twilio, t_openai},
                     return_when=asyncio.FIRST_COMPLETED,
@@ -1142,8 +1208,10 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 _dbg(f"[realtime] first pump exit: {first_done_names} — cancelling rest")
                 for task in pending:
                     task.cancel()
+                # Cancel keepalive too (separate from FIRST_COMPLETED set)
+                t_keepalive.cancel()
                 # Give cancellations a moment to propagate cleanly
-                await asyncio.gather(*pending, return_exceptions=True)
+                await asyncio.gather(*pending, t_keepalive, return_exceptions=True)
             finally:
                 duration = time.monotonic() - t_accept
                 duration_ms = int(duration * 1000)

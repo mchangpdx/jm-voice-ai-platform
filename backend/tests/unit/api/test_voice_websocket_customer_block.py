@@ -248,3 +248,45 @@ class TestRenderBlock:
         assert "2. 2026-05-04" in out
         assert "3. 2026-05-03" in out
         assert "$1.00" in out and "$2.00" in out and "$3.00" in out
+
+
+# FIX-B (2026-05-09) — decomposition rule injection in build_system_prompt.
+# Live regression: caller asked for "iced oat latte" → agent rejected as
+# "combined drink not on menu" even though Café Latte + iced + oat exist
+# as base + modifiers. Rule must inject when modifier_section is present
+# and stay omitted when there are no modifiers (would be misleading guidance).
+# (FIX-B — modifier_section 있을 때만 분해 룰 inject)
+
+class TestDecompositionRule:
+    def _store_with_modifiers(self, mod_section: str = "(modifier list...)") -> dict:
+        return {
+            "id":               "PDX-cafe-01",
+            "system_prompt":    "You are the host at JM Cafe.",
+            "menu_cache":       "Café Latte $5.00\nDrip $3.50",
+            "modifier_section": mod_section,
+            "business_hours":   "8am-6pm",
+        }
+
+    def test_modifier_section_present_injects_decomposition_rule(self):
+        out = build_system_prompt(self._store_with_modifiers())
+        assert "DECOMPOSITION RULE" in out
+        assert "iced oat latte" in out
+        assert "Café Latte (iced + oat milk)" in out
+        # Rule must come AFTER the modifier list (references it)
+        assert out.find("(modifier list...)") < out.find("DECOMPOSITION RULE")
+
+    def test_no_modifier_section_omits_decomposition_rule(self):
+        # When the store has no modifiers configured, the rule shouldn't
+        # appear — there's nothing to decompose into.
+        out = build_system_prompt(self._store_with_modifiers(mod_section=""))
+        assert "DECOMPOSITION RULE" not in out
+
+    def test_decomposition_rule_covers_5_languages(self):
+        out = build_system_prompt(self._store_with_modifiers())
+        # English, Korean, Japanese, Chinese, Spanish — all 5 cafe-policy
+        # supported languages must have at least one example.
+        assert "iced oat latte" in out                  # English
+        assert "큰 사이즈 아이스 오트 라떼" in out          # Korean
+        assert "アイスのオーツラテ" in out                  # Japanese
+        assert "热的燕麦拿铁" in out                       # Chinese
+        assert "café con leche de avena grande" in out  # Spanish
