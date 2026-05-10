@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../core/api'
 import { getVerticalMeta } from '../../core/verticalLabels'
+import { getStoreMode } from '../admin/proofConstants'
 import styles from './Overview.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -111,14 +112,24 @@ export default function AgencyOverview() {
           <div className={styles.cardGrid}>
             {(data?.stores ?? []).map((s) => {
               const meta = getVerticalMeta(s.industry)
+              const mode = getStoreMode(s.store_id)
               return (
                 <div key={s.store_id} className={styles.storeCard}>
                   <div className={styles.cardHeader}>
                     <span className={styles.cardIcon}>{meta.icon}</span>
-                    <div>
+                    <div className={styles.cardHeaderText}>
                       <div className={styles.cardStoreName}>{s.store_name}</div>
                       <div className={styles.cardIndustry}>{meta.industryLabel}</div>
                     </div>
+                    {mode.mode === 'real' ? (
+                      <span className={styles.modeRealBadge} title={`Live since ${mode.since}`}>
+                        ✓ Real
+                      </span>
+                    ) : (
+                      <span className={styles.modeSimBadge} title="Synthetic 60-day window">
+                        Sim
+                      </span>
+                    )}
                   </div>
 
                   <div className={styles.cardKpis}>

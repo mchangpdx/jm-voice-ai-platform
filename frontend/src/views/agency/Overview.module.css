@@ -121,6 +121,33 @@
   gap: 12px;
 }
 
+.cardHeaderText {
+  flex: 1;
+  min-width: 0;
+}
+
+.modeRealBadge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.modeSimBadge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .cardIcon {
   font-size: 24px;
 }

@@ -17,6 +17,9 @@ const AgencyLayout      = lazy(() => import('./views/agency/Layout'))
 const AgencyOverview    = lazy(() => import('./views/agency/Overview'))
 const AgencyStoreDetail = lazy(() => import('./views/agency/StoreDetail'))
 
+// Admin / investor demos (관리자 / 투자자 시연용)
+const ArchitectureProof = lazy(() => import('./views/admin/ArchitectureProof'))
+
 // Stubs — "Coming Soon" placeholders until each page is built
 const ComingSoon = ({ title }: { title: string }) => (
   <div style={{ padding: 32, color: '#64748b', fontSize: 18 }}>
@@ -61,6 +64,16 @@ function AppRoutes() {
 
         {/* Backward compat: old /agency/dashboard → /agency/overview */}
         <Route path="/agency/dashboard" element={<Navigate to="/agency/overview" replace />} />
+
+        {/* Admin — investor demo (AGENCY role only; component self-guards) */}
+        <Route
+          path="/admin/architecture-proof"
+          element={
+            <RequireAuth>
+              <ArchitectureProof />
+            </RequireAuth>
+          }
+        />
 
         {/* FSR Store (store owner mode — store owner 모드) */}
         <Route
