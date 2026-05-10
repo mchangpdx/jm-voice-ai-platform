@@ -299,3 +299,102 @@ def _item_multiset(items: Optional[list[dict[str, Any]]]) -> tuple[str, ...]:
         for _ in range(qty):
             keys.append(str(k))
     return tuple(sorted(keys))
+
+
+# ── G6 fix (2026-05-10) — mid-call email update DB persistence ────────────────
+#
+# Live trigger CA7748f354... 2026-05-10 Jason call: caller did a NATO recital
+# of a corrected email AFTER his only create_order had fired (then canceled),
+# then hung up without a follow-up tool call. The new email never landed in
+# bridge_transactions, so the next customer_lookup for this phone still
+# returns the stale address. Fix: at call_end, PATCH the most recent
+# bridge_transactions row for (store_id, phone) with the verified email so
+# subsequent calls pick it up via _fetch_recent above.
+#
+# Additive — never mutates state machine, never blocks the voice path
+# (caller is exiting). Returns True on a row patched, False on no-match /
+# already-current / failure. Safe to fire-and-forget.
+
+async def update_recent_customer_email(
+    store_id: str,
+    caller_phone_e164: Optional[str],
+    new_email: Optional[str],
+) -> bool:
+    """PATCH customer_email on the most recent bridge_transactions row for
+    (store, phone) if it differs from new_email.
+    (가장 최근 tx의 customer_email을 PATCH — 신규 함수, 기존 함수 시그니처 변경 X)
+
+    Guards:
+    - anonymous caller (no/invalid phone) → no-op
+    - empty/None email → no-op
+    - no rows for (store, phone) → no-op
+    - already matches → no-op
+    """
+    if not caller_phone_e164 or not _E164_RE.match(caller_phone_e164):
+        return False
+    if not new_email or "@" not in new_email:
+        return False
+
+    redacted_phone = redact_phone(caller_phone_e164)
+    redacted_email = redact_email(new_email)
+
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            # Find the most recent row for (store, phone). Includes canceled /
+            # no_show — we want the latest interaction's row, regardless of
+            # final state. The email column is just contact metadata.
+            # (최신 row 1건만 — state 무관)
+            resp = await client.get(
+                f"{_REST}/bridge_transactions",
+                headers=_SUPABASE_HEADERS,
+                params={
+                    "store_id":       f"eq.{store_id}",
+                    "customer_phone": f"eq.{caller_phone_e164}",
+                    "select":         "id,customer_email",
+                    "order":          "created_at.desc",
+                    "limit":          "1",
+                },
+            )
+            resp.raise_for_status()
+            rows = resp.json() or []
+            if not rows:
+                log.info(
+                    "[crm] email_update no_recent_tx phone=%s store=%s",
+                    redacted_phone, store_id,
+                )
+                return False
+
+            row = rows[0]
+            current = (row.get("customer_email") or "").strip().lower()
+            target  = new_email.strip().lower()
+            if current == target:
+                log.info(
+                    "[crm] email_update already_current phone=%s store=%s email=%s",
+                    redacted_phone, store_id, redacted_email,
+                )
+                return False
+
+            patch = await client.patch(
+                f"{_REST}/bridge_transactions",
+                headers=_SUPABASE_HEADERS,
+                params={"id": f"eq.{row['id']}"},
+                json={"customer_email": new_email.strip()},
+            )
+            patch.raise_for_status()
+            log.info(
+                "[crm] email_update ok phone=%s store=%s tx=%s email=%s",
+                redacted_phone, store_id, row["id"], redacted_email,
+            )
+            return True
+    except httpx.HTTPStatusError as e:
+        log.warning(
+            "[crm] email_update http_error phone=%s store=%s status=%d",
+            redacted_phone, store_id, e.response.status_code,
+        )
+        return False
+    except Exception:
+        log.exception(
+            "[crm] email_update unexpected phone=%s store=%s",
+            redacted_phone, store_id,
+        )
+        return False

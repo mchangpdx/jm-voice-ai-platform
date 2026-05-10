@@ -28,7 +28,8 @@ import logging
 import os
 import re
 import time
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Form, Request, WebSocket
 from fastapi.responses import Response
@@ -50,7 +51,7 @@ from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
 from app.services.bridge.transactions import update_call_metrics
-from app.services.crm import customer_lookup
+from app.services.crm import customer_lookup, update_recent_customer_email
 from app.services.handoff.manager_alert import send_tier3_alert
 from app.services.menu.match import build_modifier_index_from_groups
 from app.services.menu.modifiers import (
@@ -133,6 +134,96 @@ _GEMINI_TOOL_DEFS = [
 OPENAI_REALTIME_TOOLS = [_gemini_to_openai_tool(t) for t in _GEMINI_TOOL_DEFS]
 
 
+# ── call_logs persistence (P2 wire-up, 2026-05-10) ───────────────────────────
+# Live trigger: Billy/Jason 2026-05-10 — bridge_transactions.call_log_id stayed
+# NULL on every OpenAI Realtime tx because none of the 6 tool dispatch sites
+# below passed a call_log_id, AND no call_logs row was inserted at WS start.
+# That broke the analytics join the dashboard uses for per-call drill-downs.
+#
+# Both helpers are fire-and-forget: any failure is logged and swallowed, the
+# voice path never blocks on this. INSERT happens once on the Twilio `start`
+# event so the row exists before any tool fires; UPDATE happens in the WS
+# `finally` block alongside the CRM call_end metrics dispatch.
+# (P2 — call_logs INSERT/UPDATE 헬퍼. 실패는 통화 흐름과 격리)
+
+async def _insert_call_log_row(
+    *,
+    call_id:        str,
+    store_id:       str,
+    customer_phone: Optional[str],
+    start_iso:      str,
+) -> bool:
+    """INSERT one call_logs row at WS start. Idempotent on call_id duplicate.
+    (start 이벤트 직후 1회 호출 — 중복 call_id는 ON CONFLICT로 skip)
+    """
+    if not call_id or not store_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.post(
+                f"{_REST}/call_logs",
+                headers={
+                    **_SUPABASE_HEADERS,
+                    # Idempotent on PK collision (e.g. Twilio reconnect mid-call).
+                    # PostgREST: Prefer header for ON CONFLICT do nothing semantics.
+                    "Prefer": "return=minimal,resolution=ignore-duplicates",
+                },
+                json={
+                    "call_id":        call_id,
+                    "store_id":       store_id,
+                    "start_time":     start_iso,
+                    "customer_phone": customer_phone or None,
+                    "call_status":    "in_progress",
+                },
+            )
+            if resp.status_code in (200, 201, 204):
+                return True
+            log.warning(
+                "[call_log] insert non-2xx call_id=%s status=%d body=%s",
+                call_id, resp.status_code, resp.text[:200],
+            )
+            return False
+    except Exception as exc:
+        log.warning("[call_log] insert error call_id=%s err=%s",
+                    call_id, type(exc).__name__)
+        return False
+
+
+async def _update_call_log_row(
+    *,
+    call_id:    str,
+    duration_s: int,
+    status:     str = "Successful",
+) -> bool:
+    """UPDATE duration + final status on the call_logs row at call_end.
+    (call_end 시점 1회 — 통화 길이와 status 마감 처리)
+    """
+    if not call_id:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.patch(
+                f"{_REST}/call_logs",
+                headers=_SUPABASE_HEADERS,
+                params={"call_id": f"eq.{call_id}"},
+                json={
+                    "duration":    duration_s,
+                    "call_status": status,
+                },
+            )
+            if resp.status_code in (200, 204):
+                return True
+            log.warning(
+                "[call_log] update non-2xx call_id=%s status=%d body=%s",
+                call_id, resp.status_code, resp.text[:200],
+            )
+            return False
+    except Exception as exc:
+        log.warning("[call_log] update error call_id=%s err=%s",
+                    call_id, type(exc).__name__)
+        return False
+
+
 # ── Tool dispatcher (OpenAI function_call → bridge_flows) ────────────────────
 # Mirrors the dispatcher branches in voice_websocket.py:1410-2102 but stripped
 # to the essentials: parse args, call the right bridge_flows function, return
@@ -201,7 +292,7 @@ async def _dispatch_tool_call(
         result = await bridge_flows.create_order(
             store_id       = store_id,
             args           = tool_args,
-            call_log_id    = None,
+            call_log_id    = session_state.get("call_log_id") or None,
             modifier_index = session_state.get("modifier_index"),
         )
         # Snapshot for recall_order
@@ -273,7 +364,7 @@ async def _dispatch_tool_call(
             store_id          = store_id,
             args              = tool_args,
             caller_phone_e164 = caller_phone_e164,
-            call_log_id       = None,
+            call_log_id       = session_state.get("call_log_id") or None,
             modifier_index    = session_state.get("modifier_index"),
         )
         if result.get("success"):
@@ -287,7 +378,7 @@ async def _dispatch_tool_call(
         result = await bridge_flows.cancel_order(
             store_id          = store_id,
             caller_phone_e164 = caller_phone_e164,
-            call_log_id       = None,
+            call_log_id       = session_state.get("call_log_id") or None,
         )
         if result.get("success"):
             session_state["last_order_items"] = []
@@ -300,7 +391,7 @@ async def _dispatch_tool_call(
         result = await bridge_flows.create_reservation(
             store_id      = store_id,
             args          = tool_args,
-            call_log_id   = None,
+            call_log_id   = session_state.get("call_log_id") or None,
             deposit_cents = 0,
         )
         if result.get("success"):
@@ -339,7 +430,7 @@ async def _dispatch_tool_call(
             store_id          = store_id,
             args              = tool_args,
             caller_phone_e164 = caller_phone_e164,
-            call_log_id       = None,
+            call_log_id       = session_state.get("call_log_id") or None,
         )
         hint = result.get("ai_script_hint") or "modify_reservation_noop"
         result["message"] = MODIFY_RESERVATION_SCRIPT_BY_HINT.get(hint, result.get("message", ""))
@@ -363,7 +454,7 @@ async def _dispatch_tool_call(
         result = await bridge_flows.cancel_reservation(
             store_id          = store_id,
             caller_phone_e164 = caller_phone_e164,
-            call_log_id       = None,
+            call_log_id       = session_state.get("call_log_id") or None,
         )
         hint = result.get("ai_script_hint") or "cancel_reservation_no_target"
         result["message"] = CANCEL_RESERVATION_SCRIPT_BY_HINT.get(hint, result.get("message", ""))
@@ -596,6 +687,25 @@ async def realtime_bridge(ws: WebSocket) -> None:
             pass
         return
 
+    # P2 fix (2026-05-10) — INSERT call_logs row at WS start so every
+    # bridge_transactions.call_log_id can join back to the call. Fire-and-
+    # forget — INSERT failure must NEVER block the voice path; we just
+    # leave call_log_id empty and the tx rows continue as call_log_id=None
+    # (existing behavior, pre-fix). Idempotent on call_id (Twilio reconnect).
+    # (call_logs INSERT — 통화 시작 직후 1회, 실패 시 None 유지)
+    if call_sid:
+        try:
+            _start_iso = datetime.now(timezone.utc).isoformat()
+            asyncio.create_task(_insert_call_log_row(
+                call_id        = call_sid,
+                store_id       = JM_CAFE_STORE_ID,
+                customer_phone = caller_phone or None,
+                start_iso      = _start_iso,
+            ))
+            _dbg(f"[call_log] insert dispatched call_id={call_sid}")
+        except Exception as exc:
+            _dbg(f"[call_log] insert dispatch error: {exc}")
+
     # 2) Load store + build system prompt (Phase 3a)
     # (Phase 3a — 매장 row 조회 + 시스템 프롬프트 빌드)
     store = await _load_store_by_id(JM_CAFE_STORE_ID)
@@ -766,6 +876,12 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 "last_order_items": [],
                 "last_order_total": 0,
                 "pending_reservation_email": None,
+                # P2 fix (2026-05-10) — call_logs row PK for tool-dispatch
+                # wire-up. Set once at WS start (above), consumed by every
+                # bridge_flows.* call below as call_log_id so the resulting
+                # bridge_transactions row joins back to the call.
+                # (call_logs row PK — tool dispatch가 bridge_transactions에 join)
+                "call_log_id":      call_sid or "",
                 # Phase 5 #26 — Tier-3 manager alert state.
                 # last_user_text feeds the keyword detector; tier3_alerted
                 # is an idempotency latch so repeated keyword utterances
@@ -1255,6 +1371,48 @@ async def realtime_bridge(ws: WebSocket) -> None:
                         _dbg(f"[perf] call_end_persist_dispatch_error: {exc}")
                 else:
                     _dbg(f"[perf] call_end no_tx_skip_update aht_ms={duration_ms}")
+
+                # P2 fix (2026-05-10) — UPDATE call_logs duration + status so
+                # the dashboard's per-call drill-down shows actual length and
+                # final state. status='Successful' when we reached call_end
+                # without an exception path; failure paths go through the
+                # outer `except` and never reach here. Fire-and-forget.
+                # (call_logs UPDATE — 통화 종료 시점 duration + status)
+                if call_sid:
+                    try:
+                        asyncio.create_task(_update_call_log_row(
+                            call_id    = call_sid,
+                            duration_s = max(1, duration_ms // 1000),
+                            status     = "Successful",
+                        ))
+                    except Exception as exc:
+                        _dbg(f"[call_log] update dispatch error: {exc}")
+
+                # G6 fix (2026-05-10) — persist mid-call email update so the
+                # next customer_lookup for this phone picks up the corrected
+                # address. Live trigger CA7748f354... Jason called after Billy
+                # (same phone), did a NATO recital of a corrected email AFTER
+                # his only create_order had fired, then hung up — the new
+                # email never landed in any tx and a 3rd call would still
+                # match the stale row. We reuse last_email_recital_text (the
+                # same source reconcile_email_with_recital trusts for tool
+                # args) so the persisted email matches whatever the agent
+                # spelled back and the caller verified. Fire-and-forget; the
+                # helper internally short-circuits on anonymous / no-match /
+                # already-current. (G6 — mid-call email update DB 영속화)
+                try:
+                    _latched_recital = session_state.get("last_email_recital_text") or ""
+                    if _latched_recital and caller_phone:
+                        _verified_email = extract_email_from_recital(_latched_recital)
+                        if _verified_email:
+                            asyncio.create_task(update_recent_customer_email(
+                                store_id          = store_id,
+                                caller_phone_e164 = caller_phone,
+                                new_email         = _verified_email,
+                            ))
+                            _dbg(f"[crm] email_update dispatched email=***@{_verified_email.split('@')[-1] if '@' in _verified_email else '?'}")
+                except Exception as exc:
+                    _dbg(f"[crm] email_update dispatch error: {exc}")
 
                 # B4 — fire deferred reservation email if payload pending
                 # (예약 이메일 deferred-fire — make/modify로 set, cancel로 clear)

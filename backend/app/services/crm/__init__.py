@@ -6,6 +6,7 @@ from app.services.crm.customer_lookup import (
     customer_lookup,
     redact_email,
     redact_phone,
+    update_recent_customer_email,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "customer_lookup",
     "redact_email",
     "redact_phone",
+    "update_recent_customer_email",
 ]

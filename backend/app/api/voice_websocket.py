@@ -255,6 +255,24 @@ def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
     else:
         lines.append('- Usual eligible: NO — do NOT use "the usual" phrasing on this call.')
 
+    # G4 fix (2026-05-10) — RETURNING FAST-PATH: stop re-asking name/email and
+    # commit on the caller's confirm. Live trigger CA7748f354... 2026-05-10:
+    # Jason (returning, visits=1) said "send me the amount to my email" — agent
+    # re-asked name AND re-confirmed email after the in-call update, caller hung
+    # up before create_order could fire. The CRM block already has name+email
+    # in scope, so any additional re-prompt is pure friction. Additive rule.
+    # (재방문 고객 fast-path — name/email 재질문 금지, confirm 시 즉시 tool fire)
+    lines.append(
+        "- RETURNING FAST-PATH: the name and email above are already known. "
+        "Do NOT re-ask the name during the call. Do NOT re-confirm an email "
+        "you have already verified earlier in THIS call. When the caller "
+        "expresses a clear confirm intent in any supported language "
+        "('yes ready', 'send me the total', 'send the amount', 'go ahead', "
+        "'네 보내주세요', 'sí, mándalo', '好的, 发给我', 'はい、お願いします'), "
+        "fire the matching tool IMMEDIATELY — never insert an extra "
+        "name/email re-prompt turn between the confirm and the tool call."
+    )
+
     return "\n".join(lines)
 
 
@@ -363,9 +381,35 @@ def build_system_prompt(
         "Vietnamese), briefly apologize in their language and offer to continue in English, Spanish, Korean, "
         "Chinese, or Japanese. NEVER mix two languages within ONE sentence — if you must hand off proper nouns "
         "(menu items, names, addresses), keep them as the customer pronounced them but wrap the surrounding "
-        "sentence entirely in the active language.\n"
+        "sentence entirely in the active language. "
+        # G2 fix (2026-05-10) — Billy turn=28 asked 'Can I speak in Spanish?'
+        # and the agent replied in Korean (carry-over from the prior KO turn).
+        # The existing 'switch on next reply' clause was being shadowed by
+        # conversation history. Anchor the rule with an explicit per-turn echo
+        # test the model can check against its own response.
+        # (언어 per-turn 재감지 — 직전 턴이 무엇이었든 현재 발화 언어가 정답)
+        "LANGUAGE ECHO TEST (apply before composing every reply): identify "
+        "the language of the customer's IMMEDIATE PREVIOUS utterance — that "
+        "IS your reply language, regardless of what language you used on the "
+        "turn before. When the customer EXPLICITLY requests a switch ('Can I "
+        "speak in Spanish?', 'en español por favor', '한국어로'), switch on "
+        "THE SAME REPLY — never answer the switch request in the OLD "
+        "language.\n"
         "3. UNCLEAR / SILENT: Stay in YOUR previous language and say 'Sorry, could you repeat that?'. "
-        "Never switch language on an empty turn.\n"
+        "Never switch language on an empty turn. "
+        # G5 fix (2026-05-10) — Jason turn=12 STT decoded gibberish Farsi
+        # ('يوف، چگونه آمیز کردن') and the agent inferred 'almond croissant'
+        # from prior context. Inferring intent from history when the current
+        # utterance is unintelligible can ship the wrong item. Treat unparse-
+        # able utterances the same as silence — ask once, do not guess.
+        # (저신뢰 발화 — 직전 컨텍스트로 추론 금지, 1회 재질문)
+        "LOW-CONFIDENCE RECOVERY: when the customer's utterance is clearly "
+        "not a valid word/phrase in any of the 5 supported languages or is "
+        "obvious STT garbage (random characters, script unrelated to menu "
+        "terms, partial words), do NOT infer intent from the prior turn. "
+        "Reply ONCE 'Sorry, I didn't catch that — could you repeat?' in your "
+        "current language and wait. Never fire a tool on a low-confidence "
+        "turn.\n"
         "4. RESERVATIONS — make_reservation / modify_reservation: "
         "MAKE: Collect name, 10-digit US phone (re-ask if fewer digits), "
         "date (YYYY-MM-DD from CURRENT DATE anchor), time (pass 24-h to the tool, SPEAK 12-h with AM/PM), "
@@ -527,6 +571,18 @@ def build_system_prompt(
         "    re-ask 'is that right?'. Bare 'okay' / 'thanks' / 'bye' = end of\n"
         "    call → reply 'Thanks, see you soon.' and stop. Pay link + kitchen\n"
         "    handoff happen after the call.\n"
+        # G3 fix (2026-05-10) — Billy turns=22-26 asked for pizza/burrito/
+        # breakfast burrito in a row. The agent listed reasons four times in a
+        # row instead of pivoting. Cap the menu-miss explanations and offer
+        # alternatives so the caller has a concrete path forward.
+        # (메뉴 외 거절 — 2회 후 대체 제안으로 방향 전환)
+        "  MENU-MISS REDIRECT: count the consecutive caller turns asking for\n"
+        "    items NOT on the menu. On the 1st miss, briefly say it's not on\n"
+        "    the menu and offer help. On the 2nd miss, do NOT list reasons\n"
+        "    again — pivot with a concrete suggestion: 'We don't carry that,\n"
+        "    but our most-ordered items are <pick 2-3 from the menu above>.\n"
+        "    Would any of those work?'. Reset the counter the moment the\n"
+        "    caller names a menu item or changes topic.\n"
         # Phase 7-A.D Wave A — rule 6 MODIFY ORDER compacted: cross-references
         # rule 5 for items/recital/email; spells out only the differences.
         # (rule 5 cross-ref + 차이점만 명시)
@@ -549,8 +605,14 @@ def build_system_prompt(
         "    (or not on the menu at all), reply 'I don't see <item> — your\n"
         "    current order is <actual items>. What would you like to change?'.\n"
         "    Full-order cancel ('cancel my order', 'cancel that') goes to rule 7.\n"
-        "  TOO-LATE: if bridge returns modify_too_late, apologize and offer\n"
-        "    cancel + a fresh order.\n"
+        "  TOO-LATE: if bridge returns modify_too_late, the current order is\n"
+        "    locked but the caller still wants the new item. In ONE sentence\n"
+        "    offer BOTH options and then wait for the caller to pick:\n"
+        "    (a) cancel the current order and place a new combined one, OR\n"
+        "    (b) keep this order and place a separate new order for the\n"
+        "    additional item. Do NOT auto-fire cancel_order, do NOT silently\n"
+        "    pick option (a). Wait for the caller's explicit choice; do not\n"
+        "    re-offer the same two options more than once.\n"
         "  POST-SUCCESS / POST-NOOP: same as rule 5 — bare 'okay' / 'thanks' /\n"
         "    'yes' / 'fine' / 'thank you' is end-of-call, NEVER a re-modify\n"
         "    trigger. Re-call modify_order ONLY on a NEW explicit add/remove/\n"
