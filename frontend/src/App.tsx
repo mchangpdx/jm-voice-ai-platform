@@ -73,15 +73,18 @@ function AppRoutes() {
         {/* Backward compat: old /agency/dashboard → /agency/overview */}
         <Route path="/agency/dashboard" element={<Navigate to="/agency/overview" replace />} />
 
-        {/* Admin — investor demo (AGENCY role only; component self-guards) */}
+        {/* Admin — investor demo (AGENCY role only; component self-guards).
+            Nested under AgencyLayout for unified sidebar + top bar + logout. */}
         <Route
-          path="/admin/architecture-proof"
+          path="/admin"
           element={
             <RequireAuth>
-              <ArchitectureProof />
+              <AgencyLayout />
             </RequireAuth>
           }
-        />
+        >
+          <Route path="architecture-proof" element={<ArchitectureProof />} />
+        </Route>
 
         {/* FSR Store (store owner mode — store owner 모드) */}
         <Route
