@@ -4,6 +4,14 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../core/AuthContext'
 import styles from './Login.module.css'
 
+// Admin alias — typing 'admin' as the identifier resolves to the Supabase
+// admin@test.com account (AGENCY role) and lands the user on the investor
+// /admin/architecture-proof page instead of /agency/overview.
+// (admin 별칭 — 아이디 'admin' 입력 시 admin@test.com 계정으로 로그인 후
+// /admin/architecture-proof로 직행)
+const ADMIN_ALIAS = 'admin'
+const ADMIN_EMAIL = 'admin@test.com'
+
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -17,8 +25,11 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
-      navigate('/')
+      const normalized = email.trim().toLowerCase()
+      const isAdmin    = normalized === ADMIN_ALIAS
+      const loginEmail = isAdmin ? ADMIN_EMAIL : email
+      await login(loginEmail, password)
+      navigate(isAdmin ? '/admin/architecture-proof' : '/')
     } catch {
       setError('Invalid email or password')
     } finally {
@@ -48,13 +59,16 @@ export default function Login() {
           <div className={styles.field}>
             <label className={styles.label}>Email</label>
             <input
-              type="email"
+              type="text"
               className={styles.input}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder="you@example.com or admin"
               required
               autoFocus
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
