@@ -26,6 +26,7 @@ import app.knowledge.home_services as hs_knowledge
 import app.knowledge.restaurant as rest_knowledge
 import app.knowledge.beauty as beauty_knowledge
 import app.knowledge.auto_repair as auto_knowledge
+import app.knowledge.kbbq as kbbq_knowledge
 from app.api.analytics import build_analytics_response
 
 router = APIRouter(prefix="/api/agency", tags=["Agency"])
@@ -180,6 +181,23 @@ async def _compute_store_metrics(
         )
         service_orders = so_resp.json() if isinstance(so_resp.json(), list) else []
         metrics = auto_knowledge.calculate(store_id, store_name, call_logs, service_orders, hourly_wage)
+    elif industry == "kbbq":
+        # KBBQ uses `orders` table (restaurant pattern) — only Layer 3 KPI tuning
+        # differs (avg_ticket $75, upsell rate 12%) per knowledge/kbbq.py.
+        # (KBBQ는 restaurant 패턴 orders 사용 — KPI 상수만 kbbq.py에서 튜닝)
+        order_params: dict[str, Any] = {
+            "store_id": f"eq.{store_id}",
+            "select": "total_amount,status",
+        }
+        if since:
+            order_params["created_at"] = f"gte.{since}"
+        order_resp = await client.get(
+            f"{_REST}/orders",
+            headers=_SUPABASE_HEADERS,
+            params=order_params,
+        )
+        orders = order_resp.json() if isinstance(order_resp.json(), list) else []
+        metrics = kbbq_knowledge.calculate(store_id, store_name, call_logs, orders, hourly_wage)
     else:
         order_params: dict[str, Any] = {
             "store_id": f"eq.{store_id}",
