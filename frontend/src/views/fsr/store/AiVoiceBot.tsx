@@ -6,16 +6,15 @@ import styles from './AiVoiceBot.module.css'
 
 interface VoiceBotSettings {
   store_name:       string
-  retell_agent_id:  string | null
   system_prompt:    string | null
   temporary_prompt: string | null
 }
 
 interface AgentStatus {
-  agent_id:          string
-  agent_name:        string
-  voice_id:          string
-  llm_websocket_url: string | null
+  model:                string
+  voice:                string
+  system_prompt_loaded: boolean
+  last_call_at:         string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,25 +153,25 @@ export default function AiVoiceBot() {
               <div className={styles.agentCard}>
                 <div className={styles.agentRow}>
                   <StatusDot active={true} />
-                  <span className={styles.agentName}>{agentStatus.agent_name}</span>
+                  <span className={styles.agentName}>{agentStatus.model}</span>
                   <span className={styles.agentBadge}>OpenAI Realtime</span>
                 </div>
                 <div className={styles.agentMeta}>
                   <div className={styles.metaItem}>
                     <span className={styles.metaLabel}>Voice</span>
-                    <VoiceIdBadge voiceId={agentStatus.voice_id} />
+                    <VoiceIdBadge voiceId={agentStatus.voice} />
                   </div>
                   <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>Agent ID</span>
-                    <code className={styles.metaCode}>
-                      {agentStatus.agent_id.slice(0, 24)}…
-                    </code>
-                  </div>
-                  <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>WebSocket</span>
-                    <span className={agentStatus.llm_websocket_url ? styles.wsConnected : styles.wsNotSet}>
-                      {agentStatus.llm_websocket_url ? '✓ Configured' : '⚠ Not configured'}
+                    <span className={styles.metaLabel}>System prompt</span>
+                    <span className={agentStatus.system_prompt_loaded ? styles.wsConnected : styles.wsNotSet}>
+                      {agentStatus.system_prompt_loaded ? '✓ Loaded' : '⚠ Not configured'}
                     </span>
+                  </div>
+                  <div className={styles.metaItem}>
+                    <span className={styles.metaLabel}>Last call</span>
+                    <code className={styles.metaCode}>
+                      {agentStatus.last_call_at ? new Date(agentStatus.last_call_at).toLocaleString() : '—'}
+                    </code>
                   </div>
                 </div>
               </div>
