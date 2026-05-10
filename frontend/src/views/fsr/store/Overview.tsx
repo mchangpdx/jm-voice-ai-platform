@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../../core/AuthContext'
 import api from '../../../core/api'
 import Tier3AlertBadge from '../../../components/Tier3AlertBadge'
+import { getVerticalMeta } from '../../../core/verticalLabels'
 import styles from './Overview.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -54,7 +55,10 @@ const PERIODS: { key: Period; label: string }[] = [
 ]
 
 export default function Overview() {
-  const { storeName } = useAuth()
+  const { storeName, industry } = useAuth()
+  // Vertical-aware KPI labels — falls back to restaurant if industry is null/unknown
+  // (산업별 KPI 라벨 — null/미지의 industry는 restaurant 기본값으로 폴백)
+  const meta = getVerticalMeta(industry ?? 'restaurant')
   const [period, setPeriod] = useState<Period>('all')
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -146,10 +150,10 @@ export default function Overview() {
 
       {/* ── Row 1: Primary Business KPIs (1행: 핵심 비즈니스 KPI) ── */}
       <div className={styles.kpiRow}>
-        {/* MCRR — Peak Hour Revenue Capture */}
+        {/* MCRR — Primary revenue (vertical-aware label) */}
         <div className={`${styles.kpiCard} ${styles.kpiGreen}`}>
           <div className={styles.kpiTop}>
-            <span className={styles.kpiLabel}>Peak Hour Revenue Capture</span>
+            <span className={styles.kpiLabel}>{meta.primaryRevenueLabel}</span>
             <span className={styles.kpiBadge}>MCRR</span>
           </div>
           <div className={styles.kpiValue}>{loadingMetrics ? '—' : fmt(m?.mcrr ?? 0)}</div>
@@ -192,7 +196,7 @@ export default function Overview() {
       {/* ── Row 2: Supporting KPIs (2행: 보조 KPI) ── */}
       <div className={styles.kpiRowSm}>
         <div className={styles.kpiCardSm}>
-          <div className={styles.kpiSmLabel}>AI Answer Rate (LCR)</div>
+          <div className={styles.kpiSmLabel}>{meta.conversionLabel} (LCR)</div>
           <div className={styles.kpiSmValue} style={{ color: '#6366f1' }}>
             {loadingMetrics ? '—' : `${m?.lcr.toFixed(1) ?? 0}%`}
           </div>
@@ -218,7 +222,7 @@ export default function Overview() {
         </div>
 
         <div className={styles.kpiCardSm}>
-          <div className={styles.kpiSmLabel}>Avg Ticket Size</div>
+          <div className={styles.kpiSmLabel}>{meta.avgValueLabel}</div>
           <div className={styles.kpiSmValue} style={{ color: '#0369a1' }}>
             {loadingMetrics ? '—' : fmt(m?.avg_ticket ?? 0)}
           </div>
