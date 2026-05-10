@@ -1,9 +1,14 @@
-# AI Voice Bot settings API — persona prompts + Retell agent status
-# (AI Voice Bot 설정 API — 페르소나 프롬프트 + Retell 에이전트 상태)
+# AI Voice Bot settings API — persona prompts + OpenAI Realtime agent status
+# (AI Voice Bot 설정 API — 페르소나 프롬프트 + OpenAI Realtime 에이전트 상태)
 #
-# GET  /api/store/voice-bot              — system_prompt, temporary_prompt, retell_agent_id
+# GET  /api/store/voice-bot              — system_prompt, temporary_prompt
 # PATCH /api/store/voice-bot             — update prompts
-# GET  /api/store/voice-bot/agent-status — live Retell agent info (voice, name, ws_url)
+# GET  /api/store/voice-bot/agent-status — live OpenAI Realtime agent info
+#                                          (model, voice, system_prompt_loaded, last_call_at)
+#
+# Phase 2-D migration: Retell API dependency removed. last_call_at is derived
+# from bridge_transactions.created_at MAX (per store).
+# (Phase 2-D: Retell API 의존 제거. last_call_at은 bridge_transactions에서 직접 조립)
 
 from typing import Optional
 
@@ -24,17 +29,12 @@ _SUPABASE_HEADERS = {
 }
 _REST = f"{settings.supabase_url}/rest/v1"
 
-_RETELL_HEADERS = {
-    "Authorization": f"Bearer {settings.retell_api_key}",
-    "Content-Type":  "application/json",
-}
-
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class VoiceBotSettings(BaseModel):
     store_name:       str
-    retell_agent_id:  Optional[str]
+    retell_agent_id:  Optional[str] = None  # deprecated — always None post-OpenAI Realtime migration
     system_prompt:    Optional[str]
     temporary_prompt: Optional[str]
     business_hours:   Optional[str]
@@ -50,10 +50,10 @@ class VoiceBotPatch(BaseModel):
 
 
 class AgentStatus(BaseModel):
-    agent_id:         str
-    agent_name:       str
-    voice_id:         str
-    llm_websocket_url: Optional[str]
+    model:                str            # e.g. "gpt-realtime-1.5" / "gpt-realtime-mini"
+    voice:                str            # e.g. "marin"
+    system_prompt_loaded: bool           # True iff stores.system_prompt is non-empty
+    last_call_at:         Optional[str]  # ISO timestamp of latest bridge_transactions row, or None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -64,13 +64,34 @@ async def _resolve_store(client: httpx.AsyncClient, owner_id: str) -> dict:
         headers=_SUPABASE_HEADERS,
         params={
             "owner_id": f"eq.{owner_id}",
-            "select":   "id,name,retell_agent_id,system_prompt,temporary_prompt,business_hours,custom_knowledge,is_active",
+            "select":   "id,name,system_prompt,temporary_prompt,business_hours,custom_knowledge,is_active",
         },
     )
     stores = resp.json()
     if not stores:
         raise HTTPException(status_code=404, detail="Store not found")
     return stores[0]
+
+
+async def _last_call_at(client: httpx.AsyncClient, store_id: str) -> Optional[str]:
+    """Return ISO timestamp of the most recent bridge_transactions row for the
+    given store, or None if no calls have been recorded.
+    (해당 매장의 bridge_transactions 최신 행의 created_at — 없으면 None)
+    """
+    resp = await client.get(
+        f"{_REST}/bridge_transactions",
+        headers=_SUPABASE_HEADERS,
+        params={
+            "store_id": f"eq.{store_id}",
+            "select":   "created_at",
+            "order":    "created_at.desc",
+            "limit":    "1",
+        },
+    )
+    if resp.status_code != 200:
+        return None
+    rows = resp.json()
+    return rows[0]["created_at"] if rows else None
 
 
 # ── GET /api/store/voice-bot ──────────────────────────────────────────────────
@@ -81,7 +102,7 @@ async def get_voice_bot(owner_id: str = Depends(get_tenant_id)):
         store = await _resolve_store(client, owner_id)
     return VoiceBotSettings(
         store_name=store["name"],
-        retell_agent_id=store.get("retell_agent_id"),
+        retell_agent_id=None,
         system_prompt=store.get("system_prompt"),
         temporary_prompt=store.get("temporary_prompt"),
         business_hours=store.get("business_hours"),
@@ -117,7 +138,7 @@ async def patch_voice_bot(
 
     return VoiceBotSettings(
         store_name=row["name"],
-        retell_agent_id=row.get("retell_agent_id"),
+        retell_agent_id=None,
         system_prompt=row.get("system_prompt"),
         temporary_prompt=row.get("temporary_prompt"),
         business_hours=row.get("business_hours"),
@@ -130,26 +151,16 @@ async def patch_voice_bot(
 
 @router.get("/voice-bot/agent-status", response_model=AgentStatus)
 async def get_agent_status(owner_id: str = Depends(get_tenant_id)):
+    """Return OpenAI Realtime agent status assembled from local DB (no external API).
+    (외부 API 호출 없이 DB에서 직접 조립)
+    """
     async with httpx.AsyncClient() as client:
         store = await _resolve_store(client, owner_id)
+        last_at = await _last_call_at(client, store["id"])
 
-        agent_id = store.get("retell_agent_id")
-        if not agent_id:
-            raise HTTPException(status_code=404, detail="No Retell agent linked to this store")
-
-        resp = await client.get(
-            f"{settings.retell_api_url}/get-agent/{agent_id}",
-            headers=_RETELL_HEADERS,
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Retell API error")
-
-        agent = resp.json()
-
-    ws_url = agent.get("response_engine", {}).get("llm_websocket_url")
     return AgentStatus(
-        agent_id=agent["agent_id"],
-        agent_name=agent["agent_name"],
-        voice_id=agent.get("voice_id", ""),
-        llm_websocket_url=ws_url,
+        model=settings.openai_realtime_model,
+        voice=settings.openai_realtime_voice,
+        system_prompt_loaded=bool(store.get("system_prompt")),
+        last_call_at=last_at,
     )

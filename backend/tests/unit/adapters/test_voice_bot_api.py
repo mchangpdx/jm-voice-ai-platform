@@ -1,8 +1,11 @@
 # TDD: AI Voice Bot settings endpoint tests (AI Voice Bot 설정 엔드포인트 테스트)
 # Tests: GET /api/store/voice-bot, PATCH /api/store/voice-bot, GET /api/store/voice-bot/agent-status
+#
+# Phase 2-D migration: agent-status no longer hits the Retell API. The new
+# AgentStatus shape is assembled from settings (model/voice) + stores DB
+# (system_prompt_loaded) + bridge_transactions (last_call_at).
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
 
@@ -13,24 +16,15 @@ client = TestClient(app)
 
 _STORE_ID  = "c14ee546-a5bb-4bd8-add5-17c3f376cc6b"
 _OWNER_ID  = "b36f6adf-55f1-4b95-96b1-30f60c91a5ca"
-_AGENT_ID  = "agent_68e9f01ec4d5502b990755d2ef"
 
 _MOCK_STORE = {
     "id":               _STORE_ID,
     "name":             "JM Cafe",
-    "retell_agent_id":  _AGENT_ID,
     "system_prompt":    "You are Aria, the AI voice assistant for JM Cafe.",
     "temporary_prompt": "Today's special: Matcha latte $5.",
-}
-
-_MOCK_RETELL_AGENT = {
-    "agent_id":   _AGENT_ID,
-    "agent_name": "CAFE-JM-Aria",
-    "voice_id":   "retell-Grace",
-    "response_engine": {
-        "type":              "custom-llm",
-        "llm_websocket_url": "wss://example.ngrok.dev/llm-websocket",
-    },
+    "business_hours":   None,
+    "custom_knowledge": None,
+    "is_active":        True,
 }
 
 
@@ -62,13 +56,14 @@ AUTH = lambda: {"Authorization": f"Bearer {_make_jwt(_OWNER_ID)}"}
 
 # ── GET /api/store/voice-bot ──────────────────────────────────────────────────
 
-def test_get_voice_bot_returns_prompts_and_agent_id():
+def test_get_voice_bot_returns_prompts_and_deprecated_agent_id_none():
     mc = _mock_http(gets=[(200, [_MOCK_STORE])])
     with patch("httpx.AsyncClient", return_value=mc):
         resp = client.get("/api/store/voice-bot", headers=AUTH())
     assert resp.status_code == 200
     data = resp.json()
-    assert data["retell_agent_id"] == _AGENT_ID
+    # retell_agent_id is deprecated post-OpenAI Realtime migration → always None
+    assert data["retell_agent_id"] is None
     assert data["system_prompt"] == _MOCK_STORE["system_prompt"]
     assert data["temporary_prompt"] == _MOCK_STORE["temporary_prompt"]
     assert data["store_name"] == "JM Cafe"
@@ -104,6 +99,7 @@ def test_patch_voice_bot_updates_both_prompts():
     data = resp.json()
     assert data["system_prompt"] == "New persona."
     assert data["temporary_prompt"] == "New daily."
+    assert data["retell_agent_id"] is None
 
 
 def test_patch_voice_bot_partial_update_temporary_only():
@@ -131,33 +127,68 @@ def test_patch_voice_bot_empty_body_returns_400():
 
 # ── GET /api/store/voice-bot/agent-status ─────────────────────────────────────
 
-def test_get_agent_status_returns_retell_info():
+def test_agent_status_returns_openai_shape_with_last_call():
+    """Agent status assembles model/voice from settings + system_prompt_loaded
+    from store + last_call_at from bridge_transactions latest row.
+    (model/voice는 설정값, system_prompt_loaded는 store, last_call_at은 bridge_tx 최신 행)
+    """
+    last_call_iso = "2026-05-09T12:34:56.000+00:00"
     mc = _mock_http(gets=[
         (200, [_MOCK_STORE]),
-        (200, _MOCK_RETELL_AGENT),
+        (200, [{"created_at": last_call_iso}]),
     ])
     with patch("httpx.AsyncClient", return_value=mc):
         resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
     assert resp.status_code == 200
     data = resp.json()
-    assert data["agent_id"] == _AGENT_ID
-    assert data["agent_name"] == "CAFE-JM-Aria"
-    assert data["voice_id"] == "retell-Grace"
+    assert data["model"] == settings.openai_realtime_model
+    assert data["voice"] == settings.openai_realtime_voice
+    assert data["system_prompt_loaded"] is True
+    assert data["last_call_at"] == last_call_iso
 
 
-def test_get_agent_status_no_agent_id_returns_404():
-    store_no_agent = {**_MOCK_STORE, "retell_agent_id": None}
-    mc = _mock_http(gets=[(200, [store_no_agent])])
-    with patch("httpx.AsyncClient", return_value=mc):
-        resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
-    assert resp.status_code == 404
-
-
-def test_get_agent_status_retell_api_failure_returns_502():
+def test_agent_status_no_calls_returns_last_call_none():
     mc = _mock_http(gets=[
         (200, [_MOCK_STORE]),
-        (401, {"error": "Unauthorized"}),
+        (200, []),  # bridge_transactions empty
     ])
     with patch("httpx.AsyncClient", return_value=mc):
         resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
-    assert resp.status_code == 502
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["last_call_at"] is None
+    assert data["system_prompt_loaded"] is True
+
+
+def test_agent_status_no_system_prompt_marks_loaded_false():
+    store_no_prompt = {**_MOCK_STORE, "system_prompt": None}
+    mc = _mock_http(gets=[
+        (200, [store_no_prompt]),
+        (200, []),
+    ])
+    with patch("httpx.AsyncClient", return_value=mc):
+        resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
+    assert resp.status_code == 200
+    assert resp.json()["system_prompt_loaded"] is False
+
+
+def test_agent_status_bridge_query_failure_falls_back_to_none():
+    """If bridge_transactions query fails, last_call_at degrades to None
+    rather than failing the entire endpoint.
+    (bridge_transactions 쿼리 실패 시 endpoint 깨지지 않고 last_call_at=None로 graceful degrade)
+    """
+    mc = _mock_http(gets=[
+        (200, [_MOCK_STORE]),
+        (500, {"error": "internal"}),
+    ])
+    with patch("httpx.AsyncClient", return_value=mc):
+        resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
+    assert resp.status_code == 200
+    assert resp.json()["last_call_at"] is None
+
+
+def test_agent_status_no_store_returns_404():
+    mc = _mock_http(gets=[(200, [])])
+    with patch("httpx.AsyncClient", return_value=mc):
+        resp = client.get("/api/store/voice-bot/agent-status", headers=AUTH())
+    assert resp.status_code == 404
