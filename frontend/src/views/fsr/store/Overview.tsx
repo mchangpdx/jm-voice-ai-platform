@@ -116,6 +116,7 @@ export default function Overview() {
   }
 
   const m = metrics
+  const pendingCount = orders.filter((o) => o.status === 'fired_unpaid').length
 
   return (
     <div className={styles.page}>
@@ -298,6 +299,11 @@ Always speak in a highly cheerful, upbeat, energetic, and welcoming tone. Smile 
               <div className={styles.panelTitle}>Live Call Orders</div>
               <div className={styles.panelDesc}>Latest 10 orders placed via the AI voice assistant.</div>
             </div>
+            {pendingCount > 0 && (
+              <span className={styles.pendingBadge} title="Orders fired without payment yet">
+                ⚠ {pendingCount} pending payment
+              </span>
+            )}
             <button
               className={styles.refreshBtn}
               onClick={() => {

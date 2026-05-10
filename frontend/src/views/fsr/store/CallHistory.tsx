@@ -1,6 +1,6 @@
 // Call History — paginated call log with filters and expandable detail rows
 // (필터 + 페이징 + 상세 확장 통화 내역 페이지)
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../../../core/api'
 import styles from './CallHistory.module.css'
 
@@ -59,6 +59,99 @@ function fmtDuration(sec: number) {
   return s > 0 ? `${m}m ${s}s` : `${m}m`
 }
 
+// Sliding right-side drawer for call detail (우측 슬라이딩 통화 상세 패널)
+// ESC key + backdrop click closes. Audio playback inline.
+// TODO (backend pending): wire transcript (color-coded Agent 딥블루 / Caller 앰버),
+// items + modifiers, CRM context block, and state machine timeline.
+function CallDetailDrawer({
+  call,
+  onClose,
+}: {
+  call: CallLogItem | null
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!call) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [call, onClose])
+
+  if (!call) return null
+
+  return (
+    <div className={styles.drawerBackdrop} onClick={onClose}>
+      <aside
+        className={styles.drawer}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Call detail"
+      >
+        <header className={styles.drawerHeader}>
+          <div>
+            <div className={styles.drawerPhone}>{call.customer_phone ?? 'Unknown caller'}</div>
+            <div className={styles.drawerTime}>{fmtDate(call.start_time)}</div>
+          </div>
+          <button className={styles.drawerClose} onClick={onClose} aria-label="Close">×</button>
+        </header>
+
+        <div className={styles.drawerBody}>
+          <div className={styles.drawerStatsRow}>
+            <div className={styles.drawerStat}>
+              <span>Duration</span><strong>{fmtDuration(call.duration)}</strong>
+            </div>
+            <div className={styles.drawerStat}>
+              <span>Status</span><strong>{call.call_status}</strong>
+            </div>
+            <div className={styles.drawerStat}>
+              <span>Sentiment</span><strong>{call.sentiment ?? '—'}</strong>
+            </div>
+            <div className={styles.drawerStat}>
+              <span>Cost</span><strong>${call.cost.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <section className={styles.drawerSection}>
+            <h3 className={styles.drawerSectionTitle}>Call Summary</h3>
+            <p className={styles.drawerText}>{call.summary ?? 'No summary available.'}</p>
+          </section>
+
+          <section className={styles.drawerSection}>
+            <h3 className={styles.drawerSectionTitle}>Recording</h3>
+            {call.recording_url
+              ? (
+                <audio
+                  controls
+                  src={call.recording_url}
+                  className={styles.audioPlayer}
+                  preload="none"
+                >
+                  Your browser does not support audio playback.
+                </audio>
+              )
+              : <p className={styles.drawerMuted}>No recording available</p>
+            }
+          </section>
+
+          <section className={styles.drawerSection}>
+            <h3 className={styles.drawerSectionTitle}>Transcript</h3>
+            <p className={styles.drawerMuted}>
+              Full color-coded transcript (Agent / Caller dialogue) — coming soon (backend pending).
+            </p>
+          </section>
+
+          <section className={styles.drawerSection}>
+            <h3 className={styles.drawerSectionTitle}>Order &amp; CRM</h3>
+            <p className={styles.drawerMuted}>
+              Items, modifiers, CRM context, and state machine timeline — coming soon (backend pending).
+            </p>
+          </section>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
 export default function CallHistory() {
   const [period, setPeriod]       = useState<Period>('all')
   const [statusFilter, setStatus] = useState<StatusFilter>('all')
@@ -101,6 +194,36 @@ export default function CallHistory() {
     return styles.sentimentNeutral
   }
 
+  // Build CSV from currently visible page (현재 페이지 items로 CSV 생성)
+  function exportCsv() {
+    if (items.length === 0) return
+    const headers = ['Date', 'Caller', 'Duration (s)', 'Status', 'Sentiment', 'Busy', 'Cost', 'Summary']
+    const escape = (v: string | number | null | undefined): string => {
+      const s = v == null ? '' : String(v)
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    const rows = items.map((c) => [
+      escape(c.start_time),
+      escape(c.customer_phone),
+      escape(c.duration),
+      escape(c.call_status),
+      escape(c.sentiment),
+      escape(c.is_store_busy ? 'Peak' : ''),
+      escape(c.cost.toFixed(2)),
+      escape(c.summary),
+    ].join(','))
+    const csv = [headers.map(escape).join(','), ...rows].join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `call-history-${period}-${statusFilter}-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className={styles.page}>
       {/* Header (헤더) */}
@@ -137,6 +260,14 @@ export default function CallHistory() {
             </button>
           ))}
         </div>
+        <button
+          className={styles.exportBtn}
+          onClick={exportCsv}
+          disabled={loading || items.length === 0}
+          title="Download current page as CSV"
+        >
+          📥 Export CSV
+        </button>
       </div>
 
       {/* Stats strip (요약 통계) */}
@@ -191,67 +322,33 @@ export default function CallHistory() {
               </tr>
             ) : (
               items.map((c) => (
-                <Fragment key={c.call_id}>
-                  <tr
-                    className={expandedId === c.call_id ? styles.expanded : ''}
-                    onClick={() => toggleExpand(c.call_id)}
-                  >
-                    <td className={styles.cellDate}>{fmtDate(c.start_time)}</td>
-                    <td className={styles.cellPhone}>{c.customer_phone ?? '—'}</td>
-                    <td className={styles.cellDuration}>{fmtDuration(c.duration)}</td>
-                    <td>
-                      <span className={`${styles.statusBadge} ${c.call_status === 'Successful' ? styles.statusSuccess : styles.statusFail}`}>
-                        {c.call_status}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`${styles.sentimentBadge} ${sentimentClass(c.sentiment)}`}>
-                        {c.sentiment ?? '—'}
-                      </span>
-                    </td>
-                    <td>
-                      {c.is_store_busy
-                        ? <><span className={styles.busyDot} />Peak</>
-                        : <span style={{ color: '#94a3b8' }}>—</span>
-                      }
-                    </td>
-                    <td className={styles.cellCost}>${c.cost.toFixed(2)}</td>
-                    <td className={styles.cellSummary}>{c.summary ?? '—'}</td>
-                  </tr>
-
-                  {expandedId === c.call_id && (
-                    <tr className={styles.expandedRow}>
-                      <td colSpan={8}>
-                        <div className={styles.expandedContent}>
-                          <div className={styles.expandedSection}>
-                            <div className={styles.expandedSectionTitle}>Call Summary</div>
-                            <p className={styles.summaryText}>{c.summary ?? 'No summary available.'}</p>
-                          </div>
-                          <div className={styles.expandedSection}>
-                            <div className={styles.expandedSectionTitle}>Recording</div>
-                            {c.recording_url
-                              ? (
-                                // HTML5 audio player — plays inline regardless of
-                                // Content-Disposition: attachment from CDN
-                                // (CDN의 Content-Disposition: attachment 무시하고 인라인 재생)
-                                <audio
-                                  controls
-                                  src={c.recording_url}
-                                  className={styles.audioPlayer}
-                                  onClick={(e) => e.stopPropagation()}
-                                  preload="none"
-                                >
-                                  Your browser does not support audio playback.
-                                </audio>
-                              )
-                              : <span className={styles.noRecording}>No recording available</span>
-                            }
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr
+                  key={c.call_id}
+                  className={expandedId === c.call_id ? styles.expanded : ''}
+                  onClick={() => toggleExpand(c.call_id)}
+                >
+                  <td className={styles.cellDate}>{fmtDate(c.start_time)}</td>
+                  <td className={styles.cellPhone}>{c.customer_phone ?? '—'}</td>
+                  <td className={styles.cellDuration}>{fmtDuration(c.duration)}</td>
+                  <td>
+                    <span className={`${styles.statusBadge} ${c.call_status === 'Successful' ? styles.statusSuccess : styles.statusFail}`}>
+                      {c.call_status}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`${styles.sentimentBadge} ${sentimentClass(c.sentiment)}`}>
+                      {c.sentiment ?? '—'}
+                    </span>
+                  </td>
+                  <td>
+                    {c.is_store_busy
+                      ? <><span className={styles.busyDot} />Peak</>
+                      : <span style={{ color: '#94a3b8' }}>—</span>
+                    }
+                  </td>
+                  <td className={styles.cellCost}>${c.cost.toFixed(2)}</td>
+                  <td className={styles.cellSummary}>{c.summary ?? '—'}</td>
+                </tr>
               ))
             )}
           </tbody>
@@ -295,6 +392,12 @@ export default function CallHistory() {
           </div>
         )}
       </div>
+
+      {/* Sliding right drawer for call detail (우측 슬라이딩 통화 상세) */}
+      <CallDetailDrawer
+        call={items.find((c) => c.call_id === expandedId) ?? null}
+        onClose={() => setExpanded(null)}
+      />
     </div>
   )
 }

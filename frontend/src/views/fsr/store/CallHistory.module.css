@@ -60,6 +60,29 @@
   font-weight: 600;
 }
 
+.exportBtn {
+  margin-left: auto;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.12s;
+}
+
+.exportBtn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.exportBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Summary stats strip ──────────────────────────────────────────────────── */
 .statsStrip {
   display: flex;
@@ -190,58 +213,7 @@
   margin-right: 5px;
 }
 
-/* ── Expanded row detail ─────────────────────────────────────────────────── */
-.expandedRow td {
-  padding: 0 !important;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.expandedContent {
-  padding: 16px 20px;
-  background: #fafbfc;
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.expandedSection {
-  flex: 1;
-  min-width: 260px;
-}
-
-.expandedSectionTitle {
-  font-size: 11px;
-  font-weight: 600;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
-}
-
-.summaryText {
-  font-size: 13px;
-  color: #334155;
-  line-height: 1.6;
-}
-
-.recordingLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: #6366f1;
-  color: white;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: background 0.12s;
-}
-
-.recordingLink:hover { background: #4f46e5; }
-
-.noRecording { font-size: 13px; color: #94a3b8; }
-
+/* ── Audio player (used in detail drawer) ───────────────────────────────── */
 .audioPlayer {
   width: 100%;
   max-width: 360px;
@@ -292,4 +264,137 @@
   padding: 48px !important;
   color: #94a3b8;
   font-size: 14px;
+}
+
+/* ── Sliding Detail Drawer (우측 슬라이딩 패널) ───────────────────────────── */
+.drawerBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 100;
+  animation: backdropFadeIn 0.18s ease forwards;
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(480px, 92vw);
+  background: white;
+  box-shadow: -8px 0 32px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  animation: drawerSlideIn 0.25s ease forwards;
+}
+
+@keyframes drawerSlideIn {
+  to { transform: translateX(0); }
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.drawerPhone {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.drawerTime {
+  font-size: 12.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.drawerClose {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 26px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.drawerClose:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.drawerBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 22px 24px;
+}
+
+.drawerStatsRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+
+.drawerStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drawerStat span {
+  font-size: 10.5px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.drawerStat strong {
+  font-size: 13.5px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.drawerSection {
+  margin-bottom: 18px;
+}
+
+.drawerSectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 8px;
+}
+
+.drawerText {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #334155;
+  margin: 0;
+}
+
+.drawerMuted {
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0;
 }

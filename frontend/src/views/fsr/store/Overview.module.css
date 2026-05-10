@@ -351,6 +351,17 @@
 .revertBtn:hover { background: #f8fafc; }
 
 /* ── Orders table ────────────────────────────────────────────────────────── */
+.pendingBadge {
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .refreshBtn {
   margin-left: auto;
   background: none;
