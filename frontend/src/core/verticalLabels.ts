@@ -14,6 +14,16 @@ export const VERTICAL_META: Record<string, VerticalMeta> = {
     avgValueLabel: "Avg Ticket",
     industryLabel: "Restaurant",
   },
+  // Mirrors backend/app/knowledge/kbbq.py — labels intentionally identical
+  // to restaurant; only icon + industryLabel differ for visual identification.
+  // (KBBQ adapter와 일치 — 라벨 동일, 아이콘/산업명만 차별화)
+  kbbq: {
+    icon: "🥩",
+    primaryRevenueLabel: "Peak Hour Revenue",
+    conversionLabel: "Lead Conversion Rate",
+    avgValueLabel: "Avg Ticket",
+    industryLabel: "Korean BBQ",
+  },
   home_services: {
     icon: "🔧",
     primaryRevenueLabel: "Field Time Revenue",
