@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>OpenAI Realtime Cost Strategy — JM Tech One 2026-05-08</title>
+<style>
+@page {
+  size: A4;
+  margin: 18mm 16mm 22mm 16mm;
+  @bottom-center {
+    content: "JM Tech One · 2026-05-08 · Page " counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", "Segoe UI", sans-serif;
+       font-size: 10pt; color: #1a1a1a; }
+body { line-height: 1.50; }
+h1 { font-size: 22pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; color: #1e3a8a; }
+h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+     margin-top: 22px; page-break-after: avoid; }
+h3 { font-size: 12pt; color: #1f2937; margin-top: 14px; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #374151; margin-top: 10px; }
+p, li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #eff6ff; font-weight: 600; color: #1e3a8a; }
+tr:nth-child(even) td { background: #fafbfc; }
+code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px;
+       font-size: 8.5pt; font-family: "SF Mono", Menlo, Consolas, monospace; }
+pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+      padding: 8px 10px; font-size: 8.5pt; overflow-x: auto; page-break-inside: avoid;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.35; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 3px solid #f59e0b; background: #fef3c7;
+             padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+blockquote p { margin: 2px 0; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+ul, ol { margin: 4px 0 8px 22px; padding: 0; }
+strong { color: #111827; }
+em { color: #4b5563; }
+a { color: #2563eb; text-decoration: none; }
+.cover-spacer { height: 30mm; }
+/* Dialogue speaker colorization (Agent vs You/Caller) */
+.line-agent  { color: #1e40af; }                /* deep blue — Agent */
+.line-caller { color: #b45309; font-weight: 600; } /* amber/orange — You/Caller */
+.spk-label   { font-weight: 700; }
+</style>
+</head>
+<body>
+<h1 id="jm-kbbq">JM KBBQ 신규 매장 도입 — 코드 재사용 분석 + 실행 계획</h1>
+<p><strong>작성일</strong>: 2026-05-10
+<strong>대상</strong>: JM Tech One Backend / Strategy
+<strong>목적</strong>: 장충동(JCD K-Barbecue) 메뉴를 베이스로 가상 매장 <strong>JM KBBQ</strong> (장르: Korean BBQ FSR) 시뮬레이션 도입 시, 기존 JM Cafe 코드의 재사용 가능 범위 + KBBQ 구체 실행 계획 정리</p>
+<hr>
+<h2 id="0-executive-summary">0. Executive Summary</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th style="text-align: center;">값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>백엔드 LOC 재사용률</strong></td>
+<td style="text-align: center;"><strong>81.2%</strong> (12,905 / 15,894 LOC)</td>
+</tr>
+<tr>
+<td><strong>백엔드 파일 재사용률</strong></td>
+<td style="text-align: center;"><strong>95%</strong> (91 / 96 files)</td>
+</tr>
+<tr>
+<td><strong>Feature 1:1 재사용</strong></td>
+<td style="text-align: center;"><strong>79%</strong> (11 / 14 capabilities)</td>
+</tr>
+<tr>
+<td><strong>신규 작성 필요 코드</strong></td>
+<td style="text-align: center;"><strong>5 파일</strong> (~880 LOC, 대부분 YAML/TXT 템플릿)</td>
+</tr>
+<tr>
+<td><strong>기존 코드 수정 필요</strong></td>
+<td style="text-align: center;"><strong>5 파일</strong> (대부분 enum/dispatch 추가, 신규 로직 X)</td>
+</tr>
+<tr>
+<td><strong>베이스 라인 KBBQ 라이브 가능 시점</strong></td>
+<td style="text-align: center;"><strong>5–7 founder-days</strong></td>
+</tr>
+<tr>
+<td><strong>정식 FSR 운영 (open tab + multi-round)</strong></td>
+<td style="text-align: center;"><strong>+6–10 founder-days</strong> (별도 sprint)</td>
+</tr>
+<tr>
+<td><strong>POS</strong></td>
+<td style="text-align: center;"><strong>Loyverse — 테스트용 ⭕ / 정식 FSR 운영 ❌</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>한 줄 결론</strong>: JM Cafe의 4계층 아키텍처가 의도대로 작동 — Layer 1–2 (Auth/RLS/Skills/Tools)는 95%+ 재사용, Layer 3 (Knowledge)는 copy-adapt, Layer 4 (Adapters)는 provider-agnostic. KBBQ 도입은 신규 산업 확장이 아니라 <strong>두 번째 vertical 적용이라는 표준 절차의 검증</strong>.</p>
+<hr>
+<h2 id="1-code-reuse-audit">1. 코드 재사용 감사 (Code Reuse Audit)</h2>
+<h3 id="11-layer">1.1 Layer별 재사용률</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th style="text-align: right;">LOC</th>
+<th style="text-align: right;">재사용 LOC</th>
+<th style="text-align: center;">재사용 %</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Layer 1 — Core (Auth/RLS/Gemini)</td>
+<td style="text-align: right;">263</td>
+<td style="text-align: right;">263</td>
+<td style="text-align: center;"><strong>100%</strong></td>
+<td>완전 vertical-agnostic</td>
+</tr>
+<tr>
+<td>Layer 2 — Skills (Tools/Scheduler)</td>
+<td style="text-align: right;">1,484</td>
+<td style="text-align: right;">1,410</td>
+<td style="text-align: center;"><strong>95%</strong></td>
+<td>모든 tool schema 재사용. catalog/service.py만 yaml 경로 파라미터</td>
+</tr>
+<tr>
+<td>Layer 3 — Knowledge (Metrics)</td>
+<td style="text-align: right;">334</td>
+<td style="text-align: right;">310</td>
+<td style="text-align: center;"><strong>93%</strong></td>
+<td>restaurant.py → kbbq.py 복사 필요</td>
+</tr>
+<tr>
+<td>Layer 4 — Adapters (Twilio/SMTP/Loyverse)</td>
+<td style="text-align: right;">463</td>
+<td style="text-align: right;">390</td>
+<td style="text-align: center;"><strong>84%</strong></td>
+<td>Loyverse webhook 라우팅에 'kbbq' 분기 추가</td>
+</tr>
+<tr>
+<td>API Layer (FastAPI routes)</td>
+<td style="text-align: right;">7,169</td>
+<td style="text-align: right;">5,780</td>
+<td style="text-align: center;"><strong>81%</strong></td>
+<td>realtime_voice 단일매장 하드코드 / voice_websocket 1줄 store name</td>
+</tr>
+<tr>
+<td>Services Layer (Bridge/Menu/Policy)</td>
+<td style="text-align: right;">6,149</td>
+<td style="text-align: right;">4,920</td>
+<td style="text-align: center;"><strong>80%</strong></td>
+<td>flows.py vertical 파라미터화 + transactions.py enum 추가</td>
+</tr>
+<tr>
+<td>Models</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: center;"><strong>100%</strong></td>
+<td>완전 generic</td>
+</tr>
+<tr>
+<td><strong>합계</strong></td>
+<td style="text-align: right;"><strong>15,894</strong></td>
+<td style="text-align: right;"><strong>12,905</strong></td>
+<td style="text-align: center;"><strong>81.2%</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-feature-surface">1.2 Feature Surface별 재사용</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th style="text-align: center;">Cafe</th>
+<th style="text-align: center;">KBBQ</th>
+<th style="text-align: center;">재사용 클래스</th>
+<th style="text-align: center;">추가 작업</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auth &amp; RLS</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Voice WebSocket (Retell legacy + Realtime)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟡 DB-driven</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Realtime Voice (Twilio/OpenAI)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟠 phone→store 라우팅 추가</td>
+<td style="text-align: center;">낮음</td>
+</tr>
+<tr>
+<td>POS Integration (Loyverse)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Menu Sync</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Allergen Lookup</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">KBBQ keyword 추가</td>
+</tr>
+<tr>
+<td>Order Flow (single-shot)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟡 단일 transaction OK (시뮬)</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Order Flow (multi-round all-you-can-eat)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">🟡 옵션</td>
+<td style="text-align: center;">🟠 신규 lane</td>
+<td style="text-align: center;">Phase 5 별도</td>
+</tr>
+<tr>
+<td>Reservation Flow</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Payment Bridge (pay-link)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>Payment Bridge (open tab dine-in)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">🟡 옵션</td>
+<td style="text-align: center;">🟠 신규 lane</td>
+<td style="text-align: center;">Phase 6 별도</td>
+</tr>
+<tr>
+<td>Email/SMS Channels</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>System Prompt Assembly</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 template-driven</td>
+<td style="text-align: center;">KBBQ template 4개</td>
+</tr>
+<tr>
+<td>State Machine</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+<tr>
+<td>5-Language Support</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">KBBQ는 KO+EN만</td>
+</tr>
+<tr>
+<td>Modifier Decomposition (FIX-B)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">🟢 1:1</td>
+<td style="text-align: center;">없음</td>
+</tr>
+</tbody>
+</table>
+<p><strong>1:1 재사용 11개 / 확장 필요 3개 / 옵션 2개 = 79% 1:1, 21% 확장 (그중 2개는 정식 FSR용 옵션)</strong></p>
+<h3 id="13-cafe-2">1.3 하드코드된 "cafe" 잔재 — 단 2건</h3>
+<table>
+<thead>
+<tr>
+<th>위치</th>
+<th style="text-align: center;">영향</th>
+<th>수정안</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>realtime_voice.py:103</code> <code>JM_CAFE_STORE_ID = "7c425fcb-..."</code></td>
+<td style="text-align: center;">🔴 단일매장 라우팅 — KBBQ 라이브 차단</td>
+<td><code>phone_routing</code> 테이블 lookup으로 대체</td>
+</tr>
+<tr>
+<td><code>voice_websocket.py:1316</code> <code>"Thanks for calling JM Cafe..."</code></td>
+<td style="text-align: center;">🟡 매장명 하드코드 — UX 영향</td>
+<td><code>f"Thanks for calling {store['name']}..."</code></td>
+</tr>
+</tbody>
+</table>
+<p>나머지 25건의 "cafe" 매치는 모두 system prompt/docstring <strong>예시 텍스트</strong> — 새 매장에 그대로 배포해도 무해 (LLM 입장에서 일반 예시).</p>
+<h3 id="14-vertical-1">1.4 Vertical 등록 지점 — 단 1줄</h3>
+<pre><code class="language-python"># backend/app/services/bridge/transactions.py:22
+_VERTICALS = {&quot;restaurant&quot;, &quot;home_services&quot;, &quot;beauty&quot;, &quot;auto_repair&quot;}
+#  → {&quot;restaurant&quot;, &quot;kbbq&quot;, &quot;home_services&quot;, &quot;beauty&quot;, &quot;auto_repair&quot;}
+</code></pre>
+<p><code>bridge/flows.py</code>의 <code>vertical="restaurant"</code> 5곳도 store record에서 읽도록 파라미터화 (호출부만 수정, 알고리즘 무변경).</p>
+<hr>
+<h2 id="2-jm-kbbq-pdf-77">2. JM KBBQ 메뉴 — 장충동 PDF 기반 (77 아이템)</h2>
+<h3 id="21">2.1 카테고리 + 가격대 요약</h3>
+<table>
+<thead>
+<tr>
+<th>카테고리</th>
+<th style="text-align: center;">개수</th>
+<th style="text-align: center;">가격대</th>
+<th>룰</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Appetizers (A1-A13)</td>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;">$5.00–$23.95</td>
+<td>떡볶이류 +Ramen/+Cheese add-on</td>
+</tr>
+<tr>
+<td>Shareable Plate (S1-S4)</td>
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">$19.95–$45.95</td>
+<td>Soondae S/M variant</td>
+</tr>
+<tr>
+<td>BBQ Combo Set (A/B)</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">$85 / $105</td>
+<td>No substitute</td>
+</tr>
+<tr>
+<td>BBQ Beef A La Carte (B1-B7)</td>
+<td style="text-align: center;">7</td>
+<td style="text-align: center;">$29.95–$45.95</td>
+<td>Min 2 order</td>
+</tr>
+<tr>
+<td>BBQ Pork A La Carte (B8-B13)</td>
+<td style="text-align: center;">6</td>
+<td style="text-align: center;">$27.95–$30.95</td>
+<td>Min 2 order</td>
+</tr>
+<tr>
+<td>BBQ Chicken/Squid A La Carte (B14-B15)</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">$25.95–$27.95</td>
+<td>Min 2 order</td>
+</tr>
+<tr>
+<td>Hot Pot 전골류 (H1-H7)</td>
+<td style="text-align: center;">7</td>
+<td style="text-align: center;">$45.95</td>
+<td>For 2 People</td>
+</tr>
+<tr>
+<td>Entrees 식사류 (E1-E31)</td>
+<td style="text-align: center;">31</td>
+<td style="text-align: center;">$14.95–$27.95</td>
+<td>Rice + 반찬 무한 리필</td>
+</tr>
+<tr>
+<td>Side Order</td>
+<td style="text-align: center;">7</td>
+<td style="text-align: center;">$2.50–$5.00</td>
+<td>Corn cheese, egg, rice cake</td>
+</tr>
+<tr>
+<td><strong>합계</strong></td>
+<td style="text-align: center;"><strong>77</strong></td>
+<td style="text-align: center;"></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-jm-kbbq">2.2 브랜딩 변경 (장충동 → JM KBBQ)</h3>
+<table>
+<thead>
+<tr>
+<th>원본</th>
+<th>JM KBBQ</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>장충동 JCD K-Barbecue</td>
+<td><strong>JM Korean BBQ</strong> (영문 정식) / <strong>JM KBBQ</strong> (단축)</td>
+<td>매장 이름</td>
+</tr>
+<tr>
+<td>장충동 족발 (S1)</td>
+<td>JM 족발 / Jokbal</td>
+<td>"장충동" prefix 제거</td>
+</tr>
+<tr>
+<td>장충동 보쌈 (S2)</td>
+<td>JM 보쌈 / Bossam</td>
+<td>동일</td>
+</tr>
+<tr>
+<td>메뉴 한국어 표기</td>
+<td>그대로 유지</td>
+<td>Galbi/Bulgogi/Samgyeopsal 등 음역</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-feedback_multilingual_policymd">2.3 다언어 정책 (메모리 <code>feedback_multilingual_policy.md</code> 적용)</h3>
+<blockquote>
+<p><strong>KBBQ vertical = KO + EN 만</strong> (JA/ZH/ES 제외 — Cafe와 다름)</p>
+</blockquote>
+<pre><code class="language-yaml"># 메뉴 항목 예시 (cafe와 달리 2-language)
+- id: galbi_marinated
+  en: Galbi (Marinated Beef Short Rib)
+  ko: 양념갈비
+  category: bbq_beef
+  base_price: 45.95
+</code></pre>
+<p>음성 응대 시:
+- 한국 손님 → "양념갈비 두 인분 주문하시겠어요?"
+- 영어 손님 → "Two orders of marinated short rib?"
+- Galbi/Bulgogi/Samgyeopsal/Bibimbap/Tteokbokki/Soondae/Banchan은 <strong>고유명사로 음역 유지</strong></p>
+<hr>
+<h2 id="3-kbbq-day-1">3. KBBQ 구체 실행 계획 (Day 1 산출물 명세)</h2>
+<h3 id="31-menu-templateskbbqmenuyaml">3.1 메뉴 (Menu) — <code>templates/kbbq/menu.yaml</code></h3>
+<p><strong>구조</strong> (cafe pattern 그대로 + KO/EN dual):</p>
+<pre><code class="language-yaml">vertical: kbbq
+default_lang: en
+supported_langs: [en, ko]
+
+categories:
+  - id: appetizer
+    en: Appetizers
+    ko: 안주
+  - id: shareable
+    en: Shareable Plate
+    ko: 공유 메뉴
+  - id: bbq_combo
+    en: BBQ Combo
+    ko: BBQ 콤보
+  - id: bbq_beef
+    en: BBQ Beef A La Carte
+    ko: 소고기 단품
+  - id: bbq_pork
+    en: BBQ Pork A La Carte
+    ko: 돼지고기 단품
+  - id: bbq_other
+    en: BBQ Chicken / Squid
+    ko: 닭/오징어 단품
+  - id: hot_pot
+    en: Korean Style Hot Pot
+    ko: 전골류
+  - id: entree
+    en: Entrees
+    ko: 식사류
+  - id: side
+    en: Sides
+    ko: 사이드
+
+items:
+  # ─── BBQ Beef (B1-B7) — Min 2 order rule
+  - id: galbi_saeng
+    en: Saeng Galbi (Plain Beef Short Rib)
+    ko: 생갈비
+    category: bbq_beef
+    base_price: 45.95
+    base_allergens: []
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+  # ... (B2-B7 동일 패턴)
+
+  # ─── Hot Pot (H1-H7) — For 2 People rule
+  - id: budae_jeongol
+    en: Budae Jeongol (Spicy Army Stew Hot Pot)
+    ko: 부대전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2  # ← KBBQ 신규 메타필드 (info, runtime 사용 안함)
+    base_allergens: [soy, wheat, gluten, dairy, pork]
+    base_dietary: []
+    modifier_groups: [spice_level, add_on_starch, banchan_refill_info]
+
+  # ─── Add-on variants (Tteokbokki / Budae jjigae / Squid stir-fry)
+  - id: tteokbokki
+    en: Tteokbokki (Spicy Rice Cake)
+    ko: 떡볶이
+    category: appetizer
+    base_price: 14.95
+    base_allergens: [soy, wheat, gluten]
+    base_dietary: [vegetarian]
+    modifier_groups: [spice_level, add_on_starch]
+    add_on_options:
+      - {id: ramen,  delta: 5.00}
+      - {id: cheese, delta: 5.00, allergen_add: [dairy]}
+</code></pre>
+<p><strong>총 LOC</strong>: ~600줄 (cafe menu.yaml 371줄 대비 ~1.6배 — 카테고리 9개 × 평균 8.5 아이템).</p>
+<h3 id="32-modifier-templateskbbqmodifier_groupsyaml">3.2 Modifier — <code>templates/kbbq/modifier_groups.yaml</code></h3>
+<p><strong>12 그룹</strong> (cafe 8 + KBBQ 신규 4):</p>
+<table>
+<thead>
+<tr>
+<th>Group ID</th>
+<th>종류</th>
+<th style="text-align: center;">Required</th>
+<th style="text-align: center;">Min/Max</th>
+<th>적용 대상</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>meat_doneness</code></td>
+<td>신규</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">1/1</td>
+<td>BBQ Beef Saeng/Deung/Jumullleok</td>
+</tr>
+<tr>
+<td><code>spice_level</code></td>
+<td>신규</td>
+<td style="text-align: center;">optional</td>
+<td style="text-align: center;">0/1</td>
+<td>매운 메뉴 8개</td>
+</tr>
+<tr>
+<td><code>bbq_party_size</code></td>
+<td>신규</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">1/1</td>
+<td>BBQ A La Carte 15개</td>
+</tr>
+<tr>
+<td><code>pork_cut_thickness</code></td>
+<td>신규</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">1/1</td>
+<td>삼겹살/대패삼겹살</td>
+</tr>
+<tr>
+<td><code>add_on_starch</code></td>
+<td>신규 (cafe <code>syrup</code> 패턴 변형)</td>
+<td style="text-align: center;">optional</td>
+<td style="text-align: center;">0/2</td>
+<td>떡볶이/오징어볶음/부대찌개</td>
+</tr>
+<tr>
+<td><code>egg_style</code></td>
+<td>신규</td>
+<td style="text-align: center;">optional</td>
+<td style="text-align: center;">0/1</td>
+<td>Bibimbap/Dolsot/Manduguk</td>
+</tr>
+<tr>
+<td><code>wrap_extras</code></td>
+<td>신규</td>
+<td style="text-align: center;">optional</td>
+<td style="text-align: center;">0/3</td>
+<td>BBQ 전체</td>
+</tr>
+<tr>
+<td><code>rice_swap</code></td>
+<td>신규</td>
+<td style="text-align: center;">optional</td>
+<td style="text-align: center;">0/1</td>
+<td>Bibimbap/Entrees</td>
+</tr>
+<tr>
+<td><code>banchan_refill_info</code></td>
+<td>info-only</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>모든 BBQ/Entree (info)</td>
+</tr>
+<tr>
+<td><code>combo_no_sub_rule</code></td>
+<td>hard-rule</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>BBQ Combo A/B (system prompt)</td>
+</tr>
+<tr>
+<td><code>gratuity_party_rule</code></td>
+<td>auto-rule</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>6명 이상 (auto +18%)</td>
+</tr>
+<tr>
+<td><code>dietary_filter</code></td>
+<td>info</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td>메뉴 검색 메타데이터</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cafe에서 재사용</strong>: <code>dietary_filter</code>, <code>banchan_refill_info</code> (개념만), 나머지 새로.</p>
+<p><strong>핵심 옵션 정의</strong>:</p>
+<pre><code class="language-yaml">groups:
+  meat_doneness:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [bbq_beef]
+    options:
+      - {id: rare,        en: &quot;Rare&quot;,        ko: &quot;레어&quot;,      price_delta: 0.00}
+      - {id: medium_rare, en: &quot;Medium-rare&quot;, ko: &quot;미디엄 레어&quot;, price_delta: 0.00}
+      - {id: medium,      en: &quot;Medium&quot;,      ko: &quot;미디엄&quot;,    price_delta: 0.00}
+      - {id: medium_well, en: &quot;Medium-well&quot;, ko: &quot;미디엄 웰&quot;,  price_delta: 0.00}
+      - {id: well_done,   en: &quot;Well-done&quot;,   ko: &quot;웰던&quot;,      price_delta: 0.00}
+
+  spice_level:
+    required: false
+    min: 0
+    max: 1
+    applies_to_categories: [appetizer, hot_pot, entree]
+    options:
+      - {id: mild,    en: &quot;Mild&quot;,        ko: &quot;순한맛&quot;,    price_delta: 0.00}
+      - {id: medium,  en: &quot;Medium&quot;,      ko: &quot;보통맛&quot;,    price_delta: 0.00}
+      - {id: hot,     en: &quot;Hot&quot;,         ko: &quot;매운맛&quot;,    price_delta: 0.00}
+      - {id: extra,   en: &quot;Extra hot&quot;,   ko: &quot;아주 매운맛&quot;, price_delta: 0.00}
+
+  bbq_party_size:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [bbq_beef, bbq_pork, bbq_other]
+    options:
+      - {id: two,     en: &quot;2 portions (min)&quot;, ko: &quot;2인분(최소)&quot;, price_delta: 0.00, default: true}
+      - {id: three,   en: &quot;3 portions&quot;,       ko: &quot;3인분&quot;,       price_delta: 0.00}
+      - {id: four,    en: &quot;4 portions&quot;,       ko: &quot;4인분&quot;,       price_delta: 0.00}
+      - {id: five_plus, en: &quot;5+ portions&quot;,    ko: &quot;5인분 이상&quot;,  price_delta: 0.00}
+
+  add_on_starch:
+    required: false
+    min: 0
+    max: 2
+    applies_to_items: [tteokbokki, no_spicy_tteokbokki, ojingeo_bokkeum, budae_jjigae, ramen_extras]
+    options:
+      - {id: add_ramen,     en: &quot;+Ramen&quot;,         ko: &quot;+라면&quot;,       price_delta: 5.00, allergen_add: [wheat, gluten]}
+      - {id: add_cheese,    en: &quot;+Cheese&quot;,        ko: &quot;+치즈&quot;,       price_delta: 5.00, allergen_add: [dairy]}
+      - {id: add_udon,      en: &quot;+Udon&quot;,          ko: &quot;+우동&quot;,       price_delta: 5.00, allergen_add: [wheat, gluten]}
+      - {id: add_rice_cake, en: &quot;+Rice cake&quot;,     ko: &quot;+떡 추가&quot;,     price_delta: 2.50, allergen_add: [gluten]}
+
+  wrap_extras:
+    required: false
+    min: 0
+    max: 3
+    applies_to_categories: [bbq_beef, bbq_pork, bbq_other]
+    options:
+      - {id: extra_lettuce,    en: &quot;+Lettuce wrap&quot;,       ko: &quot;+상추 추가&quot;,     price_delta: 5.00}
+      - {id: extra_mozzarella, en: &quot;+Mozzarella cheese&quot;,  ko: &quot;+모짜렐라 추가&quot;,  price_delta: 5.00, allergen_add: [dairy]}
+      - {id: extra_side_set,   en: &quot;+Side dish set&quot;,      ko: &quot;+반찬 세트 추가&quot;, price_delta: 5.00}
+</code></pre>
+<h3 id="33-variant-loyverse-200-combo-fit">3.3 Variant — Loyverse 200-combo 한계 내 fit</h3>
+<p><strong>원칙</strong>: variants는 <strong>단일 attribute</strong> (size 등)만, 다중 옵션은 <strong>modifier</strong>로 처리.</p>
+<table>
+<thead>
+<tr>
+<th>메뉴</th>
+<th>Variant 종류</th>
+<th style="text-align: center;">조합 수</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>순대 (S3)</td>
+<td>size [Small/Medium]</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>순대 콤비네이션 (S4)</td>
+<td>size [Small/Medium]</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>보쌈 (S2/E5)</td>
+<td>size [Shareable/Single]</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>족발 (S1/E4)</td>
+<td>size [Shareable/Single]</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>떡볶이 (A5)</td>
+<td>add-on [Plain/+R/+C/+R+C]</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>안매운 떡볶이 (A6)</td>
+<td>동일</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>부대찌개 (E16)</td>
+<td>add-on [Plain/+R]</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>오징어볶음 (E21)</td>
+<td>add-on [Plain/+U/+R]</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td><strong>나머지 69개</strong></td>
+<td>variant 없음</td>
+<td style="text-align: center;">1 each</td>
+</tr>
+</tbody>
+</table>
+<p><strong>총 variant 조합</strong>: 2+2+2+2+4+4+2+3 + 69 = <strong>90개 (200 한도 충분)</strong></p>
+<blockquote>
+<p>⚠️ <strong>Loyverse 200-combo 한계</strong>는 <em>per-item</em>. 한 아이템당 최대 200 조합. 이 분포는 모두 한 자릿수라 안전.</p>
+</blockquote>
+<h3 id="34-allergen-templateskbbqallergen_rulesyaml">3.4 Allergen 룰 — <code>templates/kbbq/allergen_rules.yaml</code></h3>
+<p><strong>Cafe 패턴 + KBBQ keyword 추가</strong>:</p>
+<pre><code class="language-yaml">patterns:
+  # ─── Cafe에서 재사용 가능 (FDA-9 표준)
+  - keywords: [milk, cheese, cream, yogurt, dairy, mozzarella, butter]
+    add_allergens: [dairy]
+    confidence: 0.92
+
+  - keywords: [soy, soybean, soy sauce, doenjang, dwenjang, ssamjang]
+    add_allergens: [soy]
+    confidence: 0.95
+
+  - keywords: [wheat, flour, ramen, udon, noodle, mandoo, dumpling, pancake, pajeon]
+    add_allergens: [wheat, gluten]
+    confidence: 0.95
+
+  - keywords: [egg, gyeran, omelet, fried egg]
+    add_allergens: [egg]
+    confidence: 0.95
+
+  # ─── KBBQ 신규 keyword
+  - keywords: [shrimp, saewoo, mussel, honghap, clam, oyster]
+    add_allergens: [shellfish]
+    confidence: 0.95
+
+  - keywords: [squid, ojingeo, octopus, cuttlefish]
+    add_allergens: [shellfish]   # FDA-9: mollusks → shellfish category
+    confidence: 0.93
+
+  - keywords: [godeungeo, mackerel, anchovy, salmon, tuna, fish cake, odeng]
+    add_allergens: [fish]
+    confidence: 0.95
+
+  - keywords: [sesame, tahini, sesame oil, perilla seed]
+    add_allergens: [sesame]
+    confidence: 0.95
+
+  # ─── KBBQ-specific patterns (한글 + 영문 동시 매칭)
+  - keywords: [bossam, jokbal, samgyupsal, samgyeopsal, daepae, moksal,
+               hanjeongsal, pork belly, pork shoulder, pork jowl, 보쌈, 족발,
+               삼겹살, 대패삼겹살, 목살, 항정살, 돼지]
+    add_allergens: [pork]   # informational — not FDA-9 but cultural/religious
+    confidence: 0.97
+    reason: &quot;Pork dish — relevant for halal/kosher/religious dietary needs&quot;
+
+  - keywords: [galbi, bulgogi, chadol, deung shim, jumullleok, brisket,
+               ribeye, short rib, 갈비, 불고기, 차돌, 등심, 주물럭, 소고기]
+    add_allergens: []
+    add_dietary: [beef]
+    confidence: 0.97
+
+  - keywords: [kimchi, 김치]
+    add_allergens: [shellfish, fish]   # 김치 발효 시 멸치액젓/새우젓 (대부분 매장 사용)
+    add_dietary: [fermented]
+    confidence: 0.85
+    reason: &quot;Most kimchi recipes contain anchovy/shrimp paste — verify with operator&quot;
+
+  - keywords: [soondae, blood sausage, 순대]
+    add_allergens: [pork, wheat, gluten]   # 순대 = 돼지피 + 당면 + 보리
+    confidence: 0.92
+
+  - keywords: [japchae, glass noodle, dangmyeon]
+    add_allergens: [soy]   # 잡채 = 간장 양념
+    confidence: 0.93
+
+  - keywords: [tteok, rice cake, 떡]
+    add_allergens: []
+    add_dietary: [gluten_free_base]
+    confidence: 0.90
+    reason: &quot;Pure rice cake is gluten-free, but check sauce (gochujang has wheat in some brands)&quot;
+
+# ─── Dietary inference (cafe 패턴 그대로)
+dietary_inference:
+  - if_absent: [dairy]
+    suggest: [dairy_free]
+  - if_absent: [pork, beef, fish, shellfish]
+    suggest: [vegetarian]
+    confidence: 0.50   # operator 확인 필요 (다른 동물 단백질 가능)
+
+# ─── Operator hints
+operator_hints:
+  - text: &quot;김치 = 발효 식품. 대부분 매장의 김치는 새우젓/멸치액젓 포함 → shellfish/fish allergen 표시 권장. 비건 김치 별도 운영 시만 dietary 분리.&quot;
+  - text: &quot;Gochujang 일부 브랜드는 wheat 포함. 매장 사용 브랜드 확인 후 wheat allergen flag.&quot;
+  - text: &quot;Pork (돼지) allergen은 FDA-9 X but halal/kosher/이슬람/유대 손님 대응 필수 — 메뉴 사전 표시 권장.&quot;
+  - text: &quot;BBQ 직화 그릴 cross-contamination — 모든 grilled 메뉴는 'shared grill' 라벨 추천.&quot;
+</code></pre>
+<h3 id="35-gratuity-18-6-voice-agent">3.5 Gratuity (18% / 6+명) — Voice agent 자동 처리</h3>
+<p><strong>Loyverse 한계</strong>: auto-gratuity 내장 X. 두 가지 전략 비교:</p>
+<table>
+<thead>
+<tr>
+<th>전략</th>
+<th>구현</th>
+<th>장점</th>
+<th>단점</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. Voice agent → menu_item 라인 추가</strong></td>
+<td>Loyverse에 "Service Charge (18%)" menu_item 등록. <code>create_order</code> 시 party_size ≥ 6 → items_json에 자동 라인 append</td>
+<td>POS 호환 100%, 영수증에 명시</td>
+<td>menu_item ID 매장당 별도 등록 필요</td>
+</tr>
+<tr>
+<td><strong>B. bridge_transactions 메타 + 영수증 후처리</strong></td>
+<td><code>metadata.gratuity_pct</code> 컬럼 추가. 영수증 생성 시 별도 라인 합산</td>
+<td>DB만 변경, POS 무관</td>
+<td>Loyverse 영수증과 voice agent 영수증 불일치</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>권장: A (Voice agent + Loyverse menu_item 라인)</strong></p>
+<ul>
+<li>cafe와 동일한 패턴 (effective_price 계산 시 모든 라인이 menu_item으로 통일)</li>
+<li>영수증·POS·payment-link 모두 일관</li>
+<li>단점은 "Service Charge 18%" 1개 menu_item만 1회 등록</li>
+</ul>
+</blockquote>
+<p><strong>구현 코드 (Day 5 라이브 검증 시)</strong>:</p>
+<pre><code class="language-python"># backend/app/services/bridge/flows.py — create_order 내부
+GRATUITY_THRESHOLD_PARTY = 6
+GRATUITY_PCT = 0.18
+GRATUITY_MENU_ITEM_ID = &quot;kbbq-service-charge-18&quot;  # Loyverse 등록
+
+if party_size and party_size &gt;= GRATUITY_THRESHOLD_PARTY:
+    subtotal_cents = sum(line[&quot;price_cents&quot;] * line[&quot;quantity&quot;] for line in items)
+    gratuity_cents = round(subtotal_cents * GRATUITY_PCT)
+    items.append({
+        &quot;menu_item_id&quot;: GRATUITY_MENU_ITEM_ID,
+        &quot;name&quot;: f&quot;Service Charge (18% — party of {party_size})&quot;,
+        &quot;price_cents&quot;: gratuity_cents,
+        &quot;quantity&quot;: 1,
+        &quot;is_auto_gratuity&quot;: True,
+    })
+</code></pre>
+<p>System prompt 룰:</p>
+<pre><code>GRATUITY RULE: If the caller mentions party of 6 or more, automatically add
+18% service charge to the bill. Inform the caller: &quot;For parties of 6 or more
+we add an automatic 18% service charge — your total will be $X.XX.&quot;
+</code></pre>
+<hr>
+<h2 id="4-kbbq-57-founder-days">4. KBBQ 도입 일정 — 5–7 founder-days</h2>
+<h3 id="day-1-2026-05-10-templates-vertical-05d">Day 1 (오늘, 2026-05-10): Templates + Vertical 등록 (0.5d)</h3>
+<p><strong>산출물</strong>:
+- ✅ <code>backend/app/templates/kbbq/menu.yaml</code> (~600 LOC)
+- ✅ <code>backend/app/templates/kbbq/modifier_groups.yaml</code> (~200 LOC)
+- ✅ <code>backend/app/templates/kbbq/allergen_rules.yaml</code> (~120 LOC)
+- ✅ <code>backend/app/templates/kbbq/system_prompt_base.txt</code> (~150 LOC)
+- ✅ <code>backend/app/knowledge/kbbq.py</code> (copy of restaurant.py + 가격대 조정)
+- ✅ <code>_VERTICALS = {..., "kbbq", ...}</code> (transactions.py:22)
+- ✅ pytest 검증 (catalog/menu/allergen 단위)</p>
+<h3 id="day-2-2026-05-11-db-seed-loyverse-1d">Day 2 (2026-05-11): DB Seed + Loyverse 연결 (1d)</h3>
+<p><strong>산출물</strong>:
+- ✅ Supabase: <code>stores</code> 신규 row (JM KBBQ, vertical=kbbq, owner_id=신규)
+- ✅ <code>menu_items</code> + <code>modifier_groups</code> + <code>modifier_options</code> import (yaml → SQL seed)
+- ✅ Loyverse 신규 매장 생성 (또는 cafe와 분리된 별도 token)
+- ✅ Loyverse 메뉴 등록 (77 items + 90 variants + 12 modifier groups)
+- ✅ "Service Charge 18%" Loyverse menu_item 별도 등록
+- ✅ POS sync 엔드포인트 → menu_cache 채움</p>
+<h3 id="day-3-2026-05-12-system-prompt-hard-code-1d">Day 3 (2026-05-12): System Prompt + Hard-Code 제거 (1d)</h3>
+<p><strong>산출물</strong>:
+- ✅ <code>voice_websocket.py:1316</code> "JM Cafe" 하드코드 → <code>store["name"]</code>
+- ✅ KBBQ system prompt assembly (menu_section + modifier_section + FSR rules)
+- ✅ allergen lookup KBBQ keywords unit test
+- ✅ <code>bridge/flows.py</code> <code>vertical="restaurant"</code> 5곳 → <code>vertical=store["vertical"]</code></p>
+<h3 id="day-4-2026-05-13-phone-routing-twilio-1d">Day 4 (2026-05-13): Phone Routing + Twilio (1d)</h3>
+<p><strong>산출물</strong>:
+- ✅ <code>realtime_voice.py:103</code> <code>JM_CAFE_STORE_ID</code> 하드코드 → <code>phone_routing</code> 테이블 lookup
+- ✅ Supabase: <code>phone_routing</code> 테이블 신규 (phone, store_id, vertical)
+- ✅ Twilio 신규 번호 매입 ($1/mo) 또는 cafe 번호 reuse 결정
+- ✅ Twilio webhook → store 라우팅 검증 (cross-store leak 0)</p>
+<h3 id="day-5-2026-05-14-1d">Day 5 (2026-05-14): 라이브 검증 통화 (1d)</h3>
+<p><strong>시나리오 6개</strong>:
+1. "갈비 2인분 well-done 주문" (KO, BBQ A La Carte min 2 + doneness)
+2. "Spicy pork bulgogi for 4 portions" (EN, party_size + spice)
+3. "감자탕전골 for 2 people" (KO, hot pot for-2 룰)
+4. "I'm allergic to peanuts and shrimp" (EN, Tier-3 alert + shellfish 매칭)
+5. "BBQ Combo A 한 세트 + 추가 사이드는 가능?" (KO, combo no-sub 룰)
+6. "8명 예약하고 싶어요" (KO, auto-gratuity 18%)</p>
+<p><strong>검증 항목</strong>:
+- ✅ KO 음역 (Galbi/Bulgogi/Samgyeopsal) 자연스러운지
+- ✅ Cafe vs KBBQ multi-store RLS 격리 (cross-tenant leak 0)
+- ✅ Loyverse 주문 생성 + 영수증 발송
+- ✅ FIX-A keepalive (1006 disconnect 0%)
+- ✅ FIX-B 모디파이어 분해 (well-done/spicy + party_size)</p>
+<h3 id="day-6-7-2026-05-1516-m2-baseline">Day 6-7 (2026-05-15~16): M2 Baseline + 분석 (선택)</h3>
+<ul>
+<li>24-48h passive baseline 운영</li>
+<li>Cafe vs KBBQ 비교 분석 (turn 길이, fallback 빈도, modifier mismatch)</li>
+<li>P0-F Onboarding Wizard 견적 calibration (Frontend Track A 의존성)</li>
+</ul>
+<hr>
+<h2 id="5-fsr-sprint-610d">5. 정식 FSR 운영 추가 작업 (별도 sprint, 6–10d)</h2>
+<p>베이스 라인 KBBQ 라이브 후, 실제 매장 도입 전 필요한 추가 기능:</p>
+<h3 id="phase-5-multi-round-order-accumulation-3-5d">Phase 5 — Multi-Round Order Accumulation (3-5d)</h3>
+<p><strong>문제</strong>: BBQ 식사는 라운드별 추가 주문 (첫 주문 → 추가 고기 → 술 → 식사) 패턴. Cafe는 단일 transaction 가정.</p>
+<p><strong>해결</strong>:
+- <code>bridge_transactions</code> 컬럼 추가: <code>round_number</code> (default 1), <code>parent_tx_id</code> (FK self)
+- <code>flows.py.create_order</code> 에 <code>accumulate_mode=true</code> 옵션 → 기존 transaction 검색 후 items_json append
+- State machine: <code>pending → pending_round_2 → pending_round_3 → paid</code></p>
+<h3 id="phase-6-open-tab-dine-in-payment-3-5d">Phase 6 — Open Tab Dine-In Payment (3-5d)</h3>
+<p><strong>문제</strong>: KBBQ는 식사 종료 시점에 청구 (cafe pay-link과 다름).</p>
+<p><strong>해결</strong>:
+- 새 <code>payment_lane = "open_tab"</code> 도입
+- 주문 즉시 <code>fired_unpaid</code> 상태로 주방 송신, 청구는 식사 종료 시
+- POS 단말기 결제 webhook → bridge_transactions state 업데이트
+- Twilio reservation 흐름과 통합 (table_number 인코딩)</p>
+<hr>
+<h2 id="6-loyverse-fsr-ok-x">6. Loyverse FSR 한계 — 테스트용 OK / 정식 X</h2>
+<table>
+<thead>
+<tr>
+<th>FSR 요건</th>
+<th style="text-align: center;">Loyverse</th>
+<th style="text-align: center;">KBBQ 시뮬</th>
+<th style="text-align: center;">KBBQ 정식</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Modifiers + 가격 추가</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">OK</td>
+<td style="text-align: center;">OK</td>
+</tr>
+<tr>
+<td>Variants (200 combo)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">OK</td>
+<td style="text-align: center;">OK</td>
+</tr>
+<tr>
+<td>Open ticket / 분할 / 합치기</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">OK</td>
+<td style="text-align: center;">OK</td>
+</tr>
+<tr>
+<td>KDS (kitchen display)</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">OK</td>
+<td style="text-align: center;">OK</td>
+</tr>
+<tr>
+<td>Dining options 커스텀</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">OK</td>
+<td style="text-align: center;">OK</td>
+</tr>
+<tr>
+<td>Table mapping (floor plan)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">Workaround (ticket name)</td>
+<td style="text-align: center;"><strong>부족</strong></td>
+</tr>
+<tr>
+<td>Reservation</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">Voice agent에서 관리</td>
+<td style="text-align: center;"><strong>부족</strong></td>
+</tr>
+<tr>
+<td>Auto gratuity (18% 6+명)</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">Voice agent service item</td>
+<td style="text-align: center;">OK (workaround)</td>
+</tr>
+<tr>
+<td>Course/round ordering</td>
+<td style="text-align: center;">⚠️</td>
+<td style="text-align: center;">Open ticket 사용</td>
+<td style="text-align: center;"><strong>부족</strong></td>
+</tr>
+<tr>
+<td>Required modifier 강제</td>
+<td style="text-align: center;">⚠️</td>
+<td style="text-align: center;">Voice agent 책임</td>
+<td style="text-align: center;"><strong>부족</strong></td>
+</tr>
+<tr>
+<td>BBQ 2-min 강제</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">Voice agent 책임</td>
+<td style="text-align: center;"><strong>부족</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>결론</strong>: 시뮬 매장으로는 ⭕, 실제 PDX 5+ 테이블 운영은 Quantic 또는 다른 FSR-native POS로 마이그 권장.</p>
+<hr>
+<h2 id="7-risk">7. Risk + 권장 우선순위</h2>
+<h3 id="high-risk">High Risk</h3>
+<ol>
+<li><strong>Phone routing 하드코드</strong> (<code>realtime_voice.py:103</code>) — KBBQ 라이브 차단. Day 4 필수.</li>
+<li><strong>Loyverse 200-combo 한계</strong> — 한 아이템에 매핑 폭증 시 위험. 현재 분포는 안전하지만 향후 신규 add-on 추가 시 모니터링.</li>
+<li><strong>김치 allergen mis-flag</strong> — 매장 김치 레시피 모르면 shellfish/fish 표시 누락 위험. Operator hint로 1차 대응.</li>
+</ol>
+<h3 id="medium-risk">Medium Risk</h3>
+<ol start="4">
+<li><strong>Multi-round 주문 누락</strong> — Day 5 시나리오는 단일 transaction 가정. 실제 KBBQ 다중 주문은 새 transaction으로 처리 (Phase 5 별도).</li>
+<li><strong>한국어 음역 일관성</strong> — Galbi vs Kalbi vs 양념갈비 — 메뉴 ID는 <em>galbi_marinated</em> 영어 단일, system prompt에서 음역 규정.</li>
+</ol>
+<h3 id="low-risk">Low Risk</h3>
+<ol start="6">
+<li><strong>Knowledge <code>kbbq.py</code> 가격 상수</strong> — KPI 계산용, 라이브 차단은 안 함.</li>
+<li><strong>Twilio 신규 번호 비용</strong> — $1/mo 무시 가능.</li>
+</ol>
+<hr>
+<h2 id="8">8. 권장 다음 행동</h2>
+<h3 id="2026-05-10-eod">즉시 (오늘, 2026-05-10 EOD까지)</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>작업</th>
+<th>파일 / 출력</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>KBBQ menu.yaml 작성</td>
+<td><code>backend/app/templates/kbbq/menu.yaml</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>KBBQ modifier_groups.yaml 작성</td>
+<td><code>backend/app/templates/kbbq/modifier_groups.yaml</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>KBBQ allergen_rules.yaml 작성</td>
+<td><code>backend/app/templates/kbbq/allergen_rules.yaml</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>KBBQ system_prompt_base.txt 작성</td>
+<td><code>backend/app/templates/kbbq/system_prompt_base.txt</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>_VERTICALS</code>에 "kbbq" 추가</td>
+<td><code>backend/app/services/bridge/transactions.py:22</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>knowledge/kbbq.py</code> 신규 (restaurant.py 복사 + 가격 조정)</td>
+<td><code>backend/app/knowledge/kbbq.py</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td>pytest 검증</td>
+<td>catalog/menu/allergen 단위 테스트</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Day 1 commit + push</td>
+<td>단일 commit + Telegram 알림</td>
+</tr>
+</tbody>
+</table>
+<h3 id="day-2-2026-05-11">Day 2 (내일, 2026-05-11)</h3>
+<ul>
+<li>DB seed (yaml → menu_items SQL)</li>
+<li>Loyverse 신규 매장 등록 + 메뉴 import</li>
+<li>Service Charge 18% Loyverse menu_item 등록</li>
+</ul>
+<h3 id="day-3-5-2026-05-1214">Day 3-5 (2026-05-12~14)</h3>
+<ul>
+<li>Hard-code 제거 (voice_websocket store name + flows.py vertical 파라미터)</li>
+<li>Phone routing 테이블 + Twilio 매핑</li>
+<li>라이브 검증 6 시나리오</li>
+</ul>
+<h3 id="day-6-7-2026-05-1516">Day 6-7 (2026-05-15~16, 선택)</h3>
+<ul>
+<li>Cafe vs KBBQ 비교 분석</li>
+<li>P0-F Onboarding Wizard 견적 calibration</li>
+</ul>
+<hr>
+<h2 id="a-loc">부록 A — 신규 작성 파일 LOC 추정</h2>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>타입</th>
+<th style="text-align: right;">LOC</th>
+<th style="text-align: center;">예상 작성시간</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>templates/kbbq/menu.yaml</code></td>
+<td>YAML</td>
+<td style="text-align: right;">600</td>
+<td style="text-align: center;">1.5h</td>
+</tr>
+<tr>
+<td><code>templates/kbbq/modifier_groups.yaml</code></td>
+<td>YAML</td>
+<td style="text-align: right;">200</td>
+<td style="text-align: center;">0.5h</td>
+</tr>
+<tr>
+<td><code>templates/kbbq/allergen_rules.yaml</code></td>
+<td>YAML</td>
+<td style="text-align: right;">120</td>
+<td style="text-align: center;">0.3h</td>
+</tr>
+<tr>
+<td><code>templates/kbbq/system_prompt_base.txt</code></td>
+<td>TXT</td>
+<td style="text-align: right;">150</td>
+<td style="text-align: center;">1h</td>
+</tr>
+<tr>
+<td><code>knowledge/kbbq.py</code></td>
+<td>Python (copy + tune)</td>
+<td style="text-align: right;">67</td>
+<td style="text-align: center;">0.3h</td>
+</tr>
+<tr>
+<td><strong>합계</strong></td>
+<td></td>
+<td style="text-align: right;"><strong>1,137</strong></td>
+<td style="text-align: center;"><strong>3.6h</strong></td>
+</tr>
+</tbody>
+</table>
+<p>기존 코드 수정 (3 파일):
+- <code>transactions.py:22</code> — 1 line
+- <code>voice_websocket.py:1316</code> — 1 line<br>
+- <code>realtime_voice.py:103+</code> — 8-12 lines (phone_routing lookup)
+- <code>flows.py</code> — 5 locations × 1 line each</p>
+<p><strong>총 코드 수정</strong>: ~20 LOC</p>
+<hr>
+<h2 id="b-4-day-1">부록 B — 사용자 의사 결정 요청 4가지 (Day 1 시작 전)</h2>
+<p>다음 4가지를 confirm 받은 후 Day 1 yaml 작성 시작:</p>
+<ol>
+<li><strong>매장명</strong>: <code>JM Korean BBQ</code> (정식 영문) / <code>JM KBBQ</code> (단축) — 어느 쪽?</li>
+<li><strong>POS</strong>: Loyverse 두 번째 매장 (cafe와 같은 인스턴스 / 별도 토큰)? 아니면 신규 별도 Loyverse 계정?</li>
+<li><strong>메뉴 가격</strong>: 장충동 PDF 그대로 적용 OK? 또는 PDX 시장가 조정?</li>
+<li><strong>Twilio</strong>: 신규 번호 매입 ($1/mo)? 또는 cafe <code>+1-503-994-1265</code> reuse하고 매장 라우팅 분기?</li>
+</ol>
+<hr>
+<p><strong>한 줄 결론</strong>: Cafe→KBBQ 추가는 <strong>81% LOC 재사용 + 5 신규 파일 + 20 LOC 수정</strong>으로 <strong>5–7 founder-days 내 시뮬 라이브</strong> 가능. 정식 FSR 운영은 별도 sprint (multi-round + open tab, 6–10d). Loyverse는 시뮬 OK, 실제 5+ 테이블 매장은 Quantic 권장.</p>
+</body>
+</html>

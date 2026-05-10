@@ -1,0 +1,834 @@
+# KBBQ vertical — default menu template (84 items: 77 menu + 7 sides).
+# (KBBQ vertical default 메뉴 템플릿 — 77개 메인 + 7개 사이드)
+#
+# Source: 장충동 JCD K-Barbecue PDF rebranded to JM Korean BBQ.
+# Pattern: PDX Korean BBQ FSR (full-service restaurant).
+# Customization: Operator adjusts prices + adds house specials via
+# Admin UI Wizard. Allergens are FDA-9 aligned with KBBQ-specific
+# patterns (kimchi → shellfish/fish, soondae → pork/wheat).
+#
+# Schema notes:
+# - base_price = single-portion price (USD).
+# - serves = informational only (Hot Pot for 2 people, etc).
+# - rules = business rules enforced by voice agent (POS does not enforce).
+# - add_on_options = inline price-delta variants (Tteokbokki +Ramen, etc).
+#   Loyverse stores these as separate variants; voice agent surfaces
+#   them as add-on modifiers.
+
+vertical: kbbq
+default_lang: en
+supported_langs: [en, ko]   # KO+EN only per multilingual_policy memo (2026-05-07)
+
+categories:
+  - id: appetizer
+    en: Appetizers
+    ko: 안주
+  - id: shareable
+    en: Shareable Plate
+    ko: 공유 메뉴
+  - id: bbq_combo
+    en: BBQ Combo Set
+    ko: BBQ 콤보
+  - id: bbq_beef
+    en: BBQ Beef A La Carte
+    ko: 소고기 단품
+  - id: bbq_pork
+    en: BBQ Pork A La Carte
+    ko: 돼지고기 단품
+  - id: bbq_other
+    en: BBQ Chicken / Squid
+    ko: 닭/오징어 단품
+  - id: hot_pot
+    en: Korean Style Hot Pot
+    ko: 전골류
+  - id: entree
+    en: Entrees
+    ko: 식사류
+  - id: side
+    en: Sides
+    ko: 사이드
+
+
+items:
+  # ═══════════════════════════════════════════════════════════════════
+  # APPETIZERS (A1–A13)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: mandoo_tigim
+    en: Mandoo Tigim (Fried Dumpling, 8 pcs)
+    ko: 만두튀김 (8개)
+    category: appetizer
+    base_price: 8.95
+    base_allergens: [wheat, gluten, soy]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: mulmandoo
+    en: Mulmandoo (Steamed Dumpling, 8 pcs)
+    ko: 물만두 (8개)
+    category: appetizer
+    base_price: 8.95
+    base_allergens: [wheat, gluten, soy]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: gimmali
+    en: Gimmali (Korean Deep-Fried Seaweed Noodle Roll, 8 pcs)
+    ko: 김말이 (8개)
+    category: appetizer
+    base_price: 8.95
+    base_allergens: [wheat, gluten, soy]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: coconut_saewoo
+    en: Coconut Saewoo (Fried Coconut Shrimp, 8 pcs)
+    ko: 코코넛 새우 (8개)
+    category: appetizer
+    base_price: 12.95
+    base_allergens: [shellfish, wheat, gluten, egg]
+    base_dietary: []
+    modifier_groups: []
+
+  - id: tteokbokki_spicy
+    en: Tteokbokki (Spicy Rice Cake & Fish Cake)
+    ko: 떡볶이
+    category: appetizer
+    base_price: 14.95
+    base_allergens: [wheat, gluten, soy, fish]
+    base_dietary: []
+    modifier_groups: [spice_level, add_on_starch]
+
+  - id: tteokbokki_no_spicy
+    en: No Spicy Tteokbokki (Soy-Base Rice Cake & Fish Cake)
+    ko: 안매운 떡볶이
+    category: appetizer
+    base_price: 14.95
+    base_allergens: [wheat, gluten, soy, fish]
+    base_dietary: []
+    modifier_groups: [add_on_starch]
+
+  - id: sweet_potato_fries
+    en: Sweet Potato Fries
+    ko: 고구마튀김
+    category: appetizer
+    base_price: 12.95
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: []
+
+  - id: haemul_pajeon
+    en: Haemul Pajeon (Seafood Scallion Pancake)
+    ko: 해물파전
+    category: appetizer
+    base_price: 23.95
+    base_allergens: [wheat, gluten, egg, shellfish, fish, soy]
+    base_dietary: []
+    modifier_groups: []
+
+  - id: yachae_pajeon
+    en: Yachae Pajeon (Vegetable Pancake)
+    ko: 야채파전
+    category: appetizer
+    base_price: 19.95
+    base_allergens: [wheat, gluten, egg, soy]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: kimchi_pajeon
+    en: Kimchi Pajeon (Kimchi Pancake)
+    ko: 김치파전
+    category: appetizer
+    base_price: 19.95
+    base_allergens: [wheat, gluten, egg, shellfish, fish, soy]   # kimchi typically contains anchovy/shrimp paste
+    base_dietary: [fermented]
+    modifier_groups: []
+
+  - id: corndog
+    en: Corndog (Korean Mozzarella & Fish Sausage)
+    ko: 콘독
+    category: appetizer
+    base_price: 5.00
+    base_allergens: [wheat, gluten, egg, dairy, fish]
+    base_dietary: []
+    modifier_groups: []
+
+  - id: cheese_stick
+    en: Cheese Stick (Mozzarella & Rice Cake)
+    ko: 치즈 스틱
+    category: appetizer
+    base_price: 5.00
+    base_allergens: [wheat, gluten, dairy]
+    base_dietary: [vegetarian]
+    modifier_groups: []
+
+  - id: french_fries
+    en: French Fries
+    ko: 감자튀김
+    category: appetizer
+    base_price: 10.95
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: []
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SHAREABLE PLATE (S1–S4) — Rice & Side dish NOT included
+  # ═══════════════════════════════════════════════════════════════════
+  - id: jokbal_shareable
+    en: Jokbal (Seasoned Steamed Pork Shank, served cold)
+    ko: 족발 (대)
+    category: shareable
+    base_price: 45.95
+    base_allergens: [pork, soy]
+    base_dietary: []
+    modifier_groups: []
+    notes_en: "Rice & side dishes not included. Served cold."
+    notes_ko: "밥과 반찬 별도. 차게 제공."
+
+  - id: bossam_shareable
+    en: Bossam (Steamed Sliced Pork Belly w/ Spicy Radish & Pickled Cabbage)
+    ko: 보쌈 (대)
+    category: shareable
+    base_price: 35.95
+    base_allergens: [pork, soy, shellfish, fish]   # kimchi accompaniment
+    base_dietary: []
+    modifier_groups: []
+    notes_en: "Rice & side dishes not included."
+    notes_ko: "밥과 반찬 별도."
+
+  - id: soondae_only
+    en: Soondae (Steamed Korean Blood Sausage)
+    ko: 순대만
+    category: shareable
+    base_price: 19.95   # Small; Medium variant +15.00
+    base_allergens: [pork, wheat, gluten]
+    base_dietary: []
+    modifier_groups: [size_s_m]
+
+  - id: soondae_combination
+    en: Soondae Combination (Blood Sausage + Pork Intestine)
+    ko: 순대 콤비네이션
+    category: shareable
+    base_price: 19.95   # Small; Medium variant +15.00
+    base_allergens: [pork, wheat, gluten]
+    base_dietary: []
+    modifier_groups: [size_s_m]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BBQ COMBO SETS — No substitute, includes corn cheese + egg + rice cake (no free refills)
+  # Served w/ rice & various side dishes
+  # ═══════════════════════════════════════════════════════════════════
+  - id: bbq_combo_a
+    en: BBQ Combo A (For 3-4 people — Bulgogi + Pork Belly + Chicken Bulgogi + Beef Brisket + Soybean Paste Soup)
+    ko: BBQ 콤보 A (3-4인용)
+    category: bbq_combo
+    base_price: 105.00
+    serves: 4
+    base_allergens: [soy, beef, pork, dairy, egg, wheat, gluten]
+    base_dietary: []
+    modifier_groups: [meat_doneness, banchan_refill_info]
+    rules: [combo_no_substitute]
+    notes_en: "Includes corn cheese, egg, rice cake (no free refills). Served w/ rice & side dishes."
+    notes_ko: "콘치즈, 계란, 떡 포함 (무한 리필 X). 밥과 반찬 제공."
+
+  - id: bbq_combo_b
+    en: BBQ Combo B (For 2-3 people — Beef Brisket + Pork Belly + Pork Bulgogi + Soybean Paste Soup)
+    ko: BBQ 콤보 B (2-3인용)
+    category: bbq_combo
+    base_price: 85.00
+    serves: 3
+    base_allergens: [soy, beef, pork, dairy, egg, wheat, gluten]
+    base_dietary: []
+    modifier_groups: [meat_doneness, banchan_refill_info]
+    rules: [combo_no_substitute]
+    notes_en: "Includes corn cheese, egg, rice cake (no free refills). Served w/ rice & side dishes."
+    notes_ko: "콘치즈, 계란, 떡 포함 (무한 리필 X). 밥과 반찬 제공."
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BBQ BEEF A LA CARTE (B1–B7) — Minimum 2 orders
+  # ═══════════════════════════════════════════════════════════════════
+  - id: saeng_galbi
+    en: Saeng Galbi (Plain Beef Short Rib)
+    ko: 생갈비
+    category: bbq_beef
+    base_price: 45.95
+    base_allergens: [beef]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: yangnyeom_galbi
+    en: Galbi (Marinated Beef Short Rib)
+    ko: 양념갈비
+    category: bbq_beef
+    base_price: 45.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: la_galbi
+    en: LA Galbi (Marinated Beef Short Ribs, LA Style Cross-Cut)
+    ko: LA갈비
+    category: bbq_beef
+    base_price: 30.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: bulgogi_alacarte
+    en: Bulgogi (Thinly Sliced Marinated Ribeye Beef)
+    ko: 불고기
+    category: bbq_beef
+    base_price: 29.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: deung_shim
+    en: Deung Shim (Rib Eye Steak)
+    ko: 등심
+    category: bbq_beef
+    base_price: 42.95
+    base_allergens: [beef]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: chadol_baegi
+    en: Chadol Baegi (Thinly Sliced Beef Brisket)
+    ko: 차돌배기
+    category: bbq_beef
+    base_price: 29.95
+    base_allergens: [beef]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: jumullleok
+    en: Jumullleok (Marinated Beef Steak Cubes)
+    ko: 주물럭
+    category: bbq_beef
+    base_price: 39.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [meat_doneness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BBQ PORK A LA CARTE (B8–B13) — Minimum 2 orders
+  # ═══════════════════════════════════════════════════════════════════
+  - id: samgyupsal
+    en: Samgyupsal (Sliced Pork Belly)
+    ko: 삼겹살
+    category: bbq_pork
+    base_price: 27.95
+    base_allergens: [pork]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [pork_cut_thickness, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: daepae_samgyupsal
+    en: Daepae Samgyupsal (Thinly Sliced Pork Belly)
+    ko: 대패삼겹살
+    category: bbq_pork
+    base_price: 27.95
+    base_allergens: [pork]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: moksal
+    en: Moksal (Pork Shoulder Butt)
+    ko: 목살
+    category: bbq_pork
+    base_price: 27.95
+    base_allergens: [pork]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: hanjeongsal
+    en: Hanjeongsal (Pork Jowl)
+    ko: 항정살
+    category: bbq_pork
+    base_price: 30.95
+    base_allergens: [pork]
+    base_dietary: [gluten_free, dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: pork_bulgogi_alacarte
+    en: Pork Bulgogi (Pork Marinated in House Sauce)
+    ko: 돼지불고기
+    category: bbq_pork
+    base_price: 27.95
+    base_allergens: [pork, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: spicy_pork_alacarte
+    en: Spicy Pork (Pork Marinated in Spicy Sauce)
+    ko: 매운돼지
+    category: bbq_pork
+    base_price: 27.95
+    base_allergens: [pork, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BBQ CHICKEN / SQUID (B14–B15) — Minimum 2 orders
+  # ═══════════════════════════════════════════════════════════════════
+  - id: chicken_bulgogi_alacarte
+    en: Chicken Bulgogi (Chicken Marinated in House Sauce)
+    ko: 치킨불고기
+    category: bbq_other
+    base_price: 27.95
+    base_allergens: [soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  - id: squid_gui
+    en: Squid Gui (Whole Squid Marinated in House Sauce)
+    ko: 오징어구이
+    category: bbq_other
+    base_price: 25.95
+    base_allergens: [shellfish, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, bbq_party_size, wrap_extras, banchan_refill_info]
+    rules: [bbq_min_two_orders]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # KOREAN STYLE HOT POT 전골류 (H1–H7) — For 2 people
+  # Served w/ rice & side dishes
+  # ═══════════════════════════════════════════════════════════════════
+  - id: gamjatang_jeongol
+    en: Gamjatang Jeongol (Spicy Pork Neckbone Soup w/ Potato & Cabbage)
+    ko: 감자탕전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [pork, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  - id: budae_jeongol
+    en: Budae Jeongol (Army Stew Hot Pot — Kimchi, Bacon, Sausage, Spam, Tofu, Rice Cake, Ramen)
+    ko: 부대전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [pork, soy, wheat, gluten, dairy, shellfish, fish]
+    base_dietary: []
+    modifier_groups: [spice_level, banchan_refill_info]
+    rules: [hot_pot_for_two]
+    notes_en: "Served w/ Ramen included."
+    notes_ko: "라면 포함."
+
+  - id: kimchi_jeongol
+    en: Kimchi Jeongol (Spicy Kimchi Soup w/ Pork & Tofu)
+    ko: 김치전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [pork, soy, shellfish, fish]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  - id: bulgogi_jeongol
+    en: Bulgogi Jeongol (Beef Bulgogi w/ Glass Noodle, Rice Cake, Cabbage, Onion in Sweet Soy Broth)
+    ko: 불고기전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  - id: soondae_jeongol
+    en: Soondae Jeongol (Pork Intestine Soup w/ Korean Blood Sausage, Perilla Seeds & Green Onion)
+    ko: 순대전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [pork, wheat, gluten, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  - id: honghop_jeongol
+    en: Honghop Jeongol (Mussel Soup w/ Tofu & Rice Cake)
+    ko: 홍합전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [shellfish, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  - id: kkochiodeng_jeongol
+    en: Kkochiodeng Jeongol (Skewered Fish Cake Soup)
+    ko: 꼬치오뎅전골
+    category: hot_pot
+    base_price: 45.95
+    serves: 2
+    base_allergens: [fish, wheat, gluten, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+    rules: [hot_pot_for_two]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ENTREES 식사류 (E1–E31) — Served w/ rice & side dishes
+  # ═══════════════════════════════════════════════════════════════════
+  - id: la_galbi_entree
+    en: LA Galbi Entree (Charcoal Grilled Beef Short Ribs Marinated in House Sauce)
+    ko: LA갈비 (식사)
+    category: entree
+    base_price: 27.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: spicy_pork_bulgogi_entree
+    en: Spicy Pork Bulgogi Entree (Charcoal Grilled Spicy Pork)
+    ko: 매운 돼지불고기 (식사)
+    category: entree
+    base_price: 23.95
+    base_allergens: [pork, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: chicken_bulgogi_entree
+    en: Chicken Bulgogi Entree (Charcoal Grilled Marinated Chicken)
+    ko: 닭불고기 (식사)
+    category: entree
+    base_price: 23.95
+    base_allergens: [soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: jokbal_entree
+    en: Jokbal Entree (Seasoned Steamed Pork Shank, served cold)
+    ko: 족발 (식사, 소)
+    category: entree
+    base_price: 20.95
+    base_allergens: [pork, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: bossam_entree
+    en: Bossam Entree (Steamed Sliced Pork Belly w/ Spicy Radish & Pickled Cabbage)
+    ko: 보쌈 (식사, 소)
+    category: entree
+    base_price: 20.95
+    base_allergens: [pork, soy, shellfish, fish]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: godeungeo_gui
+    en: Godeungeo Gui (Grilled Mackerel)
+    ko: 고등어구이
+    category: entree
+    base_price: 20.95
+    base_allergens: [fish]
+    base_dietary: [gluten_free, dairy_free, nut_free, pescatarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: dolsot_bibimbap
+    en: Dolsot Bibimbap (Hot Stone Bowl Mixed Rice w/ Beef & Raw Egg Yolk)
+    ko: 돌솥비빔밥
+    category: entree
+    base_price: 19.95
+    base_allergens: [beef, egg, soy, sesame]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [egg_style, rice_swap, banchan_refill_info]
+
+  - id: bibimbap
+    en: Bibimbap (Mixed Rice w/ Beef & Fried Egg)
+    ko: 비빔밥
+    category: entree
+    base_price: 17.95
+    base_allergens: [beef, egg, soy, sesame]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [egg_style, rice_swap, banchan_refill_info]
+
+  - id: soondae_bokkeum
+    en: Soondae Bokkeum (Spicy Stir-Fry Korean Blood Sausage & Pork Intestine w/ Perilla Seeds)
+    ko: 순대볶음
+    category: entree
+    base_price: 23.95
+    base_allergens: [pork, wheat, gluten, soy, sesame]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: bulgogi_entree
+    en: Bulgogi Entree (Charcoal Grilled Thinly Sliced Marinated Ribeye Beef)
+    ko: 불고기 (식사)
+    category: entree
+    base_price: 25.95
+    base_allergens: [beef, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: pork_bulgogi_entree
+    en: Pork Bulgogi Entree (Charcoal Grilled Marinated Pork)
+    ko: 돼지불고기 (식사)
+    category: entree
+    base_price: 23.95
+    base_allergens: [pork, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: chicken_udon_bokkeum
+    en: Chicken Udon Bokkeum (Stir-Fry Chicken w/ Vegetables & Udon)
+    ko: 치킨우동볶음
+    category: entree
+    base_price: 25.95
+    base_allergens: [soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: mulnengmyun
+    en: Mulnengmyun (Cold Buckwheat Noodles w/ Pickled Vegetables, Beef & Egg in Cold Broth)
+    ko: 물냉면
+    category: entree
+    base_price: 15.95
+    base_allergens: [wheat, gluten, beef, egg, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: makguksu
+    en: Makguksu (Cold Buckwheat Noodles w/ Vegetables, Beef & Egg in Spicy Cold Broth)
+    ko: 막국수
+    category: entree
+    base_price: 17.95
+    base_allergens: [wheat, gluten, beef, egg, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: gamjatang_entree
+    en: Gamjatang (Spicy Pork Neckbone Soup w/ Potato & Cabbage)
+    ko: 감자탕
+    category: entree
+    base_price: 15.95
+    base_allergens: [pork, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: budae_jjigae
+    en: Budae Jjigae (Army Stew — Kimchi, Spam, Sausage, Bacon, Rice Cake, Fish Cake, Tofu in Spicy Broth)
+    ko: 부대찌개
+    category: entree
+    base_price: 17.95
+    base_allergens: [pork, soy, wheat, gluten, fish, shellfish]
+    base_dietary: []
+    modifier_groups: [spice_level, add_on_starch, banchan_refill_info]
+
+  - id: kimchi_jjigae
+    en: Kimchi Jjigae (Spicy Kimchi Soup w/ Pork & Tofu)
+    ko: 김치찌개
+    category: entree
+    base_price: 17.95
+    base_allergens: [pork, soy, shellfish, fish]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: yukgaejang
+    en: Yukgaejang (Spicy Beef Soup w/ Vegetables, Egg & Glass Noodle)
+    ko: 육계장
+    category: entree
+    base_price: 19.95
+    base_allergens: [beef, egg, soy]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: maeun_chijeu_buldak
+    en: Maeun Chijeu Buldak (Spicy Stir-Fry Chicken Topped w/ Cheese)
+    ko: 매운치즈불닭
+    category: entree
+    base_price: 25.95
+    base_allergens: [dairy, soy, wheat, gluten]
+    base_dietary: [nut_free]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: jobchae
+    en: Jobchae (Stir-Fry Glass Noodle w/ Beef, Fish Cake & Vegetables)
+    ko: 잡채
+    category: entree
+    base_price: 19.95
+    base_allergens: [beef, fish, soy, sesame]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: ojingeo_bokkem
+    en: Ojingeo Bokkem (Spicy Stir-Fry Squid w/ Vegetables)
+    ko: 오징어볶음
+    category: entree
+    base_price: 25.95
+    base_allergens: [shellfish, soy, wheat, gluten]
+    base_dietary: [dairy_free, nut_free, pescatarian]
+    modifier_groups: [spice_level, add_on_starch, banchan_refill_info]
+
+  - id: haemulsoondubu
+    en: Haemulsoondubu (Spicy Soft Tofu Soup w/ Seafood & Vegetables)
+    ko: 해물순두부
+    category: entree
+    base_price: 17.95
+    base_allergens: [shellfish, fish, soy]
+    base_dietary: [dairy_free, nut_free, pescatarian]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: soondubu
+    en: Soondubu (Spicy Soft Tofu Soup w/ Vegetables)
+    ko: 순두부
+    category: entree
+    base_price: 14.95
+    base_allergens: [soy]
+    base_dietary: [dairy_free, nut_free, vegetarian]
+    modifier_groups: [spice_level, banchan_refill_info]
+
+  - id: ddukmanduguk
+    en: Ddukmanduguk (Dumpling & Rice Cake Soup w/ Egg)
+    ko: 떡만두국
+    category: entree
+    base_price: 17.95
+    base_allergens: [wheat, gluten, soy, egg]
+    base_dietary: [dairy_free, nut_free, vegetarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: manduguk
+    en: Manduguk (Dumpling Soup w/ Egg)
+    ko: 만두국
+    category: entree
+    base_price: 17.95
+    base_allergens: [wheat, gluten, soy, egg]
+    base_dietary: [dairy_free, nut_free, vegetarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: sullungtang
+    en: Sullungtang (Deep-Boiled Beef Bone Soup w/ Thinly Sliced Beef & Glass Noodle)
+    ko: 설렁탕
+    category: entree
+    base_price: 17.95
+    base_allergens: [beef]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: soondaeguk
+    en: Soondaeguk (Pork Intestine Soup w/ Korean Blood Sausage & Perilla Seeds)
+    ko: 순대국
+    category: entree
+    base_price: 19.95
+    base_allergens: [pork, wheat, gluten, soy, sesame]
+    base_dietary: [dairy_free, nut_free]
+    modifier_groups: [banchan_refill_info]
+
+  - id: haemul_dwenjang_jjigae
+    en: Haemul Dwenjang Jjigae (Soybean Paste Soup w/ Seafood, Vegetables & Tofu)
+    ko: 해물된장
+    category: entree
+    base_price: 17.95
+    base_allergens: [shellfish, fish, soy]
+    base_dietary: [dairy_free, nut_free, pescatarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: dwenjang_jjigae
+    en: Dwenjang Jjigae (Soybean Paste Soup w/ Vegetables & Tofu)
+    ko: 된장찌개
+    category: entree
+    base_price: 15.95
+    base_allergens: [soy]
+    base_dietary: [dairy_free, nut_free, vegetarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: honghaptang
+    en: Honghaptang (Mussel Soup w/ Tofu & Rice Cake)
+    ko: 홍합탕
+    category: entree
+    base_price: 17.95
+    base_allergens: [shellfish, soy]
+    base_dietary: [dairy_free, nut_free, pescatarian]
+    modifier_groups: [banchan_refill_info]
+
+  - id: kkochi_odeng
+    en: Kkochi Odeng (Skewered Fish Cake Soup)
+    ko: 꼬치오뎅
+    category: entree
+    base_price: 17.95
+    base_allergens: [fish, wheat, gluten, soy]
+    base_dietary: [dairy_free, nut_free, pescatarian]
+    modifier_groups: [banchan_refill_info]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SIDE ORDERS
+  # ═══════════════════════════════════════════════════════════════════
+  - id: side_corn_cheese
+    en: Side Corn Cheese
+    ko: 콘치즈 (사이드)
+    category: side
+    base_price: 5.00
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: []
+
+  - id: side_egg
+    en: Side Egg
+    ko: 계란 (사이드)
+    category: side
+    base_price: 5.00
+    base_allergens: [egg]
+    base_dietary: [vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: []
+
+  - id: side_rice_cake
+    en: Side Rice Cake (5 pcs)
+    ko: 떡 (5개, 사이드)
+    category: side
+    base_price: 2.50
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, dairy_free, nut_free]
+    modifier_groups: []
+
+  - id: side_dish_set
+    en: Side Dish Set (1 set of banchan)
+    ko: 반찬 세트 (1세트)
+    category: side
+    base_price: 5.00
+    base_allergens: [shellfish, fish, soy]   # mixed banchan often includes kimchi
+    base_dietary: []
+    modifier_groups: []
+
+  - id: side_rice
+    en: Side Rice
+    ko: 공기밥
+    category: side
+    base_price: 3.00
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: []
+
+  - id: side_lettuce
+    en: Side Lettuce (Wrap Greens)
+    ko: 상추 (사이드)
+    category: side
+    base_price: 5.00
+    base_allergens: []
+    base_dietary: [vegan, vegetarian, gluten_free, dairy_free, nut_free]
+    modifier_groups: []
+
+  - id: side_mozzarella_cheese
+    en: Side Mozzarella Cheese
+    ko: 모짜렐라 치즈 (사이드)
+    category: side
+    base_price: 5.00
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free, nut_free]
+    modifier_groups: []

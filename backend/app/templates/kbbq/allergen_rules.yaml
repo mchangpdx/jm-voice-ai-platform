@@ -1,0 +1,168 @@
+# KBBQ vertical — allergen auto-inference rules.
+# (KBBQ vertical 알러젠 자동 추론 규칙 — Phase 7-A AI helper용)
+#
+# Used by `app/services/onboarding/ai_helper.py:infer_allergens()` to
+# pre-fill allergens during new-store menu import. Operator reviews and
+# confirms in Admin UI Wizard before activation.
+#
+# Rules are FDA-9 aligned + KBBQ-specific patterns:
+#   - kimchi → typically contains 멸치액젓/새우젓 (anchovy/shrimp paste)
+#     → conservatively flag fish + shellfish.
+#   - soondae (순대) → pork blood + dangmyeon glass noodle (potato starch)
+#     + boribap (barley) → flag pork + wheat/gluten conservatively.
+#   - pork dishes → not FDA-9 but flagged for halal/kosher/religious diets.
+#   - 김치 fermented = informational dietary tag.
+
+patterns:
+  # ─── FDA-9 standard patterns (cafe와 공통) ────────────────────────────────
+  - keywords: [milk, cheese, cream, yogurt, butter, mozzarella, dairy, lactose, whey]
+    add_allergens: [dairy]
+    confidence: 0.92
+    reason: "Dairy ingredient explicitly named"
+
+  - keywords: [soy, soybean, soy sauce, doenjang, dwenjang, ssamjang, gochujang, tofu]
+    add_allergens: [soy]
+    confidence: 0.95
+    reason: "Soy ingredient or fermented soy sauce/paste"
+
+  - keywords: [wheat, flour, ramen, udon, noodle, mandoo, dumpling, pancake, pajeon, bread]
+    add_allergens: [wheat, gluten]
+    confidence: 0.95
+    reason: "Wheat-flour-based item"
+
+  - keywords: [egg, gyeran, omelet, omelette, fried egg, raw yolk, custard]
+    add_allergens: [egg]
+    confidence: 0.95
+    reason: "Egg ingredient"
+
+  - keywords: [peanut, "peanut butter"]
+    add_allergens: [peanuts]
+    confidence: 0.97
+    reason: "Peanut explicitly named"
+
+  - keywords: [almond, hazelnut, walnut, pecan, pistachio, cashew, pine nut, perilla]
+    add_allergens: [nuts]
+    confidence: 0.93
+    reason: "Tree nut named (perilla seed cross-flagged conservatively)"
+
+  - keywords: [sesame, tahini, sesame oil, perilla seed oil]
+    add_allergens: [sesame]
+    confidence: 0.95
+    reason: "Sesame ingredient (FDA-9 since 2023)"
+
+  # ─── Seafood patterns (KBBQ-specific) ─────────────────────────────────────
+  - keywords: [shrimp, saewoo, prawn, mussel, honghap, clam, oyster, scallop, lobster, crab]
+    add_allergens: [shellfish]
+    confidence: 0.95
+    reason: "Crustacean/mollusk shellfish"
+
+  - keywords: [squid, ojingeo, octopus, cuttlefish]
+    add_allergens: [shellfish]
+    confidence: 0.93
+    reason: "Cephalopod — categorized under shellfish for FDA labeling"
+
+  - keywords: [godeungeo, mackerel, anchovy, salmon, tuna, sardine, herring, "fish cake", odeng, oden]
+    add_allergens: [fish]
+    confidence: 0.95
+    reason: "Finfish ingredient or fish-based product"
+
+  # ─── KBBQ-specific 한글+영문 동시 매칭 ──────────────────────────────────
+  - keywords: [bossam, jokbal, samgyupsal, samgyeopsal, daepae, moksal,
+               hanjeongsal, "pork belly", "pork shoulder", "pork jowl",
+               보쌈, 족발, 삼겹살, 대패삼겹살, 목살, 항정살, 돼지]
+    add_allergens: [pork]
+    confidence: 0.97
+    reason: "Pork dish — relevant for halal/kosher/religious dietary needs (not FDA-9)"
+
+  - keywords: [galbi, bulgogi, chadol, "deung shim", jumullleok, brisket,
+               ribeye, "short rib", 갈비, 불고기, 차돌, 등심, 주물럭, 소고기]
+    add_allergens: [beef]
+    add_dietary: [halal_capable, kosher_capable]
+    confidence: 0.97
+    reason: "Beef dish — flag for vegetarian filtering"
+
+  - keywords: [kimchi, 김치]
+    add_allergens: [shellfish, fish]
+    add_dietary: [fermented]
+    confidence: 0.85
+    reason: "Most kimchi recipes contain anchovy/shrimp paste (멸치액젓/새우젓) — verify with operator. Vegan kimchi must be separately tracked."
+
+  - keywords: [soondae, "blood sausage", 순대]
+    add_allergens: [pork, wheat, gluten]
+    confidence: 0.92
+    reason: "Soondae = pork blood + dangmyeon (sweet potato/wheat glass noodle) + boribap (barley)"
+
+  - keywords: [japchae, "glass noodle", dangmyeon, 잡채, 당면]
+    add_allergens: [soy]
+    confidence: 0.93
+    reason: "Japchae uses soy sauce (간장) as primary seasoning"
+
+  - keywords: [tteok, "rice cake", 떡]
+    add_allergens: []
+    add_dietary: [gluten_free_base]
+    confidence: 0.85
+    reason: "Pure rice cake is gluten-free, but Tteokbokki sauce (gochujang) often contains wheat — flag operator to verify brand"
+
+  - keywords: [chicken, 닭]
+    add_allergens: []
+    add_dietary: [poultry]
+    confidence: 0.95
+    reason: "Chicken — flag for vegetarian filtering"
+
+  - keywords: [spicy, 매운, 매운맛, gochugaru, gochujang]
+    add_dietary: [spicy]
+    confidence: 0.90
+    reason: "Spicy dish — UX hint, not strict allergen"
+
+  - keywords: [seafood, 해물]
+    add_allergens: [shellfish, fish]
+    confidence: 0.90
+    reason: "Generic seafood label — usually mixed mussel/shrimp/squid"
+
+  - keywords: [vegetable, vegetables, 야채, 채소, banchan, 반찬]
+    add_dietary: [vegetable_forward]
+    confidence: 0.80
+    reason: "Vegetable component — does not preclude meat/fish stock"
+
+
+# ─── Reverse rules (dietary tags inferred from absence) ──────────────────────
+dietary_inference:
+  - if_absent: [dairy]
+    suggest: [dairy_free]
+    confidence: 0.90
+  - if_absent: [wheat, gluten]
+    suggest: [gluten_free]
+    confidence: 0.85
+  - if_absent: [nuts, peanuts]
+    suggest: [nut_free]
+    confidence: 0.92
+  - if_absent: [pork, beef, fish, shellfish]
+    suggest: [vegetarian]
+    confidence: 0.50
+    reason: "Operator must confirm — chicken/egg/dairy still possible"
+  - if_absent: [pork, beef, fish, shellfish, dairy, egg]
+    suggest: [vegan]
+    confidence: 0.60
+    reason: "Operator must confirm — fish stock/oyster sauce in seasonings still possible"
+  - if_absent: [pork]
+    suggest: [halal_capable, kosher_capable]
+    confidence: 0.50
+    reason: "Halal/kosher requires more than absence of pork — flag for operator review"
+
+
+# ─── Confidence thresholds for UI ────────────────────────────────────────────
+ui_thresholds:
+  auto_check: 0.90    # Confidence ≥ 0.90 → auto-checked (operator reviews)
+  warning:    0.80    # 0.80 ≤ conf < 0.90 → ⚠️ icon, suggested but unchecked
+  hint_only:  0.60    # 0.60 ≤ conf < 0.80 → "AI suggests" hint, unchecked
+
+
+# ─── Operator hints (KBBQ-specific) ──────────────────────────────────────────
+operator_hints:
+  - text: "김치 (Kimchi) 레시피 확인 필수. 일반 김치 = 멸치액젓/새우젓 → fish + shellfish allergen 표시. 비건 김치를 별도 메뉴로 운영 시만 dietary 분리하여 flag."
+  - text: "Gochujang (고추장) 일부 브랜드는 wheat 포함. JM KBBQ 매장 사용 브랜드 확인 후 wheat allergen flag 결정."
+  - text: "Pork (돼지) allergen은 FDA-9 X but halal/kosher/이슬람/유대 손님 응대 필수. BBQ Pork 메뉴 사전 표시 권장 — 'Contains pork' 라벨."
+  - text: "BBQ 직화 그릴 cross-contamination 주의 — 모든 grilled 메뉴는 'shared grill' 라벨 추천. 알러지 손님에게는 별도 그릴/주방 분리 가능 여부 사전 안내."
+  - text: "Soondae (순대) 당면은 보통 sweet potato starch (gluten-free) but 일부 매장은 wheat glass noodle 사용 — JM KBBQ 매장 공급사 확인 후 wheat flag 조정."
+  - text: "FDA-9 list (2026): milk, eggs, fish, crustacean shellfish, tree nuts, peanuts, wheat, soybeans, sesame."
+  - text: "Mollusk (squid/octopus/clam/oyster) FDA labeling은 'shellfish' 카테고리에 포함되지만 일부 알러지 손님은 갑각류만 알러지 — 손님 명확히 확인."

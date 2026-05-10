@@ -1,0 +1,174 @@
+# KBBQ vertical — modifier groups (12 groups).
+# (KBBQ vertical modifier 그룹 — 12개)
+#
+# Schema (cafe pattern + KBBQ-specific extensions):
+#   id            — group code, referenced from menu.yaml items
+#   required      — true means at least 1 must be selected
+#   min/max       — selection range
+#   options[]     — each with id, en/ko labels, price_delta, allergen_add/remove
+#   applies_to_categories — optional: limit group to these category ids
+#   applies_to_items      — optional: limit group to these item ids
+#   group_kind            — info-only / hard-rule / auto-rule (non-selectable)
+#
+# Allergen dynamics: same as cafe — runtime computes effective_allergens =
+#   base_allergens + ∪(option.allergen_add) − ∪(option.allergen_remove)
+
+groups:
+  # ── Group 1: Meat Doneness (REQUIRED for grilled steak-style cuts) ──────────
+  meat_doneness:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [bbq_beef]
+    applies_to_items: [bbq_combo_a, bbq_combo_b]
+    options:
+      - {id: rare,        en: "Rare",        ko: "레어",         price_delta: 0.00}
+      - {id: medium_rare, en: "Medium-rare", ko: "미디엄 레어",  price_delta: 0.00}
+      - {id: medium,      en: "Medium",      ko: "미디엄",       price_delta: 0.00, default: true}
+      - {id: medium_well, en: "Medium-well", ko: "미디엄 웰던",  price_delta: 0.00}
+      - {id: well_done,   en: "Well-done",   ko: "웰던",         price_delta: 0.00}
+
+  # ── Group 2: Spice Level (OPTIONAL for spicy menu items) ────────────────────
+  spice_level:
+    required: false
+    min: 0
+    max: 1
+    applies_to_categories: [appetizer, hot_pot, entree, bbq_pork, bbq_other]
+    options:
+      - {id: mild,        en: "Mild",         ko: "순한맛",      price_delta: 0.00}
+      - {id: medium,      en: "Medium",       ko: "보통맛",      price_delta: 0.00, default: true}
+      - {id: hot,         en: "Hot",          ko: "매운맛",      price_delta: 0.00}
+      - {id: extra_hot,   en: "Extra hot",    ko: "아주 매운맛", price_delta: 0.00}
+
+  # ── Group 3: BBQ Party Size (REQUIRED for BBQ A La Carte — min 2) ───────────
+  # Voice agent enforces business rule: BBQ A La Carte minimum 2 portions.
+  # POS receives quantity multiplier; system_prompt rejects single-order.
+  bbq_party_size:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [bbq_beef, bbq_pork, bbq_other]
+    options:
+      - {id: two_portions,    en: "2 portions (minimum)",  ko: "2인분 (최소)",  price_delta: 0.00, default: true, quantity_multiplier: 2}
+      - {id: three_portions,  en: "3 portions",            ko: "3인분",         price_delta: 0.00, quantity_multiplier: 3}
+      - {id: four_portions,   en: "4 portions",            ko: "4인분",         price_delta: 0.00, quantity_multiplier: 4}
+      - {id: five_portions,   en: "5 portions",            ko: "5인분",         price_delta: 0.00, quantity_multiplier: 5}
+      - {id: six_portions,    en: "6 portions",            ko: "6인분",         price_delta: 0.00, quantity_multiplier: 6}
+
+  # ── Group 4: Pork Cut Thickness (REQUIRED for Samgyupsal) ───────────────────
+  pork_cut_thickness:
+    required: true
+    min: 1
+    max: 1
+    applies_to_items: [samgyupsal]
+    options:
+      - {id: regular_thick, en: "Regular thick cut",    ko: "일반 두께",   price_delta: 0.00, default: true}
+      - {id: extra_thick,   en: "Extra thick cut",      ko: "두꺼운 컷",   price_delta: 2.00}
+
+  # ── Group 5: Add-On Starch (OPTIONAL — Tteokbokki / Budae / Squid stir-fry) ─
+  add_on_starch:
+    required: false
+    min: 0
+    max: 2
+    applies_to_items: [tteokbokki_spicy, tteokbokki_no_spicy, budae_jjigae, ojingeo_bokkem]
+    options:
+      - {id: add_ramen,     en: "+Ramen",     ko: "+라면 추가",  price_delta: 5.00, allergen_add: [wheat, gluten]}
+      - {id: add_cheese,    en: "+Cheese",    ko: "+치즈 추가",  price_delta: 5.00, allergen_add: [dairy]}
+      - {id: add_udon,      en: "+Udon",      ko: "+우동 추가",  price_delta: 5.00, allergen_add: [wheat, gluten]}
+      - {id: add_rice_cake, en: "+Rice cake", ko: "+떡 추가",    price_delta: 2.50}
+
+  # ── Group 6: Egg Style (OPTIONAL — Bibimbap / Manduguk) ─────────────────────
+  egg_style:
+    required: false
+    min: 0
+    max: 1
+    applies_to_items: [bibimbap, dolsot_bibimbap, manduguk, ddukmanduguk]
+    options:
+      - {id: fried_egg,   en: "Fried egg",       ko: "프라이",     price_delta: 0.00, default: true}
+      - {id: raw_yolk,    en: "Raw egg yolk",    ko: "날 노른자",  price_delta: 0.00}
+      - {id: no_egg,      en: "No egg",          ko: "계란 빼기",  price_delta: 0.00, allergen_remove: [egg]}
+
+  # ── Group 7: Wrap Extras (OPTIONAL — All BBQ A La Carte) ────────────────────
+  wrap_extras:
+    required: false
+    min: 0
+    max: 3
+    applies_to_categories: [bbq_beef, bbq_pork, bbq_other]
+    options:
+      - {id: extra_lettuce,     en: "+Lettuce wrap",       ko: "+상추 추가",      price_delta: 5.00}
+      - {id: extra_mozzarella,  en: "+Mozzarella cheese",  ko: "+모짜렐라 추가",  price_delta: 5.00, allergen_add: [dairy]}
+      - {id: extra_side_set,    en: "+Side dish set",      ko: "+반찬 세트 추가", price_delta: 5.00, allergen_add: [shellfish, fish, soy]}
+
+  # ── Group 8: Rice Swap (OPTIONAL — Bibimbap / Entrees) ──────────────────────
+  rice_swap:
+    required: false
+    min: 0
+    max: 1
+    applies_to_items: [bibimbap, dolsot_bibimbap]
+    options:
+      - {id: white_rice,  en: "White rice",       ko: "흰밥",     price_delta: 0.00, default: true}
+      - {id: brown_rice,  en: "Brown rice",       ko: "현미밥",   price_delta: 1.00}
+      - {id: no_rice,     en: "No rice",          ko: "밥 빼기",  price_delta: 0.00}
+
+  # ── Group 9: Size S/M (Soondae shareable size variant) ──────────────────────
+  size_s_m:
+    required: true
+    min: 1
+    max: 1
+    applies_to_items: [soondae_only, soondae_combination]
+    options:
+      - {id: small,   en: "Small",   ko: "소",  price_delta: 0.00, default: true}
+      - {id: medium,  en: "Medium",  ko: "대",  price_delta: 15.00}
+
+  # ── Group 10: Banchan Refill Info (INFO-ONLY — voice agent disclosure) ──────
+  # POS does not bill for refills. Voice agent informs caller that banchan
+  # (반찬) and rice are unlimited refill on dine-in. Excluded for combos
+  # (combo-A/B explicitly state 'no free refills' in menu notes).
+  banchan_refill_info:
+    group_kind: info_only
+    required: false
+    min: 0
+    max: 0
+    applies_to_categories: [bbq_beef, bbq_pork, bbq_other, hot_pot, entree]
+    info_en: "Rice and banchan (Korean side dishes) are unlimited refill on dine-in for this item."
+    info_ko: "이 메뉴는 매장 식사 시 밥과 반찬 무한 리필 가능합니다."
+
+  # ── Group 11: BBQ Combo No Substitute Rule (HARD-RULE — voice agent rejects)
+  combo_no_substitute:
+    group_kind: hard_rule
+    required: false
+    min: 0
+    max: 0
+    applies_to_items: [bbq_combo_a, bbq_combo_b]
+    rule_en: |
+      BBQ Combo Sets (A and B) are fixed combinations — no substitutions allowed.
+      If the caller requests to swap an item out (e.g. 'replace bulgogi with galbi'),
+      politely decline and offer A La Carte ordering instead.
+    rule_ko: |
+      BBQ 콤보 세트 (A와 B)는 고정 메뉴 — 메뉴 교체 불가.
+      손님이 메뉴 교체 요청 시 (예: '불고기를 갈비로 바꿔주세요'), 정중히 거절하고
+      단품(A La Carte) 주문 옵션을 안내한다.
+
+  # ── Group 12: Auto-Gratuity 18% Rule (AUTO-RULE — party of 6+) ──────────────
+  # Voice agent automatically appends a "Service Charge (18%)" line item
+  # to the order when reservation party_size >= 6. POS ('JM Korean BBQ
+  # Service Charge 18%') menu_item must be pre-registered in Loyverse.
+  gratuity_party_rule:
+    group_kind: auto_rule
+    required: false
+    min: 0
+    max: 0
+    rule_en: |
+      For parties of 6 or more, automatically add an 18% service charge
+      to the bill. Inform the caller: "For parties of 6 or more, we add an
+      automatic 18% service charge — your total will be $X.XX."
+      Implementation: append items_json line {pos_item_id: 'kbbq-service-charge-18',
+      price_cents: round(subtotal * 0.18), quantity: 1, is_auto_gratuity: true}.
+    rule_ko: |
+      6명 이상 파티의 경우 자동으로 18% 봉사료를 청구한다. 안내 멘트:
+      "6명 이상 단체이시므로 봉사료 18%가 자동으로 추가되어 합계는 $X.XX 입니다."
+      구현: items_json에 {pos_item_id: 'kbbq-service-charge-18', price_cents: round(subtotal*0.18),
+      quantity: 1, is_auto_gratuity: true} 자동 추가.
+    threshold_party_size: 6
+    rate: 0.18
+    pos_menu_item_id: "kbbq-service-charge-18"

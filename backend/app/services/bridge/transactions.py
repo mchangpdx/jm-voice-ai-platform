@@ -19,7 +19,7 @@ from app.services.bridge.state_machine import State, transition
 
 log = logging.getLogger(__name__)
 
-_VERTICALS = {"restaurant", "home_services", "beauty", "auto_repair"}
+_VERTICALS = {"restaurant", "kbbq", "home_services", "beauty", "auto_repair"}
 
 _SUPABASE_HEADERS = {
     "apikey":        settings.supabase_service_role_key,
