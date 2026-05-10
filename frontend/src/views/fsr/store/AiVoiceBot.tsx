@@ -77,7 +77,7 @@ export default function AiVoiceBot() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Load Retell agent status (independent fetch)
+  // Load voice agent status (independent fetch)
   useEffect(() => {
     api.get('/store/voice-bot/agent-status')
       .then((r) => setAgentStatus(r.data))
@@ -144,18 +144,18 @@ export default function AiVoiceBot() {
               <span className={styles.sectionIcon}>🤖</span>
               <div>
                 <h2 className={styles.sectionTitle}>Agent Status</h2>
-                <p className={styles.sectionDesc}>Retell AI voice engine configuration</p>
+                <p className={styles.sectionDesc}>OpenAI Realtime voice engine configuration</p>
               </div>
             </div>
 
             {agentLoading ? (
-              <p className={styles.agentLoading}>Connecting to Retell…</p>
+              <p className={styles.agentLoading}>Loading voice agent…</p>
             ) : agentStatus ? (
               <div className={styles.agentCard}>
                 <div className={styles.agentRow}>
                   <StatusDot active={true} />
                   <span className={styles.agentName}>{agentStatus.agent_name}</span>
-                  <span className={styles.agentBadge}>Custom LLM</span>
+                  <span className={styles.agentBadge}>OpenAI Realtime</span>
                 </div>
                 <div className={styles.agentMeta}>
                   <div className={styles.metaItem}>
@@ -178,7 +178,7 @@ export default function AiVoiceBot() {
               </div>
             ) : (
               <div className={styles.agentEmpty}>
-                <p>No Retell agent linked to this store.</p>
+                <p>No voice agent configured for this store.</p>
                 <p className={styles.agentEmptyHint}>Contact your agency to assign an agent.</p>
               </div>
             )}
@@ -261,16 +261,16 @@ export default function AiVoiceBot() {
               <span className={styles.sectionIcon}>📡</span>
               <div>
                 <h2 className={styles.sectionTitle}>How It Works</h2>
-                <p className={styles.sectionDesc}>Retell AI voice engine flow</p>
+                <p className={styles.sectionDesc}>OpenAI Realtime voice engine flow</p>
               </div>
             </div>
             <div className={styles.flowList}>
               {[
-                { step: '1', label: 'Customer calls your phone number' },
-                { step: '2', label: 'Retell handles STT → converts voice to text' },
-                { step: '3', label: 'Our server runs Gemini with your persona' },
-                { step: '4', label: 'Retell converts AI response to speech (TTS)' },
-                { step: '5', label: 'Call log + summary saved automatically' },
+                { step: '1', label: 'Customer calls your phone number (Twilio Media Streams)' },
+                { step: '2', label: 'Server VAD detects speech (1200ms silence threshold)' },
+                { step: '3', label: 'OpenAI Realtime processes audio with your persona (STT + LLM + TTS native)' },
+                { step: '4', label: 'Voice response streamed back to caller in real time' },
+                { step: '5', label: 'Call log + summary + receipt saved automatically' },
               ].map(({ step, label }) => (
                 <div key={step} className={styles.flowItem}>
                   <span className={styles.flowStep}>{step}</span>
