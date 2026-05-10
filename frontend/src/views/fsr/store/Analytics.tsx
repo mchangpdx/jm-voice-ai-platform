@@ -127,12 +127,28 @@ export default function Analytics({ apiEndpoint = '/store/analytics' }: { apiEnd
   const [data,    setData]    = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // ROI calculator inputs — prefilled from period data, user-editable
+  // (ROI 계산기 입력 — 기간 데이터로 자동 prefill, 사용자 수정 가능)
+  const [callsPerDay, setCallsPerDay] = useState<number>(50)
+  const [avgDurMin,   setAvgDurMin]   = useState<number>(3)
+  const [hourlyWage,  setHourlyWage]  = useState<number>(20)
+
   useEffect(() => {
     setLoading(true)
     api.get(`${apiEndpoint}?period=${period}`)
       .then((r) => setData(r.data))
       .finally(() => setLoading(false))
   }, [apiEndpoint, period])
+
+  // Prefill ROI inputs whenever fresh analytics data lands
+  // (새 분석 데이터 도착 시 ROI 입력 자동 prefill)
+  useEffect(() => {
+    if (!data?.summary) return
+    const totalCalls = (data.daily_calls ?? []).reduce((acc, d) => acc + d.total, 0)
+    const avgDur     = totalCalls > 0 ? data.summary.total_call_minutes / totalCalls : 0
+    if (data.summary.avg_daily_calls > 0) setCallsPerDay(Math.round(data.summary.avg_daily_calls))
+    if (avgDur > 0) setAvgDurMin(Number(avgDur.toFixed(1)))
+  }, [data])
 
   const s   = data?.summary
   const sen = data?.sentiment_breakdown ?? {}
@@ -173,6 +189,13 @@ export default function Analytics({ apiEndpoint = '/store/analytics' }: { apiEnd
   const dailyRevenueData = (data?.daily_revenue ?? []).map((d) => ({ ...d, date: shortDate(d.date) }))
   const dowData = DAYS_ORDER.map((d) => ({ day: d, count: dowMap[d] ?? 0 }))
   const maxDow  = Math.max(...dowData.map((d) => d.count), 1)
+
+  // ROI math — labor hours saved × wage (월/연 인건비 절감 추정)
+  const monthlySavings = (callsPerDay * 30 * avgDurMin / 60) * hourlyWage
+  const annualSavings  = monthlySavings * 12
+  const perCallValue   = (avgDurMin / 60) * hourlyWage
+  const fmtUsd = (n: number) =>
+    `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 
   return (
     <div className={styles.page}>
@@ -231,6 +254,66 @@ export default function Analytics({ apiEndpoint = '/store/analytics' }: { apiEnd
               {loading ? '—' : `${Math.round((s?.total_call_minutes ?? 0) / 60)}h`}
             </div>
             <div className={styles.insightSub}>{loading ? '' : `${Math.round(s?.total_call_minutes ?? 0).toLocaleString()} minutes`}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── ROI Calculator (인건비 절감 시뮬레이터) ── */}
+      <div className={styles.chartCardFull}>
+        <p className={styles.chartTitle}>ROI Calculator</p>
+        <p className={styles.chartSub}>
+          Estimate monthly labor cost savings from AI-handled calls. Inputs prefilled from current period data — adjust to model different scenarios.
+        </p>
+
+        <div className={styles.roiInputsRow}>
+          <div className={styles.roiInput}>
+            <label className={styles.roiInputLabel}>Calls / day</label>
+            <input
+              type="number"
+              min={0}
+              value={callsPerDay}
+              onChange={(e) => setCallsPerDay(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+          <div className={styles.roiInput}>
+            <label className={styles.roiInputLabel}>Avg call (min)</label>
+            <input
+              type="number"
+              min={0}
+              step={0.1}
+              value={avgDurMin}
+              onChange={(e) => setAvgDurMin(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+          <div className={styles.roiInput}>
+            <label className={styles.roiInputLabel}>Hourly wage ($)</label>
+            <input
+              type="number"
+              min={0}
+              value={hourlyWage}
+              onChange={(e) => setHourlyWage(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+        </div>
+
+        <div className={styles.roiOutputsRow}>
+          <div className={styles.roiOutput}>
+            <div className={styles.roiOutputLabel}>Monthly Savings</div>
+            <div className={styles.roiOutputValue} style={{ color: '#16a34a' }}>
+              {fmtUsd(monthlySavings)}
+            </div>
+          </div>
+          <div className={styles.roiOutput}>
+            <div className={styles.roiOutputLabel}>Annual Savings</div>
+            <div className={styles.roiOutputValue} style={{ color: '#0369a1' }}>
+              {fmtUsd(annualSavings)}
+            </div>
+          </div>
+          <div className={styles.roiOutput}>
+            <div className={styles.roiOutputLabel}>Per-call Value</div>
+            <div className={styles.roiOutputValue} style={{ color: '#6366f1' }}>
+              ${perCallValue.toFixed(2)}
+            </div>
           </div>
         </div>
       </div>
