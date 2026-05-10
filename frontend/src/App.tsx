@@ -33,14 +33,22 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children
 }
 
-function homeRedirect(token: string | null, role: string | null) {
+// Admin investor-demo account lands on /admin/architecture-proof every
+// time (not just first login). Detected by email match against
+// ADMIN_EMAIL in localStorage-persisted AuthContext.
+// (admin@test.com 계정은 매 방문마다 architecture-proof로 — localStorage
+// 의 email 매칭. Login.tsx의 첫 로그인 navigate + 이후 새로고침/직접 URL 둘 다 처리)
+const ADMIN_EMAIL = 'admin@test.com'
+
+function homeRedirect(token: string | null, role: string | null, email: string | null) {
   if (!token) return '/login'
+  if (email === ADMIN_EMAIL) return '/admin/architecture-proof'
   return role === 'AGENCY' ? '/agency/overview' : '/fsr/store/overview'
 }
 
 function AppRoutes() {
-  const { token, role } = useAuth()
-  const home = homeRedirect(token, role)
+  const { token, role, email } = useAuth()
+  const home = homeRedirect(token, role, email)
 
   return (
     <Suspense fallback={<div style={{ padding: 32, color: '#64748b' }}>Loading...</div>}>

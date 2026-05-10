@@ -10,6 +10,7 @@ interface AuthState {
   storeId: string | null
   role: UserRole | null
   industry: string | null
+  email: string | null
   isLoading: boolean
 }
 
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storeId: localStorage.getItem('jm_store_id'),
     role: (localStorage.getItem('jm_role') as UserRole) ?? null,
     industry: localStorage.getItem('jm_industry'),
+    email: localStorage.getItem('jm_email'),
     isLoading: false,
   })
 
@@ -62,11 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Persist only after full success (전체 성공 후에만 localStorage 저장)
       localStorage.setItem('jm_token', data.access_token)
       localStorage.setItem('jm_role', role)
+      localStorage.setItem('jm_email', email)
       if (storeName) localStorage.setItem('jm_store_name', storeName)
       if (storeId) localStorage.setItem('jm_store_id', storeId)
       if (industry) localStorage.setItem('jm_industry', industry)
 
-      setState({ token: data.access_token, storeName, storeId, role, industry, isLoading: false })
+      setState({ token: data.access_token, storeName, storeId, role, industry, email, isLoading: false })
     } catch (err) {
       setState((s) => ({ ...s, isLoading: false }))
       throw err
@@ -79,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('jm_store_id')
     localStorage.removeItem('jm_role')
     localStorage.removeItem('jm_industry')
-    setState({ token: null, storeName: null, storeId: null, role: null, industry: null, isLoading: false })
+    localStorage.removeItem('jm_email')
+    setState({ token: null, storeName: null, storeId: null, role: null, industry: null, email: null, isLoading: false })
   }
 
   return <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>
