@@ -4,11 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../core/AuthContext'
 import styles from './Login.module.css'
 
-// Admin alias — typing 'admin' as the identifier resolves to the Supabase
-// admin@test.com account (AGENCY role) and lands the user on the investor
-// /admin/architecture-proof page instead of /agency/overview.
-// (admin 별칭 — 아이디 'admin' 입력 시 admin@test.com 계정으로 로그인 후
-// /admin/architecture-proof로 직행)
+// Admin alias — either 'admin' or 'admin@test.com' (case-insensitive) lands
+// the user on the investor /admin/architecture-proof page. The short alias
+// auto-expands to ADMIN_EMAIL before hitting Supabase Auth.
+// (admin 별칭 — 'admin' 또는 'admin@test.com' 입력 시 모두
+// /admin/architecture-proof로 직행. 짧은 별칭은 Supabase 호출 전 확장)
 const ADMIN_ALIAS = 'admin'
 const ADMIN_EMAIL = 'admin@test.com'
 
@@ -26,8 +26,8 @@ export default function Login() {
     setLoading(true)
     try {
       const normalized = email.trim().toLowerCase()
-      const isAdmin    = normalized === ADMIN_ALIAS
-      const loginEmail = isAdmin ? ADMIN_EMAIL : email
+      const isAdmin    = normalized === ADMIN_ALIAS || normalized === ADMIN_EMAIL
+      const loginEmail = normalized === ADMIN_ALIAS ? ADMIN_EMAIL : email
       await login(loginEmail, password)
       navigate(isAdmin ? '/admin/architecture-proof' : '/')
     } catch {
