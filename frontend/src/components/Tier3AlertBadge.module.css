@@ -1,0 +1,42 @@
+/* Tier-3 Allergen Alert Badge — high-visibility red pill (sales-critical) */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+}
+
+.icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.label {
+  white-space: nowrap;
+}
+
+.arrow {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); }
+  50%      { box-shadow: 0 2px 16px rgba(220, 38, 38, 0.55); }
+}

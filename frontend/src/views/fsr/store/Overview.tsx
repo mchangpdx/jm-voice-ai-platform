@@ -1,8 +1,10 @@
 // Store Overview — Harness-methodology Business KPIs (Harness 방법론 비즈니스 KPI 대시보드)
 // MCRR | LCS | LCR | UV | Monthly Impact + AI Persona + Live Orders
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../../core/AuthContext'
 import api from '../../../core/api'
+import Tier3AlertBadge from '../../../components/Tier3AlertBadge'
 import styles from './Overview.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -31,6 +33,19 @@ interface Order {
   items: Array<{ name?: string; quantity?: number }>
 }
 
+interface CallLogItem {
+  call_id:        string
+  start_time:     string
+  customer_phone: string | null
+  duration:       number
+  sentiment:      string | null
+  call_status:    string
+  cost:           number
+  recording_url:  string | null
+  summary:        string | null
+  is_store_busy:  boolean
+}
+
 const PERIODS: { key: Period; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'week',  label: 'Week'  },
@@ -50,6 +65,8 @@ export default function Overview() {
   const [saving, setSaving] = useState(false)
   const [loadingMetrics, setLoadingMetrics] = useState(true)
   const [loadingOrders, setLoadingOrders] = useState(true)
+  const [recentCalls, setRecentCalls] = useState<CallLogItem[]>([])
+  const [loadingCalls, setLoadingCalls] = useState(true)
 
   useEffect(() => {
     if (!period) return
@@ -66,6 +83,12 @@ export default function Overview() {
       .finally(() => setLoadingOrders(false))
   }, [])
 
+  useEffect(() => {
+    api.get('/store/call-logs?limit=5')
+      .then((r) => setRecentCalls(r.data?.items ?? []))
+      .finally(() => setLoadingCalls(false))
+  }, [])
+
   const handleSave = () => {
     setSaving(true)
     setTimeout(() => { setSavedInstructions(dailyInstructions); setSaving(false) }, 600)
@@ -76,6 +99,21 @@ export default function Overview() {
     try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
     catch { return iso }
   }
+  const maskPhone = (phone: string | null): string => {
+    if (!phone) return '—'
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length < 4) return phone
+    return `••• ${digits.slice(-4)}`
+  }
+  const fmtDuration = (sec: number): string => {
+    const m = Math.floor(sec / 60)
+    const s = sec % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+  const fmtCallTime = (iso: string): string => {
+    try { return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }
+    catch { return iso }
+  }
 
   const m = metrics
 
@@ -83,8 +121,12 @@ export default function Overview() {
     <div className={styles.page}>
       {/* Header (헤더) */}
       <div className={styles.pageHeader}>
-        <h1 className={styles.storeName}>{storeName ?? 'Store'}</h1>
-        <p className={styles.pageDesc}>AI ROI analytics, persona control, and live call orders — all in one place.</p>
+        <div>
+          <h1 className={styles.storeName}>{storeName ?? 'Store'}</h1>
+          <p className={styles.pageDesc}>AI ROI analytics, persona control, and live call orders — all in one place.</p>
+        </div>
+        {/* TODO: wire up GET /api/store/alerts/tier3 (backend pending) */}
+        <Tier3AlertBadge count={0} />
       </div>
 
       {/* Period filter (기간 필터) */}
@@ -302,6 +344,51 @@ Always speak in a highly cheerful, upbeat, energetic, and welcoming tone. Smile 
             </table>
           )}
         </div>
+      </div>
+
+      {/* Recent Calls — high-frequency operator scan (최근 5통화) */}
+      <div className={styles.recentCallsPanel}>
+        <div className={styles.panelHeader}>
+          <span className={styles.panelIcon}>📞</span>
+          <div>
+            <div className={styles.panelTitle}>Recent Calls</div>
+            <div className={styles.panelDesc}>Latest 5 voice agent calls — tap row to see full transcript</div>
+          </div>
+          <Link to="/fsr/store/call-history" className={styles.viewAllLink}>View all →</Link>
+        </div>
+
+        {loadingCalls ? (
+          <div className={styles.loading}>Loading recent calls…</div>
+        ) : recentCalls.length === 0 ? (
+          <div className={styles.empty}>No calls yet</div>
+        ) : (
+          <table className={styles.recentTable}>
+            <thead>
+              <tr>
+                <th>TIME</th>
+                <th>PHONE</th>
+                <th>DURATION</th>
+                <th>STATUS</th>
+                <th>SUMMARY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentCalls.map((c) => (
+                <tr key={c.call_id}>
+                  <td>{fmtCallTime(c.start_time)}</td>
+                  <td>{maskPhone(c.customer_phone)}</td>
+                  <td>{fmtDuration(c.duration)}</td>
+                  <td>
+                    <span className={styles.callStatus}>{c.call_status}</span>
+                  </td>
+                  <td className={styles.summaryCell} title={c.summary ?? ''}>
+                    {c.summary ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
