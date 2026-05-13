@@ -22,6 +22,7 @@ from app.api.voice_bot import router as voice_bot_router    # AI Voice Bot setti
 from app.api.voice_websocket import router as voice_ws_router  # Retell Custom LLM WebSocket (Retell ↔ Gemini 브리지)
 from app.api.realtime_voice import router as realtime_router  # Phase 2-D — Twilio Media Streams ↔ OpenAI Realtime (듀얼 트랙)
 from app.api.admin.sync_control import router as admin_sync_router  # Phase 7-A — sync freeze toggle (관리 API — sync freeze)
+from app.api.admin.onboarding import router as admin_onboarding_router  # 2026-05-12 — menu onboarding wizard endpoints (메뉴 온보딩 마법사)
 
 
 @asynccontextmanager
@@ -66,6 +67,7 @@ app.include_router(realtime_router)      # Phase 2-D — Twilio Media Streams �
 app.include_router(menu_router)          # Menu sync + Loyverse inventory webhook (메뉴 동기화 + 인벤토리 웹훅)
 app.include_router(payment_router)       # Pay link mock callback (결제 링크 목 콜백)
 app.include_router(admin_sync_router)    # Phase 7-A — sync freeze toggle (관리 API — sync freeze)
+app.include_router(admin_onboarding_router)  # 2026-05-12 — menu onboarding wizard (메뉴 온보딩 마법사 API)
 
 
 @app.get("/health")
