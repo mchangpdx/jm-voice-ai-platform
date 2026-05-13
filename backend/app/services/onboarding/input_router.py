@@ -15,6 +15,7 @@ from app.services.onboarding.sources.loyverse import extract_from_loyverse
 from app.services.onboarding.sources.manual import extract_from_manual
 from app.services.onboarding.sources.pdf_image import extract_from_images
 from app.services.onboarding.sources.url_crawler import extract_from_url
+from app.services.onboarding.vertical_detector import detect_vertical
 
 
 async def extract(source_type: SourceType, payload: dict) -> RawMenuExtraction:
@@ -30,13 +31,22 @@ async def extract(source_type: SourceType, payload: dict) -> RawMenuExtraction:
     (source별 payload 키 — caller가 미리 PDF는 image 변환)
     """
     if source_type == "loyverse":
-        return await extract_from_loyverse(payload["api_key"])
-    if source_type == "url":
-        return await extract_from_url(payload["url"])
-    if source_type in ("pdf", "image"):
-        return await extract_from_images(payload["image_paths"])
-    if source_type == "csv":
-        return await extract_from_csv(payload["file_path"])
-    if source_type == "manual":
-        return await extract_from_manual(payload["items"])
-    raise ValueError(f"unknown source_type: {source_type!r}")
+        result = await extract_from_loyverse(payload["api_key"])
+    elif source_type == "url":
+        result = await extract_from_url(payload["url"])
+    elif source_type in ("pdf", "image"):
+        result = await extract_from_images(payload["image_paths"])
+    elif source_type == "csv":
+        result = await extract_from_csv(payload["file_path"])
+    elif source_type == "manual":
+        result = await extract_from_manual(payload["items"])
+    else:
+        raise ValueError(f"unknown source_type: {source_type!r}")
+
+    # Auto-fill vertical_guess unless the adapter already set one (vision
+    # adapters can infer vertical from menu layout/photos directly).
+    # (vision adapter가 더 강한 vertical 신호 가지면 우선, 아니면 keyword 추론)
+    if not result.get("vertical_guess"):
+        vertical, _confidence = detect_vertical(result.get("items", []))
+        result["vertical_guess"] = vertical
+    return result
