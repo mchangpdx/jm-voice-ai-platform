@@ -32,12 +32,6 @@ async def test_manual_passthrough_keeps_valid_rows_drops_invalid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pdf_image_is_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        await extract("pdf", {"image_paths": ["/tmp/x.png"]})
-
-
-@pytest.mark.asyncio
 async def test_url_crawler_is_not_implemented_yet() -> None:
     with pytest.raises(NotImplementedError):
         await extract("url", {"url": "https://example.com"})
