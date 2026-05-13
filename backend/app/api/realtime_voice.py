@@ -87,6 +87,10 @@ from app.skills.scheduler.reservation import (
     format_time_12h,
     normalize_phone_us,
 )
+from app.skills.transaction.transfer import (
+    TRANSFER_TO_MANAGER_TOOL_DEF,
+    transfer_to_manager,
+)
 
 log = logging.getLogger(__name__)
 
@@ -98,10 +102,24 @@ _SUPABASE_HEADERS = {
 }
 _REST = f"{settings.supabase_url}/rest/v1"
 
-# Phase 3a — single-store pilot: JM Cafe (PDX). Phase 7 multi-store rollout
-# will replace this with a phone_number → store_id mapping.
-# (Phase 3a — JM Cafe 단일 매장 하드코드. Phase 7에서 매핑 테이블로 교체)
+# Phase 3a → Pizza pilot (2026-05-11) — Twilio inbound `To` (called_number)
+# resolves to a store_id via this map. Unmapped numbers fall back to JM Cafe
+# (preserves pre-pilot behavior). To onboard a new store, append one row.
+# (called_number → store_id 매핑 — 미등록 번호는 JM Cafe로 fallback)
 JM_CAFE_STORE_ID = "7c425fcb-91c7-4eb7-982a-591c094ba9c9"
+JM_PIZZA_STORE_ID = "7411aaee-8b50-49b0-bc7b-56627932b99a"
+
+PHONE_TO_STORE: dict[str, str] = {
+    "+15039941265": JM_CAFE_STORE_ID,   # JM Cafe (PDX) — original pilot
+    "+19714447137": JM_PIZZA_STORE_ID,  # JM Pizza (PDX) — 2026-05-11 pilot
+}
+
+
+def _resolve_store_id(called_number: str | None) -> str:
+    """Map Twilio `To` (called_number) → store_id. Defaults to JM Cafe."""
+    if called_number and called_number in PHONE_TO_STORE:
+        return PHONE_TO_STORE[called_number]
+    return JM_CAFE_STORE_ID
 
 
 # ── Tool schema conversion (Gemini function_declarations → OpenAI tools) ────
@@ -119,8 +137,12 @@ def _gemini_to_openai_tool(gemini_def: dict) -> dict:
     }
 
 
-# 8 voice tools — Phase 2-C.B6 set (mirrors voice_websocket.py tool registry).
-# (8개 voice tool — 기존 Retell 핸들러와 동일 목록)
+# 9 voice tools — Phase 2-C.B6 set + transfer_to_manager (2026-05-12 fix).
+# transfer_to_manager was missing — system_prompt told the LLM to call it on
+# severe-allergy events but it wasn't in the registry, so dispatcher returned
+# success:False / ms=0 (live trigger: CAaaeedfd1372f9e383087689316038cc0
+# turn=18). Adding it as the 9th tool unblocks the severe-allergy hand-off.
+# (9개 voice tool — transfer_to_manager 추가 2026-05-12)
 _GEMINI_TOOL_DEFS = [
     ORDER_TOOL_DEF,
     MODIFY_ORDER_TOOL_DEF,
@@ -130,6 +152,7 @@ _GEMINI_TOOL_DEFS = [
     CANCEL_RESERVATION_TOOL_DEF,
     ALLERGEN_LOOKUP_TOOL_DEF,
     RECALL_ORDER_TOOL_DEF,
+    TRANSFER_TO_MANAGER_TOOL_DEF,
 ]
 OPENAI_REALTIME_TOOLS = [_gemini_to_openai_tool(t) for t in _GEMINI_TOOL_DEFS]
 
@@ -194,22 +217,27 @@ async def _update_call_log_row(
     call_id:    str,
     duration_s: int,
     status:     str = "Successful",
+    transcript: str | None = None,
 ) -> bool:
     """UPDATE duration + final status on the call_logs row at call_end.
-    (call_end 시점 1회 — 통화 길이와 status 마감 처리)
+    Optionally persists the full turn-by-turn transcript JSON string.
+    (call_end 시점 1회 — 통화 길이와 status, 그리고 transcript JSON 저장)
     """
     if not call_id:
         return False
+    payload: dict[str, Any] = {
+        "duration":    duration_s,
+        "call_status": status,
+    }
+    if transcript is not None:
+        payload["transcript"] = transcript
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             resp = await client.patch(
                 f"{_REST}/call_logs",
                 headers=_SUPABASE_HEADERS,
                 params={"call_id": f"eq.{call_id}"},
-                json={
-                    "duration":    duration_s,
-                    "call_status": status,
-                },
+                json=payload,
             )
             if resp.status_code in (200, 204):
                 return True
@@ -511,6 +539,28 @@ async def _dispatch_tool_call(
             "message": msg,
         }
 
+    if tool_name == "transfer_to_manager":
+        # Pull manager phone from the store row's custom_knowledge / system_prompt
+        # if present; fall back to the founder line we ship with every pilot
+        # store. (operator can override per-store later via a `manager_phone`
+        # column if/when we add one.)
+        # (매장별 manager phone — 기본값 +1-503-707-9566)
+        store_row = session_state.get("store_row") or {}
+        manager_phone = (
+            store_row.get("manager_phone")
+            or "+15037079566"
+        )
+        result = await transfer_to_manager(
+            store_id      = store_id,
+            args          = tool_args,
+            manager_phone = manager_phone,
+        )
+        # The result.message is the script the LLM should read; we keep the
+        # default ai_script_hint='manager_handoff' so the dispatcher does not
+        # rewrite the message via ORDER_SCRIPT_BY_HINT.
+        # (manager_handoff hint — dispatcher 메시지 덮어쓰기 회피)
+        return result
+
     return {
         "success": False,
         "error":   f"unsupported tool: {tool_name}",
@@ -594,7 +644,7 @@ INSTRUCTIONS_PHASE2_ECHO = (
 # Public WebSocket URL — must match the ngrok / prod domain Twilio reaches.
 # (Twilio가 도달할 수 있는 공개 URL — ngrok 또는 prod 도메인)
 PUBLIC_BASE = os.environ.get(
-    "PUBLIC_BASE_URL", "https://bipectinate-cheerily-akilah.ngrok-free.dev"
+    "PUBLIC_BASE_URL", "https://jmtechone.ngrok.app"
 )
 # Convert https://... → wss://...
 WS_BASE = PUBLIC_BASE.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
@@ -693,12 +743,17 @@ async def realtime_bridge(ws: WebSocket) -> None:
     # leave call_log_id empty and the tx rows continue as call_log_id=None
     # (existing behavior, pre-fix). Idempotent on call_id (Twilio reconnect).
     # (call_logs INSERT — 통화 시작 직후 1회, 실패 시 None 유지)
+    # Resolve store_id from Twilio inbound number (PHONE_TO_STORE map).
+    # (called_number 기반 매장 라우팅 — 미등록 시 JM Cafe로 fallback)
+    resolved_store_id = _resolve_store_id(called_number)
+    _dbg(f"[realtime] called_number={called_number} → store_id={resolved_store_id}")
+
     if call_sid:
         try:
             _start_iso = datetime.now(timezone.utc).isoformat()
             asyncio.create_task(_insert_call_log_row(
                 call_id        = call_sid,
-                store_id       = JM_CAFE_STORE_ID,
+                store_id       = resolved_store_id,
                 customer_phone = caller_phone or None,
                 start_iso      = _start_iso,
             ))
@@ -708,9 +763,9 @@ async def realtime_bridge(ws: WebSocket) -> None:
 
     # 2) Load store + build system prompt (Phase 3a)
     # (Phase 3a — 매장 row 조회 + 시스템 프롬프트 빌드)
-    store = await _load_store_by_id(JM_CAFE_STORE_ID)
+    store = await _load_store_by_id(resolved_store_id)
     if not store:
-        _dbg(f"[realtime] ❌ store not found id={JM_CAFE_STORE_ID}")
+        _dbg(f"[realtime] ❌ store not found id={resolved_store_id}")
         await ws.close()
         return
     store_id = store["id"]
@@ -775,51 +830,58 @@ async def realtime_bridge(ws: WebSocket) -> None:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     try:
-        async with client.beta.realtime.connect(model=MODEL) as oai:
+        async with client.realtime.connect(model=MODEL) as oai:
             _dbg(f"[realtime] OpenAI WS connected, sending session.update")
+            # GA Realtime API shape (2026-05-12 migration from beta):
+            #   - session.type="realtime" required
+            #   - audio nested: audio.input.format / audio.output.format / .voice
+            #   - turn_detection moved under audio.input
+            #   - input_audio_transcription → audio.input.transcription
+            #   - modalities removed → output_modalities at root
+            #   - g711_ulaw → {"type": "audio/pcmu"}
+            _input_transcription = (
+                {
+                    "model":    "gpt-4o-mini-transcribe",
+                    "language": "en",
+                    "prompt":   (
+                        "JM Pizza phone order taking. The customer "
+                        "speaks English or Spanish. Common items: "
+                        "pepperoni, mozzarella, ricotta, gluten-free, "
+                        "cheese pizza, slice, large, small, thin "
+                        "crust. Reply 'Yes'/'No'/'OK' are common."
+                    ),
+                }
+                if (store.get("industry") or "").lower() == "pizza"
+                else {"model": "gpt-4o-mini-transcribe"}
+            )
             await oai.session.update(
                 session={
-                    "modalities": ["audio", "text"],
-                    "voice": VOICE,
-                    "input_audio_format": "g711_ulaw",
-                    "output_audio_format": "g711_ulaw",
+                    "type": "realtime",
+                    "output_modalities": ["audio"],
+                    "audio": {
+                        "input": {
+                            "format": {"type": "audio/pcmu"},
+                            "turn_detection": {
+                                "type":                 "server_vad",
+                                "threshold":            0.5,
+                                "prefix_padding_ms":    300,
+                                "silence_duration_ms":  1200,
+                                "create_response":      True,
+                                "interrupt_response":   True,
+                            },
+                            "transcription": _input_transcription,
+                        },
+                        "output": {
+                            "format": {"type": "audio/pcmu"},
+                            "voice":  VOICE,
+                        },
+                    },
                     "instructions": instructions,
                     "tools": OPENAI_REALTIME_TOOLS,
                     "tool_choice": "auto",
-                    # Server VAD with extended silence window — Phase 7-A.D quality fix.
-                    # Live trigger: 4 calls 2026-05-07 16:52-17:00 (CA9c22bb95,
-                    # CA55035ea4, CA941741f6, CAf6e2e1ee). All showed >=1.0
-                    # barge-in clears per turn — every utterance was cancelling
-                    # bot audio. semantic_vad/low fragmented letter-by-letter
-                    # email spelling ('C as Charlie [pause] Y as Yankee...')
-                    # into 3-4 separate turns because the semantic model
-                    # treated each pause as utterance completion.
-                    # server_vad with silence_duration_ms=1200 holds the turn
-                    # open through natural inter-letter pauses (PSTN 8kHz μ-law
-                    # callers pause 600-1100ms between letters). threshold=0.5
-                    # is OpenAI's default and works well in moderate noise.
-                    # prefix_padding_ms=300 captures the first phoneme so the
-                    # leading letter isn't clipped.
-                    # (server_vad 1200ms — letter-by-letter pause 허용)
-                    "turn_detection": {
-                        "type":                 "server_vad",
-                        "threshold":            0.5,
-                        "prefix_padding_ms":    300,
-                        "silence_duration_ms":  1200,
-                        "create_response":      True,   # auto-fire response.create on speech_stopped
-                        "interrupt_response":   True,   # cancel ongoing audio on barge-in
-                    },
-                    # Enable user audio transcription so debug log shows what
-                    # the model heard. Critical for diagnosing tool-not-firing
-                    # cases (e.g. CA79c80b2a turn-7 'yes' that didn't trigger
-                    # make_reservation) and language-detection issues.
-                    # (사용자 발화 transcript을 log에 기록 — tool 미발사 디버깅)
-                    "input_audio_transcription": {
-                        "model": "gpt-4o-mini-transcribe",
-                    },
                 }
             )
-            _dbg(f"[realtime] ✓ session.update sent (g711_ulaw, "
+            _dbg(f"[realtime] ✓ session.update sent (audio/pcmu GA shape, "
                  f"system_prompt={len(instructions)}B, "
                  f"tools={len(OPENAI_REALTIME_TOOLS)}, "
                  f"vad=server_vad/silence=1200ms + whisper transcription)")
@@ -845,7 +907,7 @@ async def realtime_bridge(ws: WebSocket) -> None:
             _dbg(f"[realtime] greeting prompt: {greeting_instruction!r}")
             try:
                 await oai.response.create(response={
-                    "modalities":   ["audio", "text"],
+                    "output_modalities": ["audio"],
                     "instructions": greeting_instruction,
                 })
                 _dbg("[realtime] ✓ initial greeting response.create sent")
@@ -921,6 +983,14 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 "active_tx_id":       None,
                 "usual_offered":      False,
                 "usual_accepted":     None,
+                # Debug-2026-05-12 — full turn log persisted to
+                # call_logs.transcript on session end. Each entry is
+                # {role, text, ts_ms}. Lets us diagnose tool-not-firing
+                # cases (JM Pizza pilot Day 1: 5 calls completed Successful
+                # but 0 bridge_transactions — root cause unknown without
+                # transcripts). Fire-and-forget UPDATE on disconnect.
+                # (전체 turn log를 call_logs.transcript에 저장 — tool 미발사 디버깅용)
+                "transcript_turns":   [],
             }
 
             async def twilio_to_openai() -> None:
@@ -1004,7 +1074,7 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             stats["speech_stop_ts"] = time.monotonic()
                             _dbg("[oai→twilio] caller speech_stopped")
 
-                        elif etype == "response.audio.delta":
+                        elif etype == "response.output_audio.delta":
                             # First-byte TTFT measurement
                             if (
                                 stats["speech_stop_ts"] is not None
@@ -1024,10 +1094,17 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             }))
                             stats["openai_audio_out"] += 1
 
-                        elif etype == "response.audio_transcript.done":
+                        elif etype == "response.output_audio_transcript.done":
                             agent_text = getattr(event, 'transcript', '') or ""
                             _dbg(f"[oai→twilio] turn={stats['user_turns']} agent: "
                                  f"{agent_text!r}")
+                            # Debug-2026-05-12 — accumulate for DB persistence
+                            session_state["transcript_turns"].append({
+                                "role": "agent",
+                                "text": agent_text,
+                                "turn": stats["user_turns"],
+                                "ts_ms": int(time.time() * 1000),
+                            })
                             # Wave A.3 Plan E — keep the bot's last response
                             # so the tool dispatcher can reconcile NATO email
                             # readback against args.customer_email before
@@ -1063,6 +1140,13 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             user_text = getattr(event, 'transcript', '') or ""
                             _dbg(f"[oai→twilio] turn={stats['user_turns']} caller: "
                                  f"{user_text!r}")
+                            # Debug-2026-05-12 — accumulate for DB persistence
+                            session_state["transcript_turns"].append({
+                                "role": "caller",
+                                "text": user_text,
+                                "turn": stats["user_turns"],
+                                "ts_ms": int(time.time() * 1000),
+                            })
                             # Track for tier-3 detection + (future) audit context.
                             session_state["last_user_text"] = user_text
                             # Phase 5 #26 — Tier-3 manager alert (V0+).
@@ -1107,6 +1191,14 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                 tool_args = {}
                             _dbg(f"[tool] CALL name={tool_name} call_id={call_id} "
                                  f"args_keys={list(tool_args.keys())}")
+                            # Debug-2026-05-12 — persist tool call attempt
+                            session_state["transcript_turns"].append({
+                                "role": "tool_call",
+                                "tool": tool_name,
+                                "args": tool_args,
+                                "turn": stats["user_turns"],
+                                "ts_ms": int(time.time() * 1000),
+                            })
                             t_tool_start = time.monotonic()
                             try:
                                 tool_result = await _dispatch_tool_call(
@@ -1129,6 +1221,18 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             tool_ms = (time.monotonic() - t_tool_start) * 1000
                             _dbg(f"[tool] DONE name={tool_name} ok={tool_result.get('success')} "
                                  f"reason={tool_result.get('reason')} ms={tool_ms:.0f}")
+                            # Debug-2026-05-12 — persist tool result (slim copy)
+                            session_state["transcript_turns"].append({
+                                "role": "tool_result",
+                                "tool": tool_name,
+                                "ok": bool(tool_result.get("success")),
+                                "reason": tool_result.get("reason"),
+                                "hint": tool_result.get("ai_script_hint"),
+                                "unavailable": tool_result.get("unavailable"),
+                                "ms": int(tool_ms),
+                                "turn": stats["user_turns"],
+                                "ts_ms": int(time.time() * 1000),
+                            })
                             # Send result back to OpenAI as function_call_output.
                             # Output must be a string — we serialize the dict.
                             # (결과를 string으로 직렬화 — OpenAI Realtime 사양)
@@ -1185,11 +1289,11 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                     continue
                                 for c in (getattr(item, "content", None) or []):
                                     c_type = getattr(c, "type", "") or ""
-                                    if c_type == "audio":
+                                    if c_type in ("output_audio", "audio"):
                                         has_audio = True
                                         if not transcript:
                                             transcript = (getattr(c, "transcript", "") or "")[:80]
-                                    elif c_type == "text" and not transcript:
+                                    elif c_type in ("output_text", "text") and not transcript:
                                         transcript = (getattr(c, "text", "") or "")[:80]
                             _dbg(
                                 f"[oai→twilio] response.done turn={stats['user_turns']} "
@@ -1379,11 +1483,28 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # outer `except` and never reach here. Fire-and-forget.
                 # (call_logs UPDATE — 통화 종료 시점 duration + status)
                 if call_sid:
+                    # Debug-2026-05-12 — serialize accumulated transcript turns.
+                    # Compact JSON keeps the DB column small; consumed by
+                    # diagnostic scripts only. Capped at 100KB to avoid runaway
+                    # entries from very long calls / event storms.
+                    # (transcript JSON — 통화당 100KB cap)
+                    try:
+                        _transcript_json = json.dumps(
+                            session_state.get("transcript_turns") or [],
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        if len(_transcript_json) > 100_000:
+                            _transcript_json = _transcript_json[:100_000]
+                    except Exception:
+                        _transcript_json = None
+
                     try:
                         asyncio.create_task(_update_call_log_row(
                             call_id    = call_sid,
                             duration_s = max(1, duration_ms // 1000),
                             status     = "Successful",
+                            transcript = _transcript_json,
                         ))
                     except Exception as exc:
                         _dbg(f"[call_log] update dispatch error: {exc}")
