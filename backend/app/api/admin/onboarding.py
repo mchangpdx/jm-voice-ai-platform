@@ -21,6 +21,9 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.services.onboarding.ai_helper import (
+    apply_allergen_inference_to_normalized,
+)
 from app.services.onboarding.input_router import extract as run_extract
 from app.services.onboarding.menu_yaml_exporter import export_menu_yaml
 from app.services.onboarding.modifier_groups_extractor import (
@@ -57,9 +60,11 @@ class ExtractRequest(BaseModel):
 class NormalizeRequest(BaseModel):
     """Wizard Step 2 → Step 3 transition. Takes the operator-reviewed
     raw items (possibly edited inline) and re-runs the normalizer.
-    (Step 2→3 — operator review 통과한 raw items로 재정규화)
+    Vertical drives allergen inference; defaults to 'general' (no-op).
+    (Step 2→3 — operator review 통과한 raw items로 재정규화, vertical로 algy 추론)
     """
-    items: list[dict[str, Any]] = Field(default_factory=list)
+    items:    list[dict[str, Any]] = Field(default_factory=list)
+    vertical: str = "general"
 
 
 class PreviewYamlRequest(BaseModel):
@@ -96,9 +101,16 @@ async def post_extract(req: ExtractRequest) -> RawMenuExtraction:
 
 @router.post("/normalize", response_model=None)
 async def post_normalize(req: NormalizeRequest) -> list[NormalizedMenuItem]:
-    """Stage 2 — group rows by (name, pos_item_id) into items + variants."""
+    """Stage 2 — group rows + auto-fill allergens from the vertical template.
+
+    Allergens come from the vertical's `allergen_rules.yaml`; items the
+    upstream adapter already tagged are preserved verbatim. The wizard
+    can override the inferred set in Step 3 inline edit.
+    (group + vertical 규칙 기반 algy 추론, adapter가 채운 건 유지)
+    """
     raw_items: list[RawMenuItem] = [it for it in req.items]  # type: ignore[assignment]
-    return normalize_items(raw_items)
+    normalized = normalize_items(raw_items)
+    return apply_allergen_inference_to_normalized(normalized, vertical=req.vertical)
 
 
 @router.post("/preview-yaml", response_model=None)
@@ -142,8 +154,11 @@ async def post_pipeline(req: PipelineRequest) -> dict[str, Any]:
     except (ValueError, NotImplementedError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    items    = normalize_items(raw["items"])
     vertical = req.vertical or raw.get("vertical_guess") or "general"
+    items    = apply_allergen_inference_to_normalized(
+        normalize_items(raw["items"]),
+        vertical=vertical,
+    )
     return {
         "raw_extraction":      raw,
         "normalized_items":    items,
