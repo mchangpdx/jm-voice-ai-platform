@@ -45,14 +45,6 @@ async def test_extract_unknown_source_returns_400() -> None:
 
 
 @pytest.mark.asyncio
-async def test_extract_not_implemented_source_returns_501() -> None:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post("/api/admin/onboarding/extract",
-                                 json={"source_type": "url", "payload": {"url": "https://x.com"}})
-    assert resp.status_code == 501
-
-
-@pytest.mark.asyncio
 async def test_extract_manual_round_trip() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/api/admin/onboarding/extract", json={

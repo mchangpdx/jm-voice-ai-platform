@@ -31,7 +31,3 @@ async def test_manual_passthrough_keeps_valid_rows_drops_invalid() -> None:
     assert len(result["warnings"]) == 2
 
 
-@pytest.mark.asyncio
-async def test_url_crawler_is_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        await extract("url", {"url": "https://example.com"})
