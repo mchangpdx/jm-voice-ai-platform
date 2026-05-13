@@ -346,15 +346,18 @@ async def finalize_store(
             "item_group_wires":  wire_count,
             "menu_cache_chars":  cache_chars,
         },
+        # Phone routing is now handled by realtime_voice._resolve_store_id
+        # via stores.phone DB lookup (5-min cache) — the operator no longer
+        # has to edit code to activate a new store. Twilio webhook URL
+        # is the one remaining manual step until a Twilio API client lands.
+        # (routing 자동화 — Twilio webhook URL만 manual)
         "next_steps": [
-            f"Add this line to backend/app/api/realtime_voice.py PHONE_TO_STORE: "
-            f"\"{phone_number}\": \"{store_id}\",  # {store_name}",
-            f"Set Twilio Console voice webhook for {phone_number} → "
+            f"In Twilio Console, set the voice webhook for {phone_number} → "
             f"https://jmtechone.ngrok.app/twilio/voice/inbound",
             f"Manager escalation phone: {manager_phone} "
             f"(adjust if different per store)",
-            "Restart uvicorn (bash ~/start_jm.sh) so PHONE_TO_STORE picks up the new row.",
             f"Place a verification call to {phone_number} from a Google Voice US number "
-            "to confirm the greeting + menu_cache.",
+            "to confirm the greeting + menu_cache. The store is reachable immediately — "
+            "no uvicorn restart needed.",
         ],
     }

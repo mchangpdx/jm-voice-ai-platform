@@ -189,9 +189,11 @@ async def test_finalize_returns_counts_and_next_steps() -> None:
     assert result["counts"]["modifier_groups"]  == 1
     assert result["counts"]["modifier_options"] == 2
     assert result["counts"]["item_group_wires"] == 1
-    # next_steps must surface the PHONE_TO_STORE edit and the Twilio URL.
+    # next_steps surfaces the Twilio URL + verification call instructions.
+    # PHONE_TO_STORE edit is intentionally NOT here — routing is auto via
+    # stores.phone DB lookup (see realtime_voice._resolve_store_id).
     next_blob = " ".join(result["next_steps"])
     assert "+19711234567" in next_blob
-    assert "NEW-STORE-ID" in next_blob
-    assert "PHONE_TO_STORE" in next_blob
     assert "twilio" in next_blob.lower()
+    assert "verification call" in next_blob.lower()
+    assert "PHONE_TO_STORE" not in next_blob

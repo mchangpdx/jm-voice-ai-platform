@@ -103,9 +103,13 @@ _SUPABASE_HEADERS = {
 _REST = f"{settings.supabase_url}/rest/v1"
 
 # Phase 3a → Pizza pilot (2026-05-11) — Twilio inbound `To` (called_number)
-# resolves to a store_id via this map. Unmapped numbers fall back to JM Cafe
-# (preserves pre-pilot behavior). To onboard a new store, append one row.
-# (called_number → store_id 매핑 — 미등록 번호는 JM Cafe로 fallback)
+# resolves to a store_id via DB lookup first, hardcoded fallback second,
+# JM Cafe default last. The hardcoded map stays as a safety net for the
+# 2026-05-12 pilot stores so a transient Supabase outage doesn't drop
+# calls. Newly onboarded stores (via Admin Wizard /finalize) populate
+# `stores.phone` and route through the DB path automatically — operator
+# never edits this file.
+# (called_number → store_id: DB → 상수 fallback → JM Cafe default. 새 매장은 DB)
 JM_CAFE_STORE_ID = "7c425fcb-91c7-4eb7-982a-591c094ba9c9"
 JM_PIZZA_STORE_ID = "7411aaee-8b50-49b0-bc7b-56627932b99a"
 
@@ -115,10 +119,70 @@ PHONE_TO_STORE: dict[str, str] = {
 }
 
 
-def _resolve_store_id(called_number: str | None) -> str:
-    """Map Twilio `To` (called_number) → store_id. Defaults to JM Cafe."""
-    if called_number and called_number in PHONE_TO_STORE:
-        return PHONE_TO_STORE[called_number]
+# In-process cache: phone → (store_id, expires_at_monotonic).
+# 5-minute TTL keeps per-call DB roundtrips off the critical greeting
+# latency path (TTFT). Cache miss costs ~50-150ms; cache hit is O(1).
+# (5분 TTL — 통화당 DB hit 0회로 latency 보호)
+_PHONE_CACHE: dict[str, tuple[str, float]] = {}
+_PHONE_CACHE_TTL_S = 300.0
+
+
+async def _resolve_store_id(called_number: str | None) -> str:
+    """Map Twilio `To` (called_number) → store_id with 4-tier lookup.
+
+    Order:
+      1. Process-local cache (5min TTL).
+      2. Supabase stores.phone column — primary source of truth, lets
+         /finalize hand off a new store without code changes.
+      3. PHONE_TO_STORE hardcoded fallback — survives DB outage for the
+         original pilot stores.
+      4. JM_CAFE_STORE_ID default — historical pre-pilot behavior.
+
+    DB lookup is wrapped in a short timeout (1.5s) and a broad except;
+    a Supabase blip falls through to the constant map instead of
+    dropping the inbound call. Cache is populated by both DB hits and
+    fallback hits so subsequent calls within the TTL skip both paths.
+    (4단계 lookup — DB 우선, 상수 fallback, 절대 통화 drop 없음)
+    """
+    if not called_number:
+        return JM_CAFE_STORE_ID
+
+    now = time.monotonic()
+
+    # 1. Cache
+    cached = _PHONE_CACHE.get(called_number)
+    if cached and cached[1] > now:
+        return cached[0]
+
+    # 2. DB
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            resp = await client.get(
+                f"{_REST}/stores",
+                headers=_SUPABASE_HEADERS,
+                params={
+                    "phone":  f"eq.{called_number}",
+                    "select": "id",
+                    "limit":  "1",
+                },
+            )
+            if resp.status_code == 200:
+                rows = resp.json() or []
+                if rows:
+                    store_id = rows[0]["id"]
+                    _PHONE_CACHE[called_number] = (store_id, now + _PHONE_CACHE_TTL_S)
+                    return store_id
+    except Exception as exc:
+        log.info("[realtime] phone DB lookup failed (%s) — using fallback",
+                 type(exc).__name__)
+
+    # 3. Hardcoded fallback
+    fallback = PHONE_TO_STORE.get(called_number)
+    if fallback:
+        _PHONE_CACHE[called_number] = (fallback, now + _PHONE_CACHE_TTL_S)
+        return fallback
+
+    # 4. Default
     return JM_CAFE_STORE_ID
 
 
@@ -745,7 +809,7 @@ async def realtime_bridge(ws: WebSocket) -> None:
     # (call_logs INSERT — 통화 시작 직후 1회, 실패 시 None 유지)
     # Resolve store_id from Twilio inbound number (PHONE_TO_STORE map).
     # (called_number 기반 매장 라우팅 — 미등록 시 JM Cafe로 fallback)
-    resolved_store_id = _resolve_store_id(called_number)
+    resolved_store_id = await _resolve_store_id(called_number)
     _dbg(f"[realtime] called_number={called_number} → store_id={resolved_store_id}")
 
     if call_sid:
