@@ -197,3 +197,52 @@ async def test_finalize_returns_counts_and_next_steps() -> None:
     assert "twilio" in next_blob.lower()
     assert "verification call" in next_blob.lower()
     assert "PHONE_TO_STORE" not in next_blob
+
+
+@pytest.mark.asyncio
+async def test_dry_run_skips_db_writes_returns_estimated_counts() -> None:
+    """dry_run=True must never POST/PATCH supabase; returns the same
+    response shape with dry_run=True flag + supabase_ping result."""
+    menu_yaml = {"items": [
+        {"id": "a", "en": "A", "base_price": 1.0, "category": "x"},
+        {"id": "b", "en": "B", "base_price": 2.0, "category": "x"},
+        {"id": "c", "en": "C", "base_price": 3.0, "category": "y"},
+    ]}
+    mg_yaml = {"groups": {
+        "size": {"applies_to_categories": ["x"], "options": [
+            {"id": "s", "en": "Small", "price_delta": 0.0},
+            {"id": "l", "en": "Large", "price_delta": 2.0},
+        ]},
+    }}
+
+    # Supabase ping returns success.
+    ping_resp = MagicMock(status_code=200)
+    ping_resp.json = MagicMock(return_value=[{"id": "anything"}])
+    ping_resp.text = ""
+
+    instance = MagicMock()
+    instance.__aenter__ = AsyncMock(return_value=instance)
+    instance.__aexit__  = AsyncMock(return_value=None)
+    instance.get  = AsyncMock(return_value=ping_resp)
+    instance.post = AsyncMock(side_effect=AssertionError("dry_run must not POST"))
+
+    with patch("app.services.onboarding.db_seeder.httpx.AsyncClient", return_value=instance):
+        result = await finalize_store(
+            store_name           = "DryRun Pizza",
+            phone_number         = "+15035550100",
+            manager_phone        = "+15037079566",
+            vertical             = "pizza",
+            menu_yaml            = menu_yaml,
+            modifier_groups_yaml = mg_yaml,
+            dry_run              = True,
+        )
+
+    assert result["dry_run"] is True
+    assert result["store_id"] == "DRY-RUN-NO-DB-WRITE"
+    assert result["counts"]["menu_items"] == 3
+    assert result["counts"]["modifier_groups"] == 1
+    assert result["counts"]["modifier_options"] == 2
+    # Wire count: items a,b (cat=x, group size applies) = 2; item c (cat=y) = 0.
+    assert result["counts"]["item_group_wires"] == 2
+    assert result["supabase_ping"]["ok"] is True
+    instance.post.assert_not_called()

@@ -159,6 +159,7 @@ class FinalizeRequest(BaseModel):
     system_prompt:        Optional[str] = None
     push_to_loyverse:     bool = False
     loyverse_store_id:    Optional[str] = None  # required if push_to_loyverse
+    dry_run:              bool = False           # payload preview only — no DB / Loyverse writes
 
 
 @router.post("/finalize", response_model=None)
@@ -188,6 +189,7 @@ async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
             pos_provider         = req.pos_provider,
             pos_api_key          = req.pos_api_key,
             system_prompt        = req.system_prompt,
+            dry_run              = req.dry_run,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -208,6 +210,7 @@ async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
                 loyverse_store_id    = req.loyverse_store_id,
                 menu_yaml            = req.menu_yaml,
                 modifier_groups_yaml = req.modifier_groups_yaml,
+                dry_run              = req.dry_run,
             )
             result["loyverse_push"] = loyverse_result
         except LoyversePushError as exc:

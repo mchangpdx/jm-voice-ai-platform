@@ -283,6 +283,85 @@ async def rebuild_menu_cache(
 
 # ── Orchestrator ────────────────────────────────────────────────────────────
 
+async def _ping_supabase() -> tuple[bool, str]:
+    """Read-only Supabase connectivity check. Returns (ok, message).
+
+    Used by the dry-run path so the wizard can show "Supabase OK" or
+    "Supabase unreachable — fix env before retrying without dry-run"
+    instead of pretending success. The query is intentionally trivial
+    (HEAD-equivalent — no row data returned) so a misconfigured
+    service-role token surfaces as 401 immediately.
+    (read-only ping — dry-run에서 사용자 안내)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(
+                f"{_REST}/stores",
+                headers=_H,
+                params={"select": "id", "limit": "1"},
+            )
+            if resp.status_code == 200:
+                return (True, f"supabase reachable (returned {len(resp.json())} row)")
+            return (False, f"supabase responded {resp.status_code}: {resp.text[:200]}")
+    except Exception as exc:
+        return (False, f"supabase ping failed: {type(exc).__name__}: {exc}")
+
+
+def _dry_run_finalize(
+    store_name:           str,
+    phone_number:         str,
+    manager_phone:        str,
+    vertical:             str,
+    menu_yaml:            dict[str, Any],
+    modifier_groups_yaml: dict[str, Any],
+    pos_provider:         Optional[str],
+    pos_api_key:          Optional[str],
+) -> dict[str, Any]:
+    """Build the payload counts that real finalize_store would produce —
+    without touching Supabase. Lets the wizard preview wire counts +
+    operator instructions before committing to a real write.
+
+    Wire count is computed the same way wire_items_to_modifier_groups
+    does it (category match against applies_to_categories) so the
+    operator sees the actual number Loyverse will create.
+    (dry-run — payload shape + 카운트만, DB write 없음)
+    """
+    items = menu_yaml.get("items") or []
+    groups = (modifier_groups_yaml or {}).get("groups") or {}
+    wire_count = 0
+    for item in items:
+        item_cat = item.get("category")
+        if not item_cat:
+            continue
+        for code, g in groups.items():
+            applies = g.get("applies_to_categories")
+            if applies and item_cat not in applies:
+                continue
+            wire_count += 1
+    options_count = sum(
+        len(g.get("options") or []) for g in groups.values()
+    )
+    return {
+        "store_id":  "DRY-RUN-NO-DB-WRITE",
+        "dry_run":   True,
+        "counts": {
+            "menu_items":        len(items),
+            "modifier_groups":   len(groups),
+            "modifier_options":  options_count,
+            "item_group_wires":  wire_count,
+            "menu_cache_chars":  0,  # rebuild_menu_cache reads DB — N/A in dry-run
+        },
+        "next_steps": [
+            f"DRY-RUN: no DB rows created. Re-run with dry_run=false to actually onboard "
+            f"\"{store_name}\" at {phone_number}.",
+            f"In Twilio Console, set the voice webhook for {phone_number} → "
+            f"https://jmtechone.ngrok.app/twilio/voice/inbound",
+            f"Manager escalation phone: {manager_phone}",
+            "Verification call recommended after real finalize completes.",
+        ],
+    }
+
+
 async def finalize_store(
     *,
     store_name:           str,
@@ -296,8 +375,15 @@ async def finalize_store(
     pos_provider:         Optional[str] = None,
     pos_api_key:          Optional[str] = None,
     system_prompt:        Optional[str] = None,
+    dry_run:              bool = False,
 ) -> dict[str, Any]:
     """Run all seeders end-to-end. Returns {store_id, counts, next_steps}.
+
+    dry_run=True returns the same shape but skips every DB write and
+    adds a `supabase_ping` field so the operator knows whether a
+    real run would even reach Supabase. Safe for in-flight / airport
+    sanity checks where touching prod isn't acceptable.
+    (dry_run — DB write 없이 payload + supabase ping)
 
     The Loyverse webhook re-sync is left to the operator (the existing
     `freeze` mechanism in services/sync/freeze.py is the gate). PHONE_TO_STORE
@@ -306,6 +392,21 @@ async def finalize_store(
     one-line edit the operator needs to make instead.
     (PHONE_TO_STORE 직접 수정 안 함 — response.next_steps에 안내)
     """
+    if dry_run:
+        ok, ping_message = await _ping_supabase()
+        out = _dry_run_finalize(
+            store_name           = store_name,
+            phone_number         = phone_number,
+            manager_phone        = manager_phone,
+            vertical             = vertical,
+            menu_yaml            = menu_yaml,
+            modifier_groups_yaml = modifier_groups_yaml,
+            pos_provider         = pos_provider,
+            pos_api_key          = pos_api_key,
+        )
+        out["supabase_ping"] = {"ok": ok, "message": ping_message}
+        return out
+
     items_yaml = menu_yaml.get("items") or []
     groups     = (modifier_groups_yaml or {}).get("groups") or {}
 

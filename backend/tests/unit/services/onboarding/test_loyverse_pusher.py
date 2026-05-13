@@ -275,3 +275,46 @@ async def test_orchestrator_runs_three_waves_and_returns_counts() -> None:
     assert result["counts"]["categories"] == 2
     assert result["counts"]["modifiers"]  == 1
     assert result["counts"]["items"]      == 2
+
+
+@pytest.mark.asyncio
+async def test_dry_run_skips_posts_returns_estimated_counts() -> None:
+    """dry_run=True must never POST to Loyverse; returns counts + ping."""
+    menu_yaml = {"items": [
+        {"id": "p1", "en": "Pizza 1", "category": "pies",   "base_price": 18.0},
+        {"id": "p2", "en": "Pizza 2", "category": "pies",   "base_price": 20.0},
+        {"id": "d1", "en": "Drink",   "category": "drinks", "base_price": 2.5},
+    ]}
+    mg_yaml = {"groups": {
+        "size":  {"applies_to_categories": ["pies"], "options": []},
+        "crust": {"applies_to_categories": ["pies"], "options": []},
+    }}
+
+    ping_resp = MagicMock(status_code=200)
+    ping_resp.json = MagicMock(return_value={"name": "Test Merchant"})
+    ping_resp.text = ""
+
+    instance = MagicMock()
+    instance.__aenter__ = AsyncMock(return_value=instance)
+    instance.__aexit__  = AsyncMock(return_value=None)
+    instance.get  = AsyncMock(return_value=ping_resp)
+    instance.post = AsyncMock(side_effect=AssertionError("dry_run must not POST"))
+
+    with patch(
+        "app.services.onboarding.loyverse_pusher.httpx.AsyncClient",
+        return_value=instance,
+    ):
+        result = await push_menu_to_loyverse(
+            access_token         = "tok",
+            loyverse_store_id    = "STORE-X",
+            menu_yaml            = menu_yaml,
+            modifier_groups_yaml = mg_yaml,
+            dry_run              = True,
+        )
+
+    assert result["dry_run"] is True
+    # 2 unique categories (pies, drinks), 1 modifier (size excluded), 3 items.
+    assert result["counts"] == {"categories": 2, "modifiers": 1, "items": 3}
+    assert result["loyverse_ping"]["ok"] is True
+    assert "Test Merchant" in result["loyverse_ping"]["message"]
+    instance.post.assert_not_called()

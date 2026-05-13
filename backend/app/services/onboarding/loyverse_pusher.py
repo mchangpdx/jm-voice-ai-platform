@@ -297,12 +297,57 @@ async def push_items(
 
 # ── Orchestrator ────────────────────────────────────────────────────────────
 
+async def _ping_loyverse(access_token: str) -> tuple[bool, str]:
+    """Read-only Loyverse connectivity check. Returns (ok, message).
+
+    GET /merchant is the cheapest authenticated call — confirms the
+    access_token is valid and the API is reachable, without listing
+    any store data. Used by the dry-run path.
+    (Loyverse read-only ping — token + 연결 확인)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{_LOYVERSE_API}/merchant",
+                headers=_headers(access_token),
+            )
+            if resp.status_code == 200:
+                merchant = (resp.json() or {}).get("name") or "unknown"
+                return (True, f"loyverse reachable (merchant: {merchant!r})")
+            return (False, f"loyverse responded {resp.status_code}: {resp.text[:200]}")
+    except Exception as exc:
+        return (False, f"loyverse ping failed: {type(exc).__name__}: {exc}")
+
+
+def _dry_run_push_counts(
+    menu_yaml:            dict,
+    modifier_groups_yaml: dict,
+) -> dict[str, int]:
+    """Counts a real push would produce, without hitting Loyverse.
+
+    Categories = unique non-empty `category` across items. Modifiers
+    counts non-`size` groups (size becomes a Loyverse variant, not a
+    modifier). Items is items_yaml length.
+    (dry-run counts — 실제 push와 동일 logic)
+    """
+    items = menu_yaml.get("items") or []
+    groups = (modifier_groups_yaml or {}).get("groups") or {}
+    unique_cats = {it.get("category") for it in items if it.get("category")}
+    non_size_groups = sum(1 for code in groups if code != "size")
+    return {
+        "categories": len(unique_cats),
+        "modifiers":  non_size_groups,
+        "items":      len(items),
+    }
+
+
 async def push_menu_to_loyverse(
     *,
     access_token:         str,
     loyverse_store_id:    str,
     menu_yaml:            dict,
     modifier_groups_yaml: dict,
+    dry_run:              bool = False,
 ) -> dict[str, Any]:
     """Run the three-wave push end-to-end. Returns counts + id maps.
 
@@ -313,6 +358,14 @@ async def push_menu_to_loyverse(
     to retry from the failed wave anyway (avoid losing successful work).
     (실패 시 cleanup 안 함 — 부분 push 유지, 재시도 가능)
     """
+    if dry_run:
+        ok, ping_msg = await _ping_loyverse(access_token)
+        return {
+            "dry_run":       True,
+            "counts":        _dry_run_push_counts(menu_yaml, modifier_groups_yaml),
+            "loyverse_ping": {"ok": ok, "message": ping_msg},
+        }
+
     items_yaml = menu_yaml.get("items") or []
     groups     = (modifier_groups_yaml or {}).get("groups") or {}
 
