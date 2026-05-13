@@ -19,6 +19,7 @@ const AgencyStoreDetail = lazy(() => import('./views/agency/StoreDetail'))
 
 // Admin / investor demos (관리자 / 투자자 시연용)
 const ArchitectureProof = lazy(() => import('./views/admin/ArchitectureProof'))
+const OnboardingWizard  = lazy(() => import('./views/admin/onboarding/OnboardingWizard'))
 
 // Stubs — "Coming Soon" placeholders until each page is built
 const ComingSoon = ({ title }: { title: string }) => (
@@ -84,6 +85,7 @@ function AppRoutes() {
           }
         >
           <Route path="architecture-proof" element={<ArchitectureProof />} />
+          <Route path="onboarding/new"     element={<OnboardingWizard />} />
         </Route>
 
         {/* FSR Store (store owner mode — store owner 모드) */}

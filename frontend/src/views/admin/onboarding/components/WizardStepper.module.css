@@ -1,0 +1,61 @@
+.stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.bubble {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: 12.5px;
+  color: #64748b;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pending {}
+
+.active .bubble {
+  background: #1e40af;
+  color: #ffffff;
+}
+.active .label {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.completed .bubble {
+  background: #16a34a;
+  color: #ffffff;
+}
+.completed .label {
+  color: #475569;
+}

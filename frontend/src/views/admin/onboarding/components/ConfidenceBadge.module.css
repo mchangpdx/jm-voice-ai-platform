@@ -1,0 +1,30 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.icon { font-size: 12px; line-height: 1; }
+.pct { letter-spacing: 0.02em; }
+
+.high {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.mid {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+.low {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
