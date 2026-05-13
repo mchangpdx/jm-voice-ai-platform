@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from app.services.onboarding.ai_helper import (
     apply_allergen_inference_to_normalized,
 )
+from app.services.onboarding.db_seeder import finalize_store
 from app.services.onboarding.input_router import extract as run_extract
 from app.services.onboarding.menu_yaml_exporter import export_menu_yaml
 from app.services.onboarding.modifier_groups_extractor import (
@@ -128,6 +129,62 @@ async def post_preview_yaml(req: PreviewYamlRequest) -> dict[str, Any]:
         "menu_yaml":            export_menu_yaml(items, vertical=req.vertical),
         "modifier_groups_yaml": export_modifier_groups_yaml(items),
     }
+
+
+class FinalizeRequest(BaseModel):
+    """Wizard Step 5 → Step 6 transition. Last operator-controlled write
+    before the voice agent is reachable on a phone number.
+
+    Identity fields (owner_id, agency_id) are optional — single-tenant
+    pilots leave them null. POS fields persist the Loyverse token so
+    the bridge adapter can re-sync without re-prompting the operator.
+    `system_prompt` lets the wizard inject a vertical-tailored prompt
+    in Step 4 (or fall back to the template default at call time).
+    (Step 5→6 — 매장 최종 DB write, optional identity/POS/prompt)
+    """
+    store_name:           str
+    phone_number:         str
+    manager_phone:        str = "+15037079566"
+    vertical:             str
+    menu_yaml:            dict[str, Any]
+    modifier_groups_yaml: dict[str, Any] = Field(default_factory=dict)
+    owner_id:             Optional[str] = None
+    agency_id:            Optional[str] = None
+    pos_provider:         Optional[str] = None
+    pos_api_key:          Optional[str] = None
+    system_prompt:        Optional[str] = None
+
+
+@router.post("/finalize", response_model=None)
+async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
+    """Stage 5 — write the approved yaml into Supabase + return next steps.
+
+    Calls db_seeder.finalize_store which runs the 5-step write
+    (stores → menu_items → modifier_groups → modifier_options →
+    item↔group wire → menu_cache). On any failure the supabase call
+    raises RuntimeError; we surface that as 500 with the message so
+    the wizard can show the operator exactly what broke and at what
+    step. The wizard rolls back display state — DB rollback is the
+    operator's call (we don't auto-delete a partial store row in
+    case the operator wants to retry without re-typing).
+    (5-step DB write — 실패 시 500, 부분 store row 자동 삭제 안 함)
+    """
+    try:
+        return await finalize_store(
+            store_name           = req.store_name,
+            phone_number         = req.phone_number,
+            manager_phone        = req.manager_phone,
+            vertical             = req.vertical,
+            menu_yaml            = req.menu_yaml,
+            modifier_groups_yaml = req.modifier_groups_yaml,
+            owner_id             = req.owner_id,
+            agency_id            = req.agency_id,
+            pos_provider         = req.pos_provider,
+            pos_api_key          = req.pos_api_key,
+            system_prompt        = req.system_prompt,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── Dev helper — chained pipeline for smoke testing ─────────────────────────
