@@ -26,6 +26,10 @@ from app.services.onboarding.ai_helper import (
 )
 from app.services.onboarding.db_seeder import finalize_store
 from app.services.onboarding.input_router import extract as run_extract
+from app.services.onboarding.loyverse_pusher import (
+    LoyversePushError,
+    push_menu_to_loyverse,
+)
 from app.services.onboarding.menu_yaml_exporter import export_menu_yaml
 from app.services.onboarding.modifier_groups_extractor import (
     export_modifier_groups_yaml,
@@ -153,6 +157,8 @@ class FinalizeRequest(BaseModel):
     pos_provider:         Optional[str] = None
     pos_api_key:          Optional[str] = None
     system_prompt:        Optional[str] = None
+    push_to_loyverse:     bool = False
+    loyverse_store_id:    Optional[str] = None  # required if push_to_loyverse
 
 
 @router.post("/finalize", response_model=None)
@@ -170,7 +176,7 @@ async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
     (5-step DB write — 실패 시 500, 부분 store row 자동 삭제 안 함)
     """
     try:
-        return await finalize_store(
+        result = await finalize_store(
             store_name           = req.store_name,
             phone_number         = req.phone_number,
             manager_phone        = req.manager_phone,
@@ -185,6 +191,34 @@ async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # Optional Wave 6 — push the approved menu to the operator's
+    # Loyverse account. DB write already succeeded; Loyverse failure
+    # surfaces as a 422 warning but doesn't roll back the store.
+    # (Loyverse push 실패는 422로 별도 안내 — DB는 유지)
+    if req.push_to_loyverse:
+        if not (req.pos_api_key and req.loyverse_store_id):
+            raise HTTPException(
+                status_code=400,
+                detail="push_to_loyverse=true requires both pos_api_key and loyverse_store_id",
+            )
+        try:
+            loyverse_result = await push_menu_to_loyverse(
+                access_token         = req.pos_api_key,
+                loyverse_store_id    = req.loyverse_store_id,
+                menu_yaml            = req.menu_yaml,
+                modifier_groups_yaml = req.modifier_groups_yaml,
+            )
+            result["loyverse_push"] = loyverse_result
+        except LoyversePushError as exc:
+            result["loyverse_push"] = {"error": str(exc), "path": exc.path, "status": exc.status}
+            result["next_steps"].insert(0, (
+                f"Loyverse push failed at {exc.path} (HTTP {exc.status}). "
+                "Store DB row was saved; retry the push from the wizard or "
+                "fall back to CSV import in Loyverse Back Office."
+            ))
+
+    return result
 
 
 # ── Dev helper — chained pipeline for smoke testing ─────────────────────────
