@@ -71,20 +71,56 @@ export interface PreviewYamlRequest {
   vertical: string
 }
 
-export interface PreviewYamlResponse {
-  menu_yaml: Record<string, unknown>
+export interface ModifierOption {
+  id: string
+  en: string
+  price_delta: number
+  default?: boolean
 }
 
+export interface ModifierGroup {
+  required: boolean
+  min: number
+  max: number
+  options: ModifierOption[]
+  applies_to_categories: string[]
+}
+
+export interface ModifierGroupsYaml {
+  groups: Record<string, ModifierGroup>
+}
+
+export interface PreviewYamlResponse {
+  menu_yaml: Record<string, unknown>
+  modifier_groups_yaml: ModifierGroupsYaml
+}
+
+// Mirrors backend FinalizeRequest (admin/onboarding.py)
+// (백엔드 FinalizeRequest와 1:1 매칭)
 export interface FinalizeRequest {
   store_name: string
   phone_number: string
-  manager_phone: string
+  manager_phone?: string
+  vertical: string
   menu_yaml: Record<string, unknown>
-  loyverse_api_key?: string
+  modifier_groups_yaml?: Record<string, unknown>
+  owner_id?: string | null
+  agency_id?: string | null
+  pos_provider?: string | null
+  pos_api_key?: string | null
+  system_prompt?: string | null
+  business_hours?: string | null
+  push_to_loyverse?: boolean
+  loyverse_store_id?: string | null
+  dry_run?: boolean
 }
 
 export interface FinalizeResponse {
-  store_id: string
-  voice_agent_url: string
-  test_call_number: string
+  store_id?: string
+  voice_agent_url?: string
+  test_call_number?: string
+  next_steps?: string[]
+  loyverse_push?: Record<string, unknown>
+  dry_run?: boolean
+  [k: string]: unknown
 }

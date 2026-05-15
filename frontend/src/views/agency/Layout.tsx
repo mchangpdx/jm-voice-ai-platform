@@ -28,7 +28,15 @@ export default function AgencyLayout() {
 
   useEffect(() => {
     api.get('/agency/me').then((r) => setAgencyName(r.data.name)).catch(() => {})
-    api.get('/agency/stores').then((r) => setStores(r.data)).catch(() => {})
+    const refetchStores = () => {
+      api.get('/agency/stores').then((r) => setStores(r.data)).catch(() => {})
+    }
+    refetchStores()
+    // Wizard finalize dispatches `stores:invalidate` after a successful
+    // push, so a newly onboarded store shows up in the sidebar without
+    // a page reload. (Step5_POSSync.tsx — 2026-05-17 자동 등록 sprint.)
+    window.addEventListener('stores:invalidate', refetchStores)
+    return () => window.removeEventListener('stores:invalidate', refetchStores)
   }, [])
 
   // Close sidebar on route change (모바일에서 라우트 변경 시 사이드바 닫기)
@@ -73,6 +81,15 @@ export default function AgencyLayout() {
               >
                 <span className={styles.navIcon}>📐</span>
                 Architecture Proof
+              </NavLink>
+              <NavLink
+                to="/admin/onboarding/new"
+                className={({ isActive }) =>
+                  `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
+                }
+              >
+                <span className={styles.navIcon}>＋</span>
+                New Store Onboarding
               </NavLink>
             </nav>
           </>
