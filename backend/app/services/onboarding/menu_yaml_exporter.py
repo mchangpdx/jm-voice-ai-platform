@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
+from app.services.onboarding.ai_helper import infer_dietary_tags
 from app.services.onboarding.schema import NormalizedMenuItem
 
 
@@ -115,13 +116,19 @@ def export_menu_yaml(
         if cat_id not in seen_categories:
             seen_categories[cat_id] = it.get("category") or "Main"
 
+        base_allergens = it.get("detected_allergens") or []
         item_dict: dict[str, Any] = {
             "id":             slug,
             "en":             it.get("name") or "",
             "category":       cat_id,
             "base_price":     float(base_price),
-            "base_allergens": it.get("detected_allergens") or [],
-            "base_dietary":   [],  # Phase 2 ai_helper inference; empty for now.
+            "base_allergens": base_allergens,
+            "base_dietary":   infer_dietary_tags(
+                name        = it.get("name") or "",
+                description = it.get("description"),
+                allergens   = base_allergens,
+                vertical    = vertical,
+            ),
         }
         description = it.get("description")
         if description:

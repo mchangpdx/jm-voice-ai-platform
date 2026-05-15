@@ -124,6 +124,129 @@ def apply_allergen_inference_to_normalized(
     return out
 
 
+# ── Dietary tag inference ────────────────────────────────────────────────────
+# Templates carry two complementary signals:
+#   `dietary_patterns` / `patterns[].add_dietary`  — forward (name keywords)
+#   `dietary_inference[].if_absent → suggest`       — reverse (allergen absence)
+# Both run through `ui_thresholds.auto_check` (default 0.90) so low-confidence
+# suggestions stay off-by-default and reach operators only via the wizard UI.
+# (dietary는 forward+reverse 두 source, auto_check 임계치만 자동 적용)
+
+
+def _auto_check_threshold(rules: dict[str, Any]) -> float:
+    """Read `ui_thresholds.auto_check` with a 0.90 fallback."""
+    thresholds = rules.get("ui_thresholds") or {}
+    raw = thresholds.get("auto_check", 0.90)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.90
+
+
+def _forward_dietary(
+    rules:    dict[str, Any],
+    text:     str,
+    cutoff:   float,
+) -> set[str]:
+    """Keyword-driven dietary tags.
+
+    Two layouts are supported because templates evolved separately:
+    `dietary_patterns` (pizza) and `patterns[].add_dietary` (kbbq). Pattern
+    entries without an explicit `confidence` are treated as 1.0 — they're
+    operator-curated keywords that wouldn't ship without intent.
+    (두 layout 호환 — confidence 미명시는 1.0 취급)
+    """
+    found: set[str] = set()
+    blocks: list[list[Any]] = []
+    if isinstance(rules.get("dietary_patterns"), list):
+        blocks.append(rules["dietary_patterns"])
+    if isinstance(rules.get("patterns"), list):
+        blocks.append(rules["patterns"])
+
+    for block in blocks:
+        for pat in block:
+            if not isinstance(pat, dict):
+                continue
+            adds = pat.get("add_dietary") or []
+            if not adds:
+                continue
+            conf = pat.get("confidence", 1.0)
+            try:
+                conf = float(conf)
+            except (TypeError, ValueError):
+                conf = 1.0
+            if conf < cutoff:
+                continue
+            for kw in pat.get("keywords") or []:
+                if isinstance(kw, str) and kw and kw.lower() in text:
+                    found.update(adds)
+                    break
+    return found
+
+
+def _reverse_dietary(
+    rules:     dict[str, Any],
+    allergens: list[str],
+    cutoff:    float,
+) -> set[str]:
+    """Allergen-absence-driven dietary tags.
+
+    Each `dietary_inference` rule fires when EVERY allergen in `if_absent`
+    is missing from the item's allergen list. Confidence gating keeps
+    low-signal suggestions (e.g., cafe `vegan: 0.50`) out of the auto path
+    — those still surface in the wizard UI for operator review.
+    (모든 if_absent allergen이 부재해야 fire; auto_check 미달은 wizard용)
+    """
+    found: set[str] = set()
+    have = {a.lower() for a in (allergens or []) if isinstance(a, str)}
+    rules_list = rules.get("dietary_inference") or []
+    for rule in rules_list:
+        if not isinstance(rule, dict):
+            continue
+        conf = rule.get("confidence", 1.0)
+        try:
+            conf = float(conf)
+        except (TypeError, ValueError):
+            conf = 1.0
+        if conf < cutoff:
+            continue
+        if_absent = [a.lower() for a in (rule.get("if_absent") or []) if isinstance(a, str)]
+        if not if_absent:
+            continue
+        if any(a in have for a in if_absent):
+            continue
+        found.update(rule.get("suggest") or [])
+    return found
+
+
+def infer_dietary_tags(
+    name:        str,
+    description: str | None,
+    allergens:   list[str],
+    vertical:    str,
+) -> list[str]:
+    """Return sorted dietary tags for one item.
+
+    Combines forward (keywords) and reverse (allergen-absence) signals,
+    filtered by the vertical's `ui_thresholds.auto_check` confidence
+    cutoff. The reverse path consumes the allergen list produced by
+    `infer_allergens` (or any upstream source) — pass an empty list if
+    unknown and reverse rules will fire optimistically.
+    (forward+reverse 통합, auto_check 임계 적용, allergens는 caller가 공급)
+    """
+    if not name:
+        return []
+    rules = _load_rules(vertical)
+    if not rules or (not rules.get("dietary_patterns")
+                     and not rules.get("dietary_inference")
+                     and not rules.get("patterns")):
+        return []
+    cutoff = _auto_check_threshold(rules)
+    text = _haystack(name, description)
+    tags = _forward_dietary(rules, text, cutoff) | _reverse_dietary(rules, allergens, cutoff)
+    return sorted(tags)
+
+
 def apply_allergen_inference_to_raw(
     items:    list[RawMenuItem],
     vertical: str,
