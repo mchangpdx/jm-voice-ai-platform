@@ -18,9 +18,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException
+from jose import JWTError, jwt
 from pydantic import BaseModel, Field
 
+from app.core.auth import get_tenant_id
+from app.core.config import settings
 from app.services.onboarding.ai_helper import (
     apply_allergen_inference_to_normalized,
 )
@@ -135,6 +139,53 @@ async def post_preview_yaml(req: PreviewYamlRequest) -> dict[str, Any]:
     }
 
 
+async def _maybe_tenant_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Resolve tenant_id from the JWT if present; return None for unauth calls.
+
+    Unlike `get_tenant_id`, this never raises — onboarding/finalize is
+    invoked by both the wizard (JWT in localStorage) and dev curl/scripts
+    (no auth header during prod-prep). We force-override owner_id when a
+    valid JWT exists; otherwise we let the caller's req.owner_id stand.
+    (JWT 있으면 force override, 없으면 req 그대로 — wizard + dev 양립)
+    """
+    if not authorization:
+        return None
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    try:
+        return await get_tenant_id(authorization)
+    except HTTPException:
+        return None
+
+
+async def _resolve_agency_id_for_owner(owner_id: str) -> Optional[str]:
+    """Return the agency.id this owner manages, or None for single-tenant users.
+
+    Matches the lookup pattern in `app/api/agency.py:_resolve_agency` —
+    agencies.owner_id is the join key. We swallow misses silently because
+    a brand-new operator that hasn't been provisioned into an agency yet
+    is still allowed to onboard a store (single-tenant pilot).
+    (agency 없는 owner도 등록 허용 — single-tenant pilot은 NULL agency_id)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{settings.supabase_url}/rest/v1/agencies",
+                headers={
+                    "apikey":        settings.supabase_service_role_key,
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                },
+                params={"owner_id": f"eq.{owner_id}", "select": "id"},
+            )
+            if resp.status_code != 200:
+                return None
+            rows = resp.json() if isinstance(resp.json(), list) else []
+            return rows[0]["id"] if rows else None
+    except (httpx.HTTPError, JWTError):
+        return None
+
+
 class FinalizeRequest(BaseModel):
     """Wizard Step 5 → Step 6 transition. Last operator-controlled write
     before the voice agent is reachable on a phone number.
@@ -157,25 +208,39 @@ class FinalizeRequest(BaseModel):
     pos_provider:         Optional[str] = None
     pos_api_key:          Optional[str] = None
     system_prompt:        Optional[str] = None
+    business_hours:       Optional[str] = None
     push_to_loyverse:     bool = False
     loyverse_store_id:    Optional[str] = None  # required if push_to_loyverse
     dry_run:              bool = False           # payload preview only — no DB / Loyverse writes
 
 
 @router.post("/finalize", response_model=None)
-async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
+async def post_finalize(
+    req: FinalizeRequest,
+    tenant_id: Optional[str] = Depends(_maybe_tenant_id),
+) -> dict[str, Any]:
     """Stage 5 — write the approved yaml into Supabase + return next steps.
+
+    Identity resolution: when a valid JWT is present (wizard UI always
+    sends one), `tenant_id` is `JWT.sub` and force-overrides any value
+    `req.owner_id` carried — this prevents a caller from registering a
+    store as another user. The matching `agency_id` is looked up from
+    `agencies.owner_id` so the new store lands in the right tenant's
+    sidebar without manual SQL (the JM Taco 2026-05-16 fix).
 
     Calls db_seeder.finalize_store which runs the 5-step write
     (stores → menu_items → modifier_groups → modifier_options →
     item↔group wire → menu_cache). On any failure the supabase call
-    raises RuntimeError; we surface that as 500 with the message so
-    the wizard can show the operator exactly what broke and at what
-    step. The wizard rolls back display state — DB rollback is the
-    operator's call (we don't auto-delete a partial store row in
-    case the operator wants to retry without re-typing).
-    (5-step DB write — 실패 시 500, 부분 store row 자동 삭제 안 함)
+    raises RuntimeError; we surface that as 500.
+    (JWT.sub → owner_id force, agency 자동 룩업 — 사이드바 즉시 노출)
     """
+    owner_id  = tenant_id or req.owner_id
+    agency_id = req.agency_id
+    if tenant_id:
+        resolved = await _resolve_agency_id_for_owner(tenant_id)
+        if resolved:
+            agency_id = resolved
+
     try:
         result = await finalize_store(
             store_name           = req.store_name,
@@ -184,11 +249,12 @@ async def post_finalize(req: FinalizeRequest) -> dict[str, Any]:
             vertical             = req.vertical,
             menu_yaml            = req.menu_yaml,
             modifier_groups_yaml = req.modifier_groups_yaml,
-            owner_id             = req.owner_id,
-            agency_id            = req.agency_id,
+            owner_id             = owner_id,
+            agency_id            = agency_id,
             pos_provider         = req.pos_provider,
             pos_api_key          = req.pos_api_key,
             system_prompt        = req.system_prompt,
+            business_hours       = req.business_hours,
             dry_run              = req.dry_run,
         )
     except RuntimeError as exc:

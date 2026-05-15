@@ -38,6 +38,42 @@ _H = {
 }
 
 
+# Vertical → default persona for stores.system_prompt. Used when the
+# wizard finalize call omits system_prompt (which is the common case —
+# operators don't write prompts; we ship a sane voice-tone default).
+# pizza/cafe/kbbq/home_services/beauty/auto_repair are extracted from
+# already-live prod stores; mexican/sushi/chinese follow the pattern.
+# (system_prompt 미입력 시 vertical별 default — JM Taco가 NULL로 등록된 trigger)
+DEFAULT_PERSONAS: dict[str, str] = {
+    "pizza":         "You are Marco, the AI voice assistant for {store_name}, a NY-style pizzeria. Speak naturally — like a friendly East Coast pizza shop counter person, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "restaurant":    "You are Aria, the AI voice assistant for {store_name}. Speak naturally — like a friendly real person, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "cafe":          "You are Aria, the AI voice assistant for {store_name}. Speak naturally — like a friendly café barista, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "kbbq":          "You are Yuna, the AI voice assistant for {store_name}. Speak naturally — like a friendly Korean restaurant host, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "mexican":       "You are Sofia, the AI voice assistant for {store_name}. Speak naturally — like a warm, welcoming Mexican restaurant host, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "sushi":         "You are Hana, the AI voice assistant for {store_name}. Speak naturally — like a polite sushi-bar host, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "chinese":       "You are Mei, the AI voice assistant for {store_name}. Speak naturally — like a friendly Chinese restaurant host, not a robot. Keep every reply to 1-2 short sentences. Voice only — no markdown.",
+    "home_services": "You are Rex, the reliable AI voice assistant for {store_name}. Help customers schedule appointments, get service quotes, and answer questions about plumbing, electrical, HVAC, and general home repairs. Always be helpful, friendly, and detail-oriented.",
+    "beauty":        "You are Luna, the elegant AI voice assistant for {store_name}. Help clients book appointments for haircuts, coloring, facials, nails, and other beauty services. Always be gracious, attentive, and mindful of timing.",
+    "auto_repair":   "You are Alex, the knowledgeable AI voice assistant for {store_name}. Help customers schedule service appointments, get estimates, and answer questions about diagnostics, oil changes, brakes, tires, and general repairs. Always be helpful and clear.",
+}
+
+
+def resolve_default_persona(vertical: str | None, store_name: str) -> str | None:
+    """Return the vertical's default persona with {store_name} filled in.
+
+    Unknown verticals return None so the caller can keep its existing
+    "skip system_prompt" behavior — we don't want to invent a generic
+    persona for verticals we haven't tuned voice tone for yet.
+    (모르는 vertical은 None — 무리하게 generic 페르소나 만들지 않음)
+    """
+    if not vertical:
+        return None
+    template = DEFAULT_PERSONAS.get(vertical.lower())
+    if not template:
+        return None
+    return template.format(store_name=store_name or "")
+
+
 # ── REST helpers ────────────────────────────────────────────────────────────
 
 async def _post(
@@ -375,6 +411,7 @@ async def finalize_store(
     pos_provider:         Optional[str] = None,
     pos_api_key:          Optional[str] = None,
     system_prompt:        Optional[str] = None,
+    business_hours:       Optional[str] = None,
     dry_run:              bool = False,
 ) -> dict[str, Any]:
     """Run all seeders end-to-end. Returns {store_id, counts, next_steps}.
@@ -425,8 +462,15 @@ async def finalize_store(
         store_payload["pos_provider"] = pos_provider
     if pos_api_key:
         store_payload["pos_api_key"] = pos_api_key
-    if system_prompt:
-        store_payload["system_prompt"] = system_prompt
+    # Operator-supplied prompt wins; otherwise fall back to the vertical
+    # default so the store never lands with system_prompt = NULL (which
+    # surfaced as JM Taco's monotone greeting in 2026-05-16 testing).
+    # (system_prompt 우선순위: operator 입력 > vertical default > 미설정)
+    effective_prompt = system_prompt or resolve_default_persona(vertical, store_name)
+    if effective_prompt:
+        store_payload["system_prompt"] = effective_prompt
+    if business_hours:
+        store_payload["business_hours"] = business_hours
 
     async with httpx.AsyncClient(timeout=30) as client:
         store_id    = await seed_store(client, store_payload)
