@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.auth import get_tenant_id
+from app.core.auth import get_tenant_id, is_platform_admin
 from app.core.config import settings
 import app.knowledge.home_services as hs_knowledge
 import app.knowledge.restaurant as rest_knowledge
@@ -43,11 +43,6 @@ _VALID_PERIODS   = {"today", "week", "month", "all"}
 _DEFAULT_TIMEZONE = "America/Los_Angeles"
 _DEFAULT_WAGE     = 20.0
 
-# Platform admin users see the first agency for demos / cross-tenant views.
-# Replace with app_metadata.role lookup when Phase 2-E RBAC migration lands.
-# (Phase 2-E 이후 app_metadata.role으로 교체 예정 — 현재는 user_id 매칭)
-_ADMIN_USER_IDS = {"ba885c40-a9ed-4fba-a307-fe3db8329377"}  # admin@test.com
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,12 +63,17 @@ def _period_start(period: str, store_tz: str = _DEFAULT_TIMEZONE) -> str | None:
     return start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-async def _resolve_agency(client: httpx.AsyncClient, owner_id: str) -> dict:
+async def _resolve_agency(
+    client: httpx.AsyncClient,
+    owner_id: str,
+    *,
+    is_admin: bool = False,
+) -> dict:
     """Lookup agency by owner_id. Platform admin falls back to the oldest agency
     (for investor-demo / cross-tenant read views). Raises 403 otherwise.
     (owner_id로 agency 조회 — admin은 가장 오래된 agency로 fallback, 그 외 403)
     """
-    if owner_id in _ADMIN_USER_IDS:
+    if is_admin:
         resp = await client.get(
             f"{_REST}/agencies",
             headers=_SUPABASE_HEADERS,
@@ -254,18 +254,24 @@ async def _compute_store_metrics(
 
 
 @router.get("/me")
-async def get_agency_me(tenant_id: str = Depends(get_tenant_id)) -> dict:
+async def get_agency_me(
+    tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
+) -> dict:
     """Return agency info for the authenticated agency owner. (에이전시 오너 정보 반환)"""
     async with httpx.AsyncClient() as client:
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
     return {"id": agency["id"], "name": agency["name"]}
 
 
 @router.get("/stores")
-async def get_agency_stores(tenant_id: str = Depends(get_tenant_id)) -> list[dict]:
+async def get_agency_stores(
+    tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
+) -> list[dict]:
     """List all stores managed by this agency. (에이전시 관리 스토어 목록 반환)"""
     async with httpx.AsyncClient() as client:
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
         resp = await client.get(
             f"{_REST}/stores",
             headers=_SUPABASE_HEADERS,
@@ -279,6 +285,7 @@ async def get_agency_stores(tenant_id: str = Depends(get_tenant_id)) -> list[dic
 async def get_agency_overview(
     period: str = "month",
     tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
 ) -> dict:
     """Aggregated KPIs across all agency stores, with per-store VerticalMetrics.
     (에이전시 전체 집계 KPI + 스토어별 VerticalMetrics 반환)
@@ -291,7 +298,7 @@ async def get_agency_overview(
 
     async with httpx.AsyncClient() as client:
         # 1. Resolve agency
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
 
         # 2. Get all stores
         stores_resp = await client.get(
@@ -333,6 +340,7 @@ async def get_agency_store_domain_data(
     page: int = 1,
     limit: int = 20,
     tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
 ) -> dict:
     """Industry-specific domain records for a single store in agency context.
     (에이전시 컨텍스트의 산업별 도메인 데이터 — reservations/jobs/appointments/service_orders)
@@ -345,7 +353,7 @@ async def get_agency_store_domain_data(
         )
 
     async with httpx.AsyncClient() as client:
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
 
         check_resp = await client.get(
             f"{_REST}/stores",
@@ -423,6 +431,7 @@ async def get_agency_store_analytics(
     store_id: str,
     period: str = "month",
     tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
 ) -> dict:
     """Analytics charts data for a single store in agency context.
     (에이전시 컨텍스트의 단일 스토어 분석 차트 데이터 반환)
@@ -435,7 +444,7 @@ async def get_agency_store_analytics(
         )
 
     async with httpx.AsyncClient() as client:
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
 
         check_resp = await client.get(
             f"{_REST}/stores",
@@ -514,6 +523,7 @@ async def get_agency_store_call_logs(
     limit: int = 20,
     status: str | None = None,
     tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
 ) -> dict:
     """Paginated call logs for a single store in agency context.
     (에이전시 컨텍스트의 단일 스토어 통화 내역 — 페이징 + 기간 필터 지원)
@@ -525,7 +535,7 @@ async def get_agency_store_call_logs(
         )
 
     async with httpx.AsyncClient() as client:
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
 
         check_resp = await client.get(
             f"{_REST}/stores",
@@ -599,6 +609,7 @@ async def get_agency_store_metrics(
     store_id: str,
     period: str = "month",
     tenant_id: str = Depends(get_tenant_id),
+    is_admin: bool = Depends(is_platform_admin),
 ) -> dict:
     """Per-store KPIs in agency context. Enforces cross-agency 403 protection.
     (에이전시 컨텍스트의 단일 스토어 KPI. 크로스-에이전시 403 보호 적용)
@@ -611,7 +622,7 @@ async def get_agency_store_metrics(
 
     async with httpx.AsyncClient() as client:
         # 1. Resolve agency
-        agency = await _resolve_agency(client, tenant_id)
+        agency = await _resolve_agency(client, tenant_id, is_admin=is_admin)
 
         # 2. Access check: store must belong to THIS agency (크로스-에이전시 접근 차단)
         check_resp = await client.get(

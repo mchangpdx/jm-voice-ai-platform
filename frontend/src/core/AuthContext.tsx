@@ -6,11 +6,20 @@ import api from './api'
 // (3단 권한 — 매장 오너 / 에이전시 오너 / 플랫폼 관리자)
 export type UserRole = 'STORE' | 'AGENCY' | 'ADMIN'
 
-// Platform admin alias — email match in lieu of a backend role flag.
-// When backend admin endpoints + Supabase app_metadata.role land,
-// this becomes a fallback only.
-// (백엔드에 admin role이 정착될 때까지 email 매칭으로 ADMIN 판별)
-const ADMIN_EMAIL = 'admin@test.com'
+// Decode the unsigned middle segment of a JWT to read claims.
+// Verification already happened on the auth server — we only need to read role.
+// (JWT 중간 segment를 base64url 디코드해서 claim 읽기 — 검증은 서버에서 끝남)
+function decodeJwtPayload(token: string): { app_metadata?: { role?: string } } | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
 
 interface AuthState {
   token: string | null
@@ -51,10 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let role: UserRole = 'STORE'
       let industry: string | null = null
 
-      // Platform admin shortcut — email match overrides store/agency probing
-      // (관리자 계정은 매장/에이전시 조회 없이 바로 ADMIN으로 결정)
-      const normalizedEmail = email.trim().toLowerCase()
-      if (normalizedEmail === ADMIN_EMAIL) {
+      // Platform admin via JWT app_metadata.role (Phase 2-E)
+      // Seeded by backend/scripts/seed_admin_role.py, mutable via /admin/users.
+      // (Phase 2-E — JWT app_metadata.role로 ADMIN 판별)
+      const jwtRole = (decodeJwtPayload(data.access_token)?.app_metadata?.role ?? '').toLowerCase()
+      if (jwtRole === 'admin') {
         role = 'ADMIN'
       } else {
         try {

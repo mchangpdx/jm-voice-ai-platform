@@ -32,12 +32,11 @@ async def _get_public_key(kid: str) -> dict:
     return _jwks_cache.get(kid, {})
 
 
-async def get_tenant_id(authorization: str = Header(None)) -> str:
-    """Extract and validate the Supabase JWT, returning the tenant_id (sub claim).
+async def _decode_jwt_payload(authorization: str | None) -> dict:
+    """Validate JWT and return full decoded payload. (JWT 검증 + 전체 payload 반환)
 
     Supports both ES256 (production Supabase tokens) and HS256 (test/legacy tokens).
     Raises HTTP 401 for missing, malformed, expired, or otherwise invalid tokens.
-    (ES256 프로덕션 토큰과 HS256 테스트/레거시 토큰 모두 지원; 누락/형식오류/만료 시 401)
     """
     if authorization is None:
         raise HTTPException(
@@ -108,6 +107,14 @@ async def get_tenant_id(authorization: str = Header(None)) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return payload
+
+
+async def get_tenant_id(authorization: str = Header(None)) -> str:
+    """Extract and validate the Supabase JWT, returning the tenant_id (sub claim).
+    (JWT 검증 후 sub 클레임을 tenant_id로 반환)
+    """
+    payload = await _decode_jwt_payload(authorization)
     tenant_id: str | None = payload.get("sub")
     if not tenant_id:
         raise HTTPException(
@@ -117,3 +124,16 @@ async def get_tenant_id(authorization: str = Header(None)) -> str:
         )
 
     return tenant_id
+
+
+async def is_platform_admin(authorization: str = Header(None)) -> bool:
+    """Return True if JWT app_metadata.role == 'admin'.
+    (JWT의 app_metadata.role이 'admin'이면 True)
+
+    Phase 2-E migration helper — replaces hardcoded user_id allowlists and
+    email matches with the canonical Supabase role claim. Provisioned by
+    `scripts/seed_admin_role.py` and `PATCH /api/admin/users/{id}/role`.
+    """
+    payload = await _decode_jwt_payload(authorization)
+    role = ((payload.get("app_metadata") or {}).get("role") or "").lower()
+    return role == "admin"

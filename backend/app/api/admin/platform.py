@@ -1,32 +1,25 @@
-"""Platform Admin API — read-only views across all agencies + stores.
-(플랫폼 관리자 API — 모든 에이전시·매장에 대한 읽기 전용 뷰)
+"""Platform Admin API — read-only views + mutations across all agencies + stores.
+(플랫폼 관리자 API — 모든 에이전시·매장에 대한 read + mutation 엔드포인트)
 
-Phase 1: GET endpoints only. Mutations (POST/PATCH/DELETE) land in Phase 2.
+Authorization model (Phase 2-E):
+  JWT → decode app_metadata.role
+    → role == 'admin' → allow (service_role bypasses RLS)
+    → otherwise        → 403
 
-Authorization model:
-  JWT → decode email claim
-    → email == ADMIN_EMAIL  → allow (service_role for RLS bypass)
-    → otherwise              → 403
-
-NOTE: Until Supabase app_metadata.role = 'admin' is provisioned, this uses an
-email-based shortcut. Replace with metadata check in Phase 2.
-(현재는 email 매칭으로 admin 판별 — Phase 2에서 app_metadata.role로 교체 예정)
+Role is provisioned by `backend/scripts/seed_admin_role.py` (one-time) and
+by `PATCH /api/admin/users/{user_id}/role` once Phase 2-B ships.
 """
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
-from jose import JWTError, jwt
 
 from app.core.api_errors import get_recent_errors, summarize_errors
 from app.core.audit import audit_log
-from app.core.auth import _get_public_key
 from app.core.config import settings
 from app.services.sync.freeze import status as sync_freeze_status
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Platform"])
-
-ADMIN_EMAIL = "admin@test.com"
 
 _SUPABASE_HEADERS = {
     "apikey": settings.supabase_service_role_key,
@@ -40,40 +33,14 @@ _REST = f"{settings.supabase_url}/rest/v1"
 
 
 async def _decode_admin_jwt(authorization: str | None) -> dict[str, Any]:
-    """Validate JWT, require admin, return decoded payload.
-    (JWT 검증 + admin 권한 체크, payload 반환)
+    """Validate JWT, require app_metadata.role=='admin', return decoded payload.
+    (JWT 검증 + app_metadata.role admin 체크 후 payload 반환)
     """
-    if authorization is None:
-        raise HTTPException(401, "Authorization header is missing")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(401, "Authorization header must be 'Bearer <token>'")
+    from app.core.auth import _decode_jwt_payload
 
-    raw = parts[1]
-    try:
-        header = jwt.get_unverified_header(raw)
-    except JWTError:
-        raise HTTPException(401, "Invalid token")
-
-    alg = header.get("alg", "ES256")
-    try:
-        if alg == "HS256":
-            payload = jwt.decode(
-                raw, settings.supabase_service_role_key, algorithms=["HS256"]
-            )
-        else:
-            kid = header.get("kid", "")
-            key = await _get_public_key(kid)
-            if not key:
-                raise HTTPException(401, "Unknown token signing key")
-            payload = jwt.decode(
-                raw, key, algorithms=[alg], options={"verify_aud": False}
-            )
-    except JWTError:
-        raise HTTPException(401, "Invalid token")
-
-    email = (payload.get("email") or "").lower()
-    if email != ADMIN_EMAIL:
+    payload = await _decode_jwt_payload(authorization)
+    role = ((payload.get("app_metadata") or {}).get("role") or "").lower()
+    if role != "admin":
         raise HTTPException(403, "Admin role required")
     if not payload.get("sub"):
         raise HTTPException(401, "Token missing 'sub' claim")
