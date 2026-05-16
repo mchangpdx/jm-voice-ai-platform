@@ -4,7 +4,7 @@
 **작성**: 2026-05-12 (백엔드 트랙 공항 세션 중)
 **충돌 위험**: **없음** — 백엔드와 다른 디렉토리, 신규 파일만 추가, 기존 admin/agency 화면 미변경
 
-> **업데이트 (2026-05-12 EOD)**: 백엔드 endpoint **3개가 이미 라이브** (`/extract`, `/normalize`, `/preview-yaml`). 더 이상 mock 안 써도 됨 — 처음부터 real fetch로 작업 가능. base URL은 `https://jmtechone.ngrok.app` 또는 dev에서 `http://localhost:8000`. `/finalize`만 아직 mock 필요 (백엔드 Phase 4-5 작업 중).
+> **업데이트 (EOD)**: 백엔드 endpoint **4개 모두 라이브** (`/extract`, `/normalize`, `/preview-yaml`, `/finalize`). Frontend Step 4-6 placeholder도 이제 real fetch로 교체 가능. base URL은 `https://jmtechone.ngrok.app` 또는 dev에서 `http://localhost:8000`. `/finalize` 응답 shape: `{store_id, counts:{menu_items, modifier_groups, modifier_options, item_group_wires, menu_cache_chars}, next_steps[]}` — Step 5 진행도 표시 + Step 6에 next_steps[] 렌더링하면 됨. Note: `/finalize`는 supabase 라이브 호출이라 dev에서 dry-run 모드는 아직 없음 (필요시 사용자가 추가 요청).
 
 ---
 
@@ -124,18 +124,39 @@ Array<{
 **Body**: `{ source_type, payload, vertical?: string }` (extract와 동일 + optional vertical override)
 **200 Response**: `{ raw_extraction, normalized_items, menu_yaml, modifier_groups_yaml }`
 
-### POST `/api/admin/onboarding/finalize`  *(백엔드 Phase 4-5에서 구현 예정)*
+### POST `/api/admin/onboarding/finalize`  *(✅ live)*
 **Body**:
 ```ts
 {
   store_name: string;
-  phone_number: string;       // Twilio 번호 매핑용
-  manager_phone: string;
-  menu_yaml: object;          // preview-yaml 결과 그대로
-  loyverse_api_key?: string;  // POS direct push 원할 때만
+  phone_number: string;        // Twilio inbound 번호 (+1XXXXXXXXXX)
+  manager_phone?: string;      // default "+15037079566"
+  vertical: string;            // "pizza" | "cafe" | "kbbq" | "sushi" | "mexican" | "general"
+  menu_yaml: object;           // preview-yaml 응답의 menu_yaml 그대로
+  modifier_groups_yaml?: object; // preview-yaml 응답의 modifier_groups_yaml 그대로
+  owner_id?: string;
+  agency_id?: string;
+  pos_provider?: string;       // "loyverse" 등
+  pos_api_key?: string;        // Loyverse access_token (옵션)
+  system_prompt?: string;      // 매장별 prompt override (옵션)
 }
 ```
-**200 Response**: `{ store_id: string; voice_agent_url: string; test_call_number: string }`
+**200 Response**:
+```ts
+{
+  store_id: string;
+  counts: {
+    menu_items:        number;
+    modifier_groups:   number;
+    modifier_options:  number;
+    item_group_wires:  number;
+    menu_cache_chars:  number;
+  };
+  next_steps: string[];        // operator-facing instructions
+                                // (PHONE_TO_STORE edit, Twilio URL setup, restart, verify call)
+}
+```
+**주의**: `next_steps[]` 의 첫 줄은 backend `PHONE_TO_STORE` 매핑 수동 추가 안내. 두 번째 줄은 Twilio Console에서 webhook URL 설정. wizard Step 6 화면에 그대로 ordered list로 렌더링하면 운영자가 따라하기 쉬움.
 
 ---
 
