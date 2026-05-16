@@ -31,7 +31,16 @@ log = logging.getLogger(__name__)
 # Excludes canceled / no_show — feeding a cancelled order back as part of a
 # usual-eligibility check produces awkward suggestions like
 # "would you like the latte you didn't pick up last time?"
-_PAID_STATES = ("paid", "settled", "fired_unpaid")
+#
+# 2026-05-12 — added "fulfilled". The mock_payment_callback flow transitions
+# `paid → fulfilled` immediately after settle (kitchen has the order). Without
+# "fulfilled" here, the CRM lookup returned visit_count=0 on returning callers
+# whose previous orders had already moved past the bare PAID state. Live trigger:
+# JM Pizza pilot tx 13068a40 / 12f1af0e — both fulfilled, neither surfaced as
+# a recent order for the same caller phone. "settled" is the legacy SaaS state
+# name retained for backward compatibility with stores still on the older
+# flow. (CRM filter — fulfilled 추가, settled는 legacy 호환용 유지)
+_PAID_STATES = ("paid", "fulfilled", "settled", "fired_unpaid")
 
 # State filter for the visit_count tally. Includes canceled + no_show because
 # any prior interaction (even abandoned) counts toward "is this a returning

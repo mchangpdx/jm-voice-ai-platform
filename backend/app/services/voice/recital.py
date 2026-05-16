@@ -31,8 +31,17 @@ from typing import Optional
 # The bot may use em-dash, en-dash, comma, semicolon between letters; tolerate
 # all of them. Letter is captured group 1.
 # (NATO 패턴: 한 글자 + 'as in'/'like' + NATO 단어)
+#
+# 2026-05-12 — also accept bare digits between separators ("R, 1, S, P, E, E,
+# D, S at yahoo.com" → r1speds → r1speeds). The NATO discipline only applies
+# to letters; numerals are spoken plainly ("the number 1") and the bot reads
+# them back as a bare digit between commas. Live trigger CA5a14bbf... where
+# r1speeds@yahoo.com landed as rspeeds@yahoo.com because the digit dropped.
+# Capture digit in group 2 so the extractor can take either group.
+# (숫자도 매칭 — NATO 외 digit 토큰 별도 capture)
 _LETTER_PATTERN = re.compile(
-    r"\b([A-Za-z])\s*[—–-]?\s*[,;]?\s*(?:as\s+in|like)\s+[A-Za-z]+",
+    r"(?:\b([A-Za-z])\s*[—–-]?\s*[,;]?\s*(?:as\s+in|like)\s+[A-Za-z]+)"
+    r"|(?:(?<=[\s,;:])([0-9])(?=[\s,;:.]|$))",
     re.IGNORECASE,
 )
 
@@ -115,7 +124,9 @@ def extract_email_from_recital(text: Optional[str]) -> Optional[str]:
     if not block:
         return None
 
-    letters = "".join(m.group(1).lower() for m in block)
+    # Each match yields either a NATO letter (group 1) or a bare digit (group 2);
+    # take whichever the OR branch populated. (둘 중 매칭된 캡처를 사용)
+    letters = "".join(((m.group(1) or m.group(2) or "")).lower() for m in block)
     return f"{letters}@{domain}"
 
 

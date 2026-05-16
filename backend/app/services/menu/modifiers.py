@@ -49,13 +49,22 @@ async def fetch_modifier_groups(store_id: str) -> list[dict[str, Any]]:
     (매장의 modifier_groups + 옵션 일괄 조회)
 
     Returns groups sorted by sort_order, with each group's `options` key
-    populated and also sorted by sort_order. Network/REST errors degrade to
-    an empty list — callers must treat absence of modifiers as "no modifier
-    section in prompt", never as a fatal call-handler error.
+    populated and also sorted by sort_order. Each group also gets an
+    `applies_to_categories` list — distinct categories of menu_items wired
+    to the group via menu_item_modifier_groups. Without this, the LLM has
+    no way to tell which base items a Size group actually attaches to and
+    will deny valid composite orders. (live trigger: JM Taco call #4
+    2026-05-15 — agent denied "Large Burrito al Pastor" because the
+    modifier block listed Size in the abstract.)
 
-    Two REST round-trips:
+    Network/REST errors degrade to an empty list — callers must treat
+    absence of modifiers as "no modifier section in prompt", never as a
+    fatal call-handler error.
+
+    Three REST round-trips:
         GET /modifier_groups?store_id=eq.<id>&order=sort_order
         GET /modifier_options?group_id=in.(<ids>)&order=sort_order
+        GET /menu_item_modifier_groups + /menu_items (for applies_to)
     """
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -111,6 +120,50 @@ async def fetch_modifier_groups(store_id: str) -> list[dict[str, Any]]:
 
     for g in groups_sorted:
         g["options"] = by_group.get(g["id"], [])
+
+    # Resolve applies_to_categories per group via the wire table.
+    # Skipped silently if either round-trip fails — the existing
+    # vertical-agnostic prompt still functions, just without the
+    # category hint. (wire 조회 실패는 prompt 출력에서만 누락)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            w_resp = await client.get(
+                f"{_REST}/menu_item_modifier_groups",
+                headers=_SUPABASE_HEADERS,
+                params={"group_id": "in.(" + ",".join(group_ids) + ")",
+                        "select":   "menu_item_id,group_id"},
+            )
+            wires = w_resp.json() if w_resp.status_code == 200 else []
+
+            item_ids = sorted({w["menu_item_id"] for w in wires})
+            categories_by_item: dict[str, str] = {}
+            if item_ids:
+                i_resp = await client.get(
+                    f"{_REST}/menu_items",
+                    headers=_SUPABASE_HEADERS,
+                    params={"id":     "in.(" + ",".join(item_ids) + ")",
+                            "select": "id,category"},
+                )
+                if i_resp.status_code == 200:
+                    for row in i_resp.json() or []:
+                        cat = (row.get("category") or "").strip()
+                        if cat:
+                            categories_by_item[row["id"]] = cat
+
+        cats_by_group: dict[str, set[str]] = {gid: set() for gid in group_ids}
+        for w in wires:
+            gid = w.get("group_id")
+            cat = categories_by_item.get(w.get("menu_item_id"))
+            if gid in cats_by_group and cat:
+                cats_by_group[gid].add(cat)
+        for g in groups_sorted:
+            g["applies_to_categories"] = sorted(cats_by_group.get(g["id"], set()))
+    except Exception as exc:
+        log.warning("fetch_modifier_groups applies_to lookup failed store=%s err=%r",
+                    store_id, exc)
+        for g in groups_sorted:
+            g.setdefault("applies_to_categories", [])
+
     return groups_sorted
 
 
@@ -119,14 +172,18 @@ async def fetch_modifier_groups(store_id: str) -> list[dict[str, Any]]:
 _HEADER = "=== MENU MODIFIERS (combinable with menu items above) ==="
 
 _INTERPRETATION_HINT = (
-    "NOTE: When the customer says a phrase like 'iced oat latte' or "
-    "'large hot almond milk cappuccino', interpret it as a base menu item "
-    "(e.g. Cafe Latte, Cappuccino) plus the modifiers above. The modifiers "
-    "ALWAYS apply to compatible base items — do NOT deny a request because "
-    "'iced X' or 'oat Y' is not a separate menu line. If a customer's "
-    "modifier choice changes the allergen profile (e.g. oat milk adds "
-    "gluten/wheat and removes dairy), call allergen_lookup with the base "
-    "item name and selected_modifiers — never answer from memory."
+    "NOTE: Each modifier group above lists which menu categories it applies "
+    "to ('applies to: X'). When the customer orders an item in one of those "
+    "categories, the modifiers ALWAYS apply — actively offer the choice "
+    "(e.g. ask 'Medium or Large?' for a required Size group) rather than "
+    "denying or assuming a single default. When the customer says a phrase "
+    "that blends a base item with a modifier (size + base, milk + drink, "
+    "temperature + drink, etc.), interpret it as the base item plus the "
+    "modifier choice — do NOT deny a request because the combined phrase is "
+    "not a separate menu line. If a modifier choice changes the allergen "
+    "profile (e.g. a milk option adds gluten/wheat and removes dairy), call "
+    "allergen_lookup with the base item name and selected_modifiers — never "
+    "answer from memory."
 )
 
 
@@ -149,13 +206,31 @@ def format_modifier_block(groups: list[dict[str, Any]]) -> str:
         if max_sel and max_sel > 1:
             marker += f", choose up to {max_sel}"
         display = (g.get("display_name") or g.get("code") or "").strip()
+        code    = (g.get("code") or "").strip()
+        # 2026-05-12 — surface the group `code` next to its display so the
+        # LLM stops emitting display-name-as-code in selected_modifiers args.
+        # Live regression: 10th call CAab82cc... emitted
+        # group="Pizza Size"/"Crust Type" (the human-readable display) while
+        # the catalog code is "size"/"crust" — case-insensitive fallback
+        # caught the size delta but the deep_dish $3 and gluten_free $4
+        # both silently dropped because the alias index didn't include the
+        # exact title-case form. Adding "code=X" inline gives the LLM an
+        # unambiguous string to copy into args.group.
+        # (group code를 LLM에 명시 노출 — args 변덕 차단)
+        code_hint = f" code={code}" if code and code.lower() != display.lower() else ""
         # If display_name already encodes the marker (e.g. "Milk (optional)"),
         # skip the parenthetical to avoid "Milk (optional) (optional):".
         # (display_name이 이미 marker를 포함하면 중복 방지)
+        applies = g.get("applies_to_categories") or []
+        applies_hint = ""
+        if applies:
+            applies_hint = (
+                ", applies to: " + ", ".join(a.replace("_", " ") for a in applies)
+            )
         if display.lower().endswith("(optional)") or display.lower().endswith("(required)"):
-            header = f"{display}:"
+            header = f"{display}{code_hint}{applies_hint}:" if applies_hint else f"{display}{code_hint}:"
         else:
-            header = f"{display} ({marker}):"
+            header = f"{display}{code_hint} ({marker}{applies_hint}):"
 
         opts_text = []
         for o in g.get("options") or []:

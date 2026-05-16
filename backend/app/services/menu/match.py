@@ -174,7 +174,18 @@ async def resolve_items_against_menu(
             gcode = sel.get("group"); ocode = sel.get("option")
             if not gcode or not ocode:
                 continue
-            opt = modifier_index.get((gcode, ocode))
+            # Case-insensitive fallback (Bug #5 fix, 2026-05-12):
+            # LLM sometimes sends "Regular"/"Thin" capitalized while the
+            # modifier_options.code field is lowercase ("regular"/"thin").
+            # Try the original keys first, then a lowercased pair. Avoids
+            # silently dropping the modifier (Big Joe regular crust ghosted
+            # off live tx 13068a40 — price_delta=0 so no $ impact, but
+            # the receipt line was missing the crust label).
+            # (LLM의 대문자 vs DB의 소문자 → case-insensitive fallback)
+            opt = (
+                modifier_index.get((gcode, ocode))
+                or modifier_index.get((gcode.lower(), ocode.lower()))
+            )
             if opt is None:
                 continue
             try:
@@ -222,10 +233,36 @@ def build_modifier_index_from_groups(
     Skips groups/options with empty `code` defensively — those rows can't be
     referenced from selected_modifiers anyway, and including them would
     create unmatchable index entries.
+
+    2026-05-12 — mirrors _load_modifier_index's display_name alias logic so
+    LLM args carrying group="Pizza Size"/"Crust Type" (the display name as
+    seen in the system-prompt block) also match. Without this, session-start
+    builds (used by realtime_voice.py) silently dropped modifiers while the
+    REST-fetch path (used by voice_websocket.py) caught them. Live trigger:
+    JM Pizza call CAab82cc... where Veggie Supreme 18" Gluten-Free landed
+    as $24 instead of $36 because the index only carried the bare codes.
+    (display_name 별칭 — session.update 빌드도 _load_modifier_index와 동일 alias 적용)
     """
     index: dict[tuple[str, str], dict[str, Any]] = {}
     if not groups:
         return index
+
+    # First pass — build alias map: display_name variants → real code.
+    alias_to_code: dict[str, str] = {}
+    for g in groups:
+        gcode = (g.get("code") or "").strip()
+        disp  = (g.get("display_name") or "").strip()
+        if not gcode:
+            continue
+        if disp:
+            d_lower = disp.lower()
+            d_snake = d_lower.replace(" ", "_").replace("-", "_")
+            if d_lower != gcode:
+                alias_to_code[d_lower] = gcode
+            if d_snake != gcode:
+                alias_to_code[d_snake] = gcode
+
+    # Second pass — write (code, ocode) AND every alias of code.
     for g in groups:
         gcode = (g.get("code") or "").strip()
         if not gcode:
@@ -235,6 +272,9 @@ def build_modifier_index_from_groups(
             if not ocode:
                 continue
             index[(gcode, ocode)] = o
+            for alias, real in alias_to_code.items():
+                if real == gcode:
+                    index[(alias, ocode)] = o
     return index
 
 
@@ -251,7 +291,7 @@ async def _load_modifier_index(
             g_resp = await client.get(
                 f"{_REST}/modifier_groups",
                 headers=_SUPABASE_HEADERS,
-                params={"store_id": f"eq.{store_id}", "select": "id,code"},
+                params={"store_id": f"eq.{store_id}", "select": "id,code,display_name"},
             )
             if g_resp.status_code != 200:
                 return {}
@@ -259,6 +299,27 @@ async def _load_modifier_index(
             if not groups:
                 return {}
             gid_to_code = {g["id"]: g["code"] for g in groups}
+            # 2026-05-12 — also map display_name → code so the LLM can address
+            # a group via its visible label. Live trigger CA4042da3... where the
+            # LLM emitted group="pizza_size"/"crust_type" (snake_cased
+            # display_name "Pizza Size"/"Crust Type") while the catalog code is
+            # "size"/"crust" — modifier silently dropped and the Veggie Supreme
+            # was charged $24 instead of the spoken $35. Build a reverse alias
+            # table the matcher can consult after the primary lookup misses.
+            # (display_name → code 별칭 — LLM의 잘못된 group code 회복)
+            alias_to_code: dict[str, str] = {}
+            for g in groups:
+                code = g.get("code") or ""
+                disp = g.get("display_name") or ""
+                if not code:
+                    continue
+                # canonical: lowercase + spaces/dashes → underscores
+                canonical = disp.strip().lower().replace(" ", "_").replace("-", "_")
+                if canonical and canonical != code:
+                    alias_to_code[canonical] = code
+                # also accept the bare lowercased display_name (no separator munge)
+                if disp:
+                    alias_to_code[disp.strip().lower()] = code
 
             o_resp = await client.get(
                 f"{_REST}/modifier_options",
@@ -281,5 +342,12 @@ async def _load_modifier_index(
         gcode = gid_to_code.get(gid)
         if not gcode:
             continue
-        index[(gcode, o.get("code"))] = o
+        ocode = o.get("code") or ""
+        index[(gcode, ocode)] = o
+        # Add display_name aliases under the same option code so a lookup
+        # via (alias_group, option) lands on the same row.
+        # (display_name 별칭으로도 조회 가능하게 동일 row 등록)
+        for alias_group, real_code in alias_to_code.items():
+            if real_code == gcode:
+                index[(alias_group, ocode)] = o
     return index

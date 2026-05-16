@@ -18,21 +18,38 @@ _MINIMAL_ENV = {
 
 
 def _ensure_module_imported():
-    # Import app.core.config for the first time, injecting minimal env vars if needed
-    # (최초 임포트 시 최소 환경 변수를 주입하여 app.core.config 임포트 보장)
-    if "app.core.config" not in sys.modules:
-        _prev = {k: os.environ.get(k) for k in _MINIMAL_ENV}
-        for k, v in _MINIMAL_ENV.items():
-            os.environ.setdefault(k, v)
-        try:
-            import app.core.config  # noqa: F401, PLC0415
-        finally:
-            # Restore original env state (원래 환경 변수 상태 복원)
-            for k, prev_v in _prev.items():
-                if prev_v is None:
-                    os.environ.pop(k, None)
-                else:
-                    os.environ[k] = prev_v
+    # Import app.core.config for the first time. If a .env file is present,
+    # let pydantic-settings load the real values — otherwise inject placeholders
+    # so the import doesn't ValidationError on a fresh CI checkout.
+    # Why: previously this used os.environ.setdefault unconditionally, which
+    # pre-empted .env loading and left the module-level `settings` singleton
+    # bound to "https://placeholder.supabase.co" forever. Downstream modules
+    # (e.g. app.services.bridge.flows) that imported `from .config import
+    # settings` then computed `_REST` against the bogus host, causing live DNS
+    # failures in unrelated tests.
+    # (placeholder env 주입이 .env 로드를 막아 settings를 영구 오염 → 하위
+    # 테스트에서 placeholder.supabase.co로 실 DNS 호출 발생)
+    if "app.core.config" in sys.modules:
+        return
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    dotenv_path = os.path.join(backend_root, ".env")
+    if os.path.isfile(dotenv_path):
+        # Real .env present — let pydantic-settings load it natively.
+        import app.core.config  # noqa: F401, PLC0415
+        return
+    # No .env (CI / fresh checkout) — inject placeholders only for the import,
+    # and restore env on the way out.
+    _prev = {k: os.environ.get(k) for k in _MINIMAL_ENV}
+    for k, v in _MINIMAL_ENV.items():
+        os.environ.setdefault(k, v)
+    try:
+        import app.core.config  # noqa: F401, PLC0415
+    finally:
+        for k, prev_v in _prev.items():
+            if prev_v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = prev_v
 
 
 def _reload_settings_class():
@@ -47,6 +64,26 @@ def _get_settings_class():
     # Return the Settings class without reloading (재로드 없이 Settings 클래스 반환)
     _ensure_module_imported()
     return sys.modules["app.core.config"].Settings
+
+
+# Test isolation: importlib.reload() on app.core.config replaces the module-level
+# `settings` singleton with one built from the test's monkeypatched env. Even
+# after monkeypatch unwinds, the polluted settings instance persists, causing
+# downstream modules (e.g. app.services.bridge.flows) to import a settings with
+# bogus URLs/keys and trigger live DNS calls in unrelated tests. Snapshotting +
+# restoring the singleton around each test keeps the suite hermetic.
+# (test_config 리로드가 settings 싱글톤을 오염 → 하위 모듈 isolation 깨짐)
+@pytest.fixture(autouse=True)
+def _isolate_config_reload():
+    _ensure_module_imported()
+    cfg = sys.modules["app.core.config"]
+    original_settings = cfg.settings
+    original_settings_class = cfg.Settings
+    try:
+        yield
+    finally:
+        cfg.settings = original_settings
+        cfg.Settings = original_settings_class
 
 
 def test_settings_loads_from_env(monkeypatch):

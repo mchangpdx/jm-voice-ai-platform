@@ -6,11 +6,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Inject required env vars before importing any app modules
-# (앱 모듈 임포트 전 필수 환경 변수 주입)
-os.environ.setdefault("SUPABASE_URL", "https://placeholder.supabase.co")
-os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "placeholder-service-role-key")
-os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
+# Inject required env vars before importing any app modules — but ONLY if a
+# real .env is missing. Unconditional injection bleeds the placeholder host
+# into other test files via os.environ (downstream modules then cache _REST
+# against a non-resolving host and fail with DNS errors).
+# (.env가 없는 CI/fresh checkout에서만 placeholder 주입 — 있으면 .env 로딩 우선)
+_BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if not os.path.isfile(os.path.join(_BACKEND_ROOT, ".env")):
+    os.environ.setdefault("SUPABASE_URL", "https://placeholder.supabase.co")
+    os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "placeholder-service-role-key")
+    os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
 
 
 def test_get_gemini_model_returns_generative_model():

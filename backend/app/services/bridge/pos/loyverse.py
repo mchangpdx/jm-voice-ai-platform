@@ -308,20 +308,33 @@ class LoyversePOSAdapter(POSAdapter):
         normalized: list[dict[str, Any]] = []
         for item in raw_items:
             variants_raw = item.get("variants", []) or []
+            # Items created with `track_stock=false` (e.g. pizza pies that
+            # ship per-order, all menu items in stores that don't manage
+            # inventory) never populate /inventory and surface in_stock=null.
+            # Without an opt-out the matcher (services/menu/match.py) treats
+            # stock=0 as sold_out and rejects every order — observed live on
+            # JM Pizza pilot 2026-05-12, 0/N calls reached a paid order until
+            # we forced stock_quantity=9999 across menu_items.
+            # (track_stock=false 항목은 untracked로 간주 — sentinel 9999)
+            item_tracks_stock = bool(item.get("track_stock"))
             variants: list[dict[str, Any]] = []
             for v in variants_raw:
                 stores_arr = v.get("stores") or []
                 store_entry = stores_arr[0] if stores_arr else {}
                 price = store_entry.get("price") if store_entry.get("price") is not None \
                         else (v.get("default_price") or 0)
-                # Stock priority: /inventory authoritative → /items embedded → 0
-                # (재고 우선순위: /inventory → /items embedded → 0)
+                # Stock priority: /inventory authoritative → /items embedded
+                # → 0 if the item TRACKS stock, otherwise 9999 (untracked).
+                # (재고 우선순위: /inventory → /items embedded → track 여부로 분기)
                 vid = v.get("variant_id")
                 if vid in inventory_map:
                     stock = inventory_map[vid]
+                elif store_entry.get("in_stock") is not None:
+                    stock = store_entry["in_stock"]
+                elif item_tracks_stock:
+                    stock = 0       # tracked but no data → really empty
                 else:
-                    stock = store_entry.get("in_stock") if store_entry.get("in_stock") is not None \
-                            else 0
+                    stock = 9999    # untracked → sentinel for "always available"
                 variants.append({
                     "variant_id":     vid,
                     "sku":            v.get("sku"),
