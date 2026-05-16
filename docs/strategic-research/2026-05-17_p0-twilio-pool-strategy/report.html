@@ -2,8 +2,15 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
 <title>P0 우선순위 + Twilio 번호 풀 전략 (2026-05-17)</title>
 <style>
+  :root { color-scheme: light only; }
+  html, body { background: #ffffff !important; color: #0f172a !important; }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #ffffff !important; color: #0f172a !important; }
+  }
   @page { size: A4; margin: 18mm 16mm; }
   body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.55; font-size: 10.5pt; }
   h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }

@@ -2,8 +2,18 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
 <title>Avoca.ai 분석 + JM Home Services 템플릿화 전략 (2026-05-17)</title>
 <style>
+  /* Force light mode — browser auto-dark-mode inverts our pale callout
+     backgrounds into unreadable grey-on-grey. Lock the color scheme so
+     the document renders identically in light and dark systems. */
+  :root { color-scheme: light only; }
+  html, body { background: #ffffff !important; color: #0f172a !important; }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #ffffff !important; color: #0f172a !important; }
+  }
   @page { size: A4; margin: 16mm 14mm; }
   body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.5; font-size: 9.8pt; }
   h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }
