@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>기능 작업 전수조사 — 상용화 전 로드맵 (2026-05-17)</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.5; font-size: 9.8pt; }
+  h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #1e40af; margin-top: 18pt; padding-bottom: 4pt; border-bottom: 2px solid #c7d2fe; }
+  h3 { font-size: 11.5pt; color: #1e40af; margin-top: 14pt; }
+  h4 { font-size: 10.5pt; color: #312e81; margin-top: 10pt; }
+  .meta { color: #64748b; font-size: 9pt; margin-bottom: 14pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 8.5pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #1e3a8a; font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.center { text-align: center; }
+  code { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 1pt 3pt; }
+  pre { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 7pt 9pt; line-height: 1.4; border-left: 3px solid #6366f1; overflow-x: auto; }
+  ul, ol { padding-left: 16pt; margin: 4pt 0; }
+  li { margin: 2pt 0; }
+  .badge { display: inline-block; padding: 1.5pt 6pt; border-radius: 3px; font-size: 8pt; font-weight: 700; white-space: nowrap; }
+  .b-p0 { background: #fee2e2; color: #991b1b; }
+  .b-p1 { background: #fef3c7; color: #92400e; }
+  .b-p2 { background: #dbeafe; color: #1e40af; }
+  .b-p3 { background: #f1f5f9; color: #475569; }
+  .b-recommend { background: #dcfce7; color: #14532d; }
+  .callout { border-left: 4px solid #6366f1; background: #eef2ff; padding: 8pt 12pt; margin: 10pt 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { border-color: #f59e0b; background: #fef3c7; }
+  .callout-success { border-color: #10b981; background: #d1fae5; }
+  .toc { background: #f8fafc; border: 1px solid #cbd5e1; padding: 8pt 14pt; border-radius: 4px; margin-bottom: 16pt; font-size: 9pt; }
+  .toc ul { margin: 0; padding-left: 14pt; }
+  .pagebreak { page-break-before: always; }
+  .summary-tile { display: inline-block; min-width: 80pt; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6pt 10pt; margin: 4pt 6pt 4pt 0; }
+  .summary-tile .label { font-size: 8pt; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+  .summary-tile .value { font-size: 14pt; font-weight: 700; color: #1e3a8a; margin-top: 2pt; }
+</style>
+</head>
+<body>
+
+<h1>기능 작업 전수조사 — 상용화 전 로드맵</h1>
+<div class="meta">JM Tech One · JM AI Voice Platform · 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com</div>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ul>
+    <li>요약 통계 + 우선순위별 분포</li>
+    <li>A. Voice Agent — 잔존 fix + 기능 확장</li>
+    <li>B. Order / Payment — 1차 출시 핵심</li>
+    <li>C. CRM — Wave 2/3 확장</li>
+    <li>D. Frontend Admin Dashboard</li>
+    <li>E. Multi-store / Chain support</li>
+    <li>F. Marketing / Customer-facing</li>
+    <li>G. Analytics &amp; Reporting</li>
+    <li>H. Data Quality / Edge Cases</li>
+    <li>I. Manager / Operator 기능</li>
+    <li>J. Vertical 확장</li>
+    <li>추천 sprint 순서 (Phase 1-4)</li>
+  </ul>
+</div>
+
+<h2>요약 통계</h2>
+<div>
+  <span class="summary-tile"><div class="label">P0 (출시 차단)</div><div class="value">1</div></span>
+  <span class="summary-tile"><div class="label">P1 (4주 내)</div><div class="value">22</div></span>
+  <span class="summary-tile"><div class="label">P2 (3-6개월)</div><div class="value">30</div></span>
+  <span class="summary-tile"><div class="label">P3 (6개월+)</div><div class="value">4</div></span>
+  <span class="summary-tile"><div class="label">총 항목</div><div class="value">57</div></span>
+</div>
+
+<div class="callout">
+  <strong>범위:</strong> 인프라 / 배포 / 보안 / 컴플라이언스 작업은 별도 보고서 (P0 + Twilio Pool Strategy) 참조.
+  본 문서는 <strong>순수 기능 작업</strong>만 다룸.
+</div>
+
+<h2>A. Voice Agent — 잔존 fix + 기능 확장</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>A1</td><td>$28 가격 환각 진단</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>5/15 Call C turn 14 — agent verbal $28 vs DB $23. Modifier price delta 누적 로직 검토.</td></tr>
+    <tr><td>A2</td><td>recent_orders multi-match disambiguation UX</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>현재 verbal handoff만. session cache 활용해 "the burrito one" 자연어 → cancel_order에 transaction_id 명시.</td></tr>
+    <tr><td>A3</td><td>TCR-SMS migration (이메일 단계 대체)</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>PHASE D를 caller CID 기반 SMS pay-link로 대체. 메모리에 1줄 변경으로 가능 명시됨.</td></tr>
+    <tr><td>A4</td><td>Outbound call (callback)</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>매장이 고객에게 자동 callback (예약 확인, 주문 변경 알림).</td></tr>
+    <tr><td>A5</td><td>Call recording + 검색 가능 archive</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>Twilio recording API + Whisper STT + Postgres FTS.</td></tr>
+    <tr><td>A6</td><td>Sentiment 분석</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>통화 후 sentiment score → CRM 데이터 누적.</td></tr>
+    <tr><td>A7</td><td>Conversation summary (post-call)</td><td><span class="badge b-p2">P2</span></td><td>1일</td><td>LLM 한 번 호출로 통화 요약 → call_logs.summary.</td></tr>
+    <tr><td>A8</td><td>Multi-party (3-way) — manager bridge</td><td><span class="badge b-p2">P2</span></td><td>3-4일</td><td>manager_handoff 시 끊지 않고 conference call로 합류.</td></tr>
+  </tbody>
+</table>
+
+<h2>B. Order / Payment — 1차 출시 핵심</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td><strong>B1</strong></td><td><strong>SumUp PG 어댑터 신규</strong></td><td><span class="badge b-p0">P0</span></td><td>2-3일</td><td><code>bridge/payment/sumup.py</code> — 카드 토큰화, pay-link 발급, refund, webhook.</td></tr>
+    <tr><td>B2</td><td>Tip handling</td><td><span class="badge b-p1">P1</span></td><td>1일</td><td>통화 중 "팁 추가" 옵션 — agent 응대 + UI percent (15/18/20%).</td></tr>
+    <tr><td>B3</td><td>Split bill / partial payment</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>1주문 → N결제 분할.</td></tr>
+    <tr><td>B4</td><td>Refund flow (manual + webhook)</td><td><span class="badge b-p1">P1</span></td><td>1일</td><td>bridge_transactions REFUNDED state 활성 + manager-initiated refund UI.</td></tr>
+    <tr><td>B5</td><td>Cash payment handling</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>"현장 현금 결제" 옵션 — payment_sent skip, fulfilled 직접.</td></tr>
+    <tr><td>B6</td><td>Pre-authorize hold (advance order)</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>카드 pre-auth → pickup 시 capture.</td></tr>
+    <tr><td>B7</td><td>Order ETA / pickup time 명시</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>"10분 후 픽업" — 통화에서 받고 fulfilled 시 알림.</td></tr>
+    <tr><td>B8</td><td>Group / family order (multiple names)</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>"Michael 1개, Sarah 2개" — 분리 영수증.</td></tr>
+    <tr><td>B9</td><td>Catering / advance booking</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>예약 주문 (날짜/시간 future) — bridge_reservations 확장.</td></tr>
+  </tbody>
+</table>
+
+<h2>C. CRM — Wave 2/3 확장</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>C1</td><td>Wave 2: 고객 선호도 학습</td><td><span class="badge b-p1">P1</span></td><td>2-3일</td><td>last 5 orders → "보통 무엇 시키는지" 추론 → 새 통화에서 제안.</td></tr>
+    <tr><td>C2</td><td>Wave 3: 멀티매장 customer (chain)</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>같은 owner의 여러 매장 → 고객 cross-store recognition.</td></tr>
+    <tr><td>C3</td><td>Loyalty program (points/punches)</td><td><span class="badge b-p2">P2</span></td><td>3-4일</td><td>10번째 주문 무료 등 — bridge_loyalty 신규 테이블.</td></tr>
+    <tr><td>C4</td><td>Visit frequency-based offers</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>"2주 이상 안 오심 — 10% off" SMS 자동.</td></tr>
+    <tr><td>C5</td><td>Customer notes / preferences</td><td><span class="badge b-p2">P2</span></td><td>1일</td><td>"no cilantro", "배달 안 함" — 개인 settings 누적.</td></tr>
+    <tr><td>C6</td><td>Birthday / 기념일 알림</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>생일 자동 SMS coupon.</td></tr>
+  </tbody>
+</table>
+
+<div class="pagebreak"></div>
+
+<h2>D. Frontend Admin Dashboard</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td><strong>D1</strong></td><td><strong>KPI Dashboard (per-store)</strong></td><td><span class="badge b-p1">P1</span></td><td>2-3일</td><td>매출 / 통화 수 / conversion rate / avg ticket — chart.js 또는 recharts.</td></tr>
+    <tr><td><strong>D2</strong></td><td><strong>Call logs viewer (transcripts)</strong></td><td><span class="badge b-p1">P1</span></td><td>2일</td><td>통화 list → click → 전체 transcript + audio play + tool calls.</td></tr>
+    <tr><td><strong>D3</strong></td><td><strong>Reservations admin</strong></td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>bridge_reservations 테이블 시각화 + manual edit.</td></tr>
+    <tr><td>D4</td><td>Payment / refund dashboard</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>일별 매출 + refund + failed payments.</td></tr>
+    <tr><td>D5</td><td>Customer list (CRM viewer)</td><td><span class="badge b-p2">P2</span></td><td>2일</td><td>Returning customer list + 통화 history + 구매 history.</td></tr>
+    <tr><td>D6</td><td>Modifier editor (no-code)</td><td><span class="badge b-p1">P1</span></td><td>2-3일</td><td>매장이 자기 메뉴/옵션 수정 (현재는 backend SQL만).</td></tr>
+    <tr><td>D7</td><td>Menu editor (post-onboarding)</td><td><span class="badge b-p1">P1</span></td><td>2-3일</td><td>신규 메뉴 추가 / 가격 변경 / 비활성화.</td></tr>
+    <tr><td>D8</td><td>Real-time call monitor</td><td><span class="badge b-p2">P2</span></td><td>2일</td><td>진행 중 통화 실시간 transcript watch.</td></tr>
+    <tr><td>D9</td><td>Manager/Staff role 분리</td><td><span class="badge b-p2">P2</span></td><td>2일</td><td>Owner / Manager / Staff 권한 (RLS 확장).</td></tr>
+  </tbody>
+</table>
+
+<h2>E. Multi-store / Chain support</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>E1</td><td>Chain operator account (1 owner, N stores)</td><td><span class="badge b-p1">P1</span></td><td>3-4일</td><td>이미 agency 구조 있음 — owner 다중 store 운영 워크플로 강화.</td></tr>
+    <tr><td>E2</td><td>Centralized menu management (chain-wide)</td><td><span class="badge b-p2">P2</span></td><td>3-4일</td><td>1 menu template → N 매장 적용.</td></tr>
+    <tr><td>E3</td><td>Brand guidelines per chain</td><td><span class="badge b-p2">P2</span></td><td>2일</td><td>매장명 / 페르소나 / 색상 통일.</td></tr>
+    <tr><td>E4</td><td>Cross-store CRM (chain-wide customer)</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>C2와 연결.</td></tr>
+    <tr><td>E5</td><td>Bulk store import (CSV)</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>100매장 한 번에 등록.</td></tr>
+  </tbody>
+</table>
+
+<h2>F. Marketing / Customer-facing</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>F1</td><td>SMS marketing campaigns</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>bulk SMS + opt-in/out + scheduling.</td></tr>
+    <tr><td>F2</td><td>Email marketing</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>일반 marketing email (transactional은 이미 있음).</td></tr>
+    <tr><td>F3</td><td>Coupon codes / promotions</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>"WELCOME10" 등 — bridge_promotions 테이블.</td></tr>
+    <tr><td>F4</td><td>Referral program</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>친구 추천 → 양쪽 reward.</td></tr>
+    <tr><td>F5</td><td>Public website embed (call widget)</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>매장 웹사이트에 "🎤 Call AI" 버튼.</td></tr>
+    <tr><td>F6</td><td>QR code → call (table-side)</td><td><span class="badge b-p2">P2</span></td><td>1일</td><td>QR 스캔 → 통화 시작.</td></tr>
+    <tr><td>F7</td><td>WhatsApp / Telegram 통합</td><td><span class="badge b-p3">P3</span></td><td>2-3주</td><td>5lang policy 확장.</td></tr>
+  </tbody>
+</table>
+
+<h2>G. Analytics &amp; Reporting</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>G1</td><td>Per-call cost breakdown (OpenAI + Twilio)</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>매장별 AI 비용 추적 → 마진 계산.</td></tr>
+    <tr><td>G2</td><td>Conversion funnel (call → order → paid)</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>drop-off 지점 분석.</td></tr>
+    <tr><td>G3</td><td>Peak hour analysis</td><td><span class="badge b-p1">P1</span></td><td>1일</td><td>시간대별 통화량 → 매장 운영 인사이트.</td></tr>
+    <tr><td>G4</td><td>A/B test framework</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>Persona A vs B, prompt A vs B.</td></tr>
+    <tr><td>G5</td><td>Anomaly detection (실시간 alert)</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>통화 실패율 급증 / 매출 급락 자동 알림.</td></tr>
+    <tr><td>G6</td><td>Daily summary email (operator)</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>"오늘 23 통화 / $456 매출 / 2 unresolved" 매장주에게.</td></tr>
+    <tr><td>G7</td><td>Weekly retro (chain-wide)</td><td><span class="badge b-p2">P2</span></td><td>1일</td><td>chain owner용 주간 리포트.</td></tr>
+  </tbody>
+</table>
+
+<h2>H. Data Quality / Edge Cases</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>H1</td><td>Auto-correct customer email typos</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>LLM 또는 dictionary lookup — Gmail/Yahoo 흔한 오타 수정.</td></tr>
+    <tr><td>H2</td><td>Phone number normalization (international)</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>E.164 변환 + 국가코드 추론.</td></tr>
+    <tr><td>H3</td><td>Address geocoding (delivery 매장)</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td><td>배달 옵션 도입 시 — Google Maps API.</td></tr>
+    <tr><td>H4</td><td>Allergen kitchen-cross-contamination 처리</td><td><span class="badge b-p1">P1</span></td><td>1일</td><td>"verify with manager" 분기 강화 (현재 일부 있음).</td></tr>
+    <tr><td>H5</td><td>Unknown menu item → manager handoff</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>"스페셜이 뭐예요?" 등 unknown query → manager 즉시 연결.</td></tr>
+  </tbody>
+</table>
+
+<h2>I. Manager / Operator 기능</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th><th>상세</th></tr></thead>
+  <tbody>
+    <tr><td>I1</td><td>Manager handoff 강화 (이력 + 매장별 다중)</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>현재 단일 manager_phone — 매장별 N명 + 시간대 routing.</td></tr>
+    <tr><td>I2</td><td>Real-time anomaly alerts (Slack/SMS)</td><td><span class="badge b-p1">P1</span></td><td>1일</td><td>통화 실패 / 결제 실패 즉시 알림.</td></tr>
+    <tr><td>I3</td><td>Daily summary email</td><td><span class="badge b-p1">P1</span></td><td>(G6 포함)</td><td>G6와 통합.</td></tr>
+    <tr><td>I4</td><td>Manager mobile push notifications</td><td><span class="badge b-p2">P2</span></td><td>2-3일</td><td>iOS/Android push (FCM).</td></tr>
+    <tr><td>I5</td><td>Voicemail (영업시간 외 자동 응대 + 메시지 저장)</td><td><span class="badge b-p1">P1</span></td><td>1-2일</td><td>영업시간 체크 → "지금 영업 안 함, 메시지 남기세요".</td></tr>
+    <tr><td>I6</td><td>Holiday / 임시 휴무 설정</td><td><span class="badge b-p1">P1</span></td><td>4-6h</td><td>매장이 임시 휴무 toggle → 자동 응대 변경.</td></tr>
+  </tbody>
+</table>
+
+<h2>J. Vertical 확장 (1차 SMB 초과 시)</h2>
+<table>
+  <thead><tr><th>#</th><th>항목</th><th>우선순위</th><th>작업량</th></tr></thead>
+  <tbody>
+    <tr><td>J1</td><td>Sushi vertical templates</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td></tr>
+    <tr><td>J2</td><td>Chinese restaurant vertical</td><td><span class="badge b-p2">P2</span></td><td>1-2일</td></tr>
+    <tr><td>J3</td><td>Indian / 기타 ethnic</td><td><span class="badge b-p3">P3</span></td><td>1-2일 each</td></tr>
+    <tr><td>J4</td><td>Bakery / coffee shop subset</td><td><span class="badge b-p2">P2</span></td><td>1일</td></tr>
+    <tr><td>J5</td><td>Ghost kitchen (multi-brand)</td><td><span class="badge b-p3">P3</span></td><td>3-4일</td></tr>
+  </tbody>
+</table>
+
+<div class="pagebreak"></div>
+
+<h2>추천 Sprint 순서 (P0 인프라/배포 후)</h2>
+
+<h3>Phase 1 — 결제 + 핵심 운영 (Week 1-3, ~3주)</h3>
+<ol>
+  <li><strong>B1 SumUp PG</strong> (2-3일) <span class="badge b-p0">P0</span></li>
+  <li>B5 Cash payment + B7 ETA (1.5일)</li>
+  <li>B4 Refund flow (1일)</li>
+  <li>I5 Voicemail + I6 Holiday (1.5일)</li>
+  <li>I1 Manager 강화 + I2 Slack alerts (2일)</li>
+  <li>H1 Email 오타 + H2 Phone normalization + H4 + H5 (2일)</li>
+  <li>A1 가격 환각 + A3 TCR-SMS (1.5일)</li>
+</ol>
+
+<h3>Phase 2 — Admin Dashboard (Week 4-6, ~3주)</h3>
+<ol>
+  <li>D1 KPI Dashboard (2-3일)</li>
+  <li>D2 Call logs viewer (2일)</li>
+  <li>D3 Reservations admin (1.5일)</li>
+  <li>D4 Payment dashboard (1.5일)</li>
+  <li>D6 + D7 Modifier + Menu editor (3일)</li>
+  <li>G1 + G2 + G3 + G6 Analytics (3-4일)</li>
+</ol>
+
+<h3>Phase 3 — CRM + Multi-store (Week 7-9, ~3주)</h3>
+<ol>
+  <li>C1 Wave 2 선호도 (2-3일)</li>
+  <li>E1 Chain operator (3-4일)</li>
+  <li>A2 recent_orders multi-match UX (2일)</li>
+  <li>D5 Customer list (2일)</li>
+  <li>C2 Cross-store CRM (2-3일)</li>
+</ol>
+
+<h3>Phase 4 — Marketing + 확장 (Week 10+)</h3>
+<ul>
+  <li>C3 + C4 Loyalty + offers</li>
+  <li>F1 + F3 SMS marketing + Coupons</li>
+  <li>G4 + G5 A/B + Anomaly</li>
+  <li>추가 vertical (sushi/chinese)</li>
+</ul>
+
+<h2>종합 권고</h2>
+
+<table>
+  <thead><tr><th>단계</th><th>기준</th><th>필수 작업</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1차 베타 (10매장)</strong></td><td>2026-07 초</td><td>B1 (SumUp) + 인프라 P0 5건</td></tr>
+    <tr><td><strong>2-3개월 후 안정화</strong></td><td>2026-09 ~ 2026-10</td><td>P1 22개 항목 (Phase 1-3)</td></tr>
+    <tr><td><strong>6개월+ 차세대</strong></td><td>2027-01+</td><td>P2 marketing/loyalty + chain support 본격</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>핵심 메시지:</strong> 1차 출시 차단 항목은 <strong>SumUp PG 어댑터 1건만</strong>. 나머지 P1 22개는 출시 후 4-9주에 걸쳐 점진 추가.
+  Marketing/Loyalty (P2 30개)는 매장 매출 안정화 후 가맹점 retention 무기로 전개.
+</div>
+
+<hr style="margin-top: 24pt; border: 0; border-top: 1px solid #cbd5e1;">
+<p style="font-size: 8.5pt; color: #64748b; text-align: center; margin-top: 12pt;">
+  JM Tech One · 2026-05-17 · 본 문서는 사내 전략 자료 / 외부 공유 금지
+</p>
+
+</body>
+</html>

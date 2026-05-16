@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>P0 우선순위 + Twilio 번호 풀 전략 (2026-05-17)</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.55; font-size: 10.5pt; }
+  h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #1e40af; margin-top: 18pt; padding-bottom: 4pt; border-bottom: 2px solid #c7d2fe; }
+  h3 { font-size: 12pt; color: #1e40af; margin-top: 14pt; }
+  h4 { font-size: 11pt; color: #312e81; margin-top: 12pt; }
+  .meta { color: #64748b; font-size: 9.5pt; margin-bottom: 16pt; }
+  table { width: 100%; border-collapse: collapse; margin: 10pt 0; font-size: 9.5pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 6pt 9pt; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #1e3a8a; font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code, pre { font-family: "SF Mono", "Menlo", monospace; font-size: 9pt; background: #f1f5f9; border-radius: 3px; }
+  code { padding: 1pt 4pt; }
+  pre { padding: 8pt 10pt; overflow-x: auto; line-height: 1.4; border-left: 3px solid #6366f1; }
+  ul, ol { padding-left: 18pt; }
+  li { margin: 3pt 0; }
+  .badge { display: inline-block; padding: 2pt 7pt; border-radius: 3px; font-size: 8.5pt; font-weight: 700; }
+  .b-p0 { background: #fee2e2; color: #991b1b; }
+  .b-p1 { background: #fef3c7; color: #92400e; }
+  .b-recommend { background: #dcfce7; color: #14532d; }
+  .callout { border-left: 4px solid #6366f1; background: #eef2ff; padding: 10pt 14pt; margin: 12pt 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { border-color: #f59e0b; background: #fef3c7; }
+  .callout-success { border-color: #10b981; background: #d1fae5; }
+  .toc { background: #f8fafc; border: 1px solid #cbd5e1; padding: 10pt 16pt; border-radius: 4px; margin-bottom: 18pt; }
+  .toc ul { margin: 0; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>P0 우선순위 + Twilio 번호 풀 전략</h1>
+<div class="meta">JM Tech One · JM AI Voice Platform · 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com</div>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ul>
+    <li>Part 1 — P0 우선순위 (다음 세션 sprint 5개 항목)</li>
+    <li>Part 2 — Twilio 번호 풀 자동 할당 메커니즘</li>
+    <li>Part 3 — 권장 운영 방식 (하이브리드)</li>
+    <li>Part 4 — 비용 시뮬레이션 + 작업량 추정</li>
+  </ul>
+</div>
+
+<h2>Part 1 — P0 우선순위 (베타 10매장 출시 차단 항목)</h2>
+
+<table>
+  <thead>
+    <tr><th style="width:5%;">#</th><th style="width:25%;">항목</th><th>설명</th><th style="width:14%;">작업량</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td>
+      <td><strong>Backend Production Hosting</strong> <span class="badge b-p0">P0</span></td>
+      <td>현재 로컬 uvicorn + ngrok pro 운영. Fly.io 배포 + 자동 재시작 + 환경 secret 관리 + 무중단 deploy. ngrok pro에서 정식 도메인 (api.jmtechone.com) 전환.</td>
+      <td>8–12시간</td>
+    </tr>
+    <tr>
+      <td class="num">2</td>
+      <td><strong>SumUp PG 어댑터 신규</strong> <span class="badge b-p0">P0</span></td>
+      <td>1차 결제 게이트웨이. <code>backend/app/services/bridge/payment/sumup.py</code> 신규. 카드 토큰화, pay-link 발급, refund API, bridge_transactions 연결.</td>
+      <td>2–3일</td>
+    </tr>
+    <tr>
+      <td class="num">3</td>
+      <td><strong>Staging Environment + Feature Flags</strong> <span class="badge b-p0">P0</span></td>
+      <td><code>jmvoice-staging</code> Fly.io 앱 + Supabase staging project + Twilio test 번호 + Loyverse/SumUp sandbox. Supabase 테이블 기반 feature_flags 자체 구현 (LaunchDarkly 대체).</td>
+      <td>1–2주</td>
+    </tr>
+    <tr>
+      <td class="num">4</td>
+      <td><strong>CI/CD Pipeline</strong> <span class="badge b-p0">P0</span></td>
+      <td>GitHub Actions: PR push → pytest → main merge → Fly.io 자동 배포 + healthcheck. 회귀 테스트 자동화.</td>
+      <td>4–6시간</td>
+    </tr>
+    <tr>
+      <td class="num">5</td>
+      <td><strong>EU AI Act 준수 작업</strong> <span class="badge b-p0">P0</span></td>
+      <td>2026-08-02 P0 deadline. AI 시스템 분류 평가 (high-risk 여부), 투명성 공시, 데이터 처리 동의서, 인적 감독 룰 문서화.</td>
+      <td>2–3일</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warn">
+  <strong>총 추정:</strong> 4–5주 작업 → 베타 10매장 출시 가능 시점 <strong>약 6–9주 후 (2026-06 말 ~ 2026-07 초)</strong>
+</div>
+
+<h3>보류된 항목 (1차 출시 후)</h3>
+<ul>
+  <li><strong>Maverick + CardConnect</strong> — 2차/대형 가맹점용으로 보류</li>
+  <li><strong>Quantic POS 어댑터</strong> — FSR 시장 진입 시점에 추가</li>
+</ul>
+
+<div class="pagebreak"></div>
+
+<h2>Part 2 — Twilio 번호 풀 자동 할당 메커니즘</h2>
+
+<p><strong>핵심 답:</strong> 두 방식 모두 가능. Twilio가 제공하는 3가지 API를 조합하면 완전 자동화.</p>
+
+<h3>Twilio 자동화 가능 API 3가지</h3>
+
+<h4>A) Search Available Numbers — "어떤 번호가 살 수 있나요?"</h4>
+<pre>GET /2010-04-01/Accounts/{Sid}/AvailablePhoneNumbers/US/Local.json
+    ?AreaCode=503&amp;Contains=AI&amp;SmsEnabled=true&amp;VoiceEnabled=true
+
+응답: [
+  { "phone_number": "+15031234567", "friendly_name": "(503) 123-4567", ... },
+  { "phone_number": "+15032345678", ... },
+  ...
+]</pre>
+<ul>
+  <li>지역번호 (area code), 패턴 ("AI" 포함 등), 능력 (voice/sms) 필터링 가능</li>
+  <li>미국, 캐나다, 영국, 호주 등 지역별 구매 가능</li>
+</ul>
+
+<h4>B) Buy a Number — "이 번호 살게요"</h4>
+<pre>POST /2010-04-01/Accounts/{Sid}/IncomingPhoneNumbers.json
+data: { PhoneNumber: "+15031234567" }
+
+응답: { "sid": "PN123abc", "phone_number": "+15031234567", ... }</pre>
+<ul>
+  <li>비용: <strong>$1/월 + $0.0085/분 통화</strong> (시내 번호)</li>
+  <li>Toll-free (1-800): $2/월 + $0.013/분</li>
+  <li>즉시 활성화 (몇 초 내)</li>
+</ul>
+
+<h4>C) Update Voice Webhook — 우리 A5 (이미 구현)</h4>
+<pre>POST /2010-04-01/Accounts/{Sid}/IncomingPhoneNumbers/{PhoneSid}.json
+data: { VoiceUrl: "https://api.jmtechone.com/twilio/voice/inbound", VoiceMethod: "POST" }</pre>
+
+<h3>두 가지 운영 방식 비교</h3>
+
+<table>
+  <thead>
+    <tr><th>방식</th><th>장점</th><th>단점</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1) 정적 할당 (Static)</strong><br>매장이 자기 번호 직접 가져옴</td>
+      <td>매장이 원하는 area code, vanity number 가능</td>
+      <td>영업/온보딩 시간 5–10분 추가, 매장 판단 필요</td>
+    </tr>
+    <tr>
+      <td><strong>2) 사전 구매 풀 (Pool)</strong> <span class="badge b-recommend">추천</span><br>우리가 미리 사놓고 자동 배정</td>
+      <td>영업 작업 0초 (위저드 클릭만), 매장 등록 즉시 통화 가능, 일관된 number format</td>
+      <td>미사용 번호도 월 $1씩 비용 (30개 = $30/월)</td>
+    </tr>
+    <tr>
+      <td><strong>3) 하이브리드</strong> <span class="badge b-recommend">최선</span><br>풀 자동 + 옵션 search&amp;buy</td>
+      <td>기본은 풀 자동 / 특정 area code 원할 시 즉시 search&amp;buy</td>
+      <td>위저드 UI 옵션 3가지 추가 필요</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="pagebreak"></div>
+
+<h2>Part 3 — 권장 운영 방식 (하이브리드)</h2>
+
+<h3>DB 스키마</h3>
+<pre>CREATE TABLE twilio_number_pool (
+  phone_number   TEXT PRIMARY KEY,           -- +15035551234
+  sid            TEXT NOT NULL,              -- PN123abc...
+  area_code      TEXT,                       -- 503
+  status         TEXT NOT NULL,              -- 'free' | 'assigned' | 'reserved'
+  assigned_store TEXT REFERENCES stores(id),
+  purchased_at   TIMESTAMPTZ,
+  assigned_at    TIMESTAMPTZ
+);</pre>
+
+<h3>위저드 흐름 (Step 5 개선)</h3>
+<pre>Voice phone number:
+  ○ Auto-assign from pool (recommended)        ← 기본
+    ↓ Twilio pool에서 free 번호 1개 자동 선택
+    예: +1 503-555-1234 (Portland)
+
+  ○ Choose area code: [503▼]
+    ↓ Search Twilio for available + buy + assign
+
+  ○ Use existing number: [_____________]
+    ↓ Number lookup → assign webhook</pre>
+
+<h3>백엔드 신규 함수</h3>
+<pre># backend/app/adapters/twilio/numbers.py에 추가
+async def assign_number_from_pool(store_id: str) -&gt; dict:
+    """Pool에서 free 번호 1개 → DB에 assigned 마크 → store.phone update"""
+
+async def search_and_buy_number(area_code: str) -&gt; dict:
+    """Twilio search → buy → pool에 insert → assigned로 즉시 마크"""
+
+async def auto_replenish_pool(target_free: int = 5):
+    """풀이 5개 미만이면 10개 추가 구매 → 운영자 알림"""</pre>
+
+<h2>Part 4 — 비용 시뮬레이션 + 작업량 추정</h2>
+
+<h3>월 운영 비용</h3>
+<table>
+  <thead>
+    <tr><th>매장 수</th><th>풀 크기</th><th>월 고정비</th><th>통화 비용 (50분/매장 가정)</th><th>합계</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="num">10</td><td class="num">15 (여유 5)</td><td class="num">$15</td><td class="num">$4.25</td><td class="num">$19.25</td></tr>
+    <tr><td class="num">100</td><td class="num">110</td><td class="num">$110</td><td class="num">$42.50</td><td class="num">$152.50</td></tr>
+    <tr><td class="num">1,000</td><td class="num">1,050</td><td class="num">$1,050</td><td class="num">$425.00</td><td class="num">$1,475</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>비용 비중:</strong> 번호 비용은 매장당 평균 매출의 <strong>1% 미만</strong> — 운영 부담 무시할 수준.
+</div>
+
+<h3>작업량 (이번 sprint에 포함 가능)</h3>
+<table>
+  <thead><tr><th>작업</th><th>시간</th></tr></thead>
+  <tbody>
+    <tr><td>DB 마이그레이션 (twilio_number_pool 테이블)</td><td>30분</td></tr>
+    <tr><td><code>assign_number_from_pool</code> + <code>search_and_buy_number</code> API</td><td>2–3시간</td></tr>
+    <tr><td>위저드 UI 옵션 3가지 토글</td><td>1–2시간</td></tr>
+    <tr><td>Auto-replenish cron (풀 부족 시 10개 자동 구매)</td><td>1시간</td></tr>
+    <tr><td>Unit test 회귀</td><td>30분</td></tr>
+    <tr><td><strong>총 작업량</strong></td><td><strong>4–6시간</strong></td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>적용 시점:</strong> 사용자 결정에 따라 <strong>상용화 전</strong>에 시작 (P0 sprint와 함께 또는 별도). 현재는 보류, 추후 진행.
+</div>
+
+<hr style="margin-top: 24pt; border: 0; border-top: 1px solid #cbd5e1;">
+<p style="font-size: 8.5pt; color: #64748b; text-align: center; margin-top: 12pt;">
+  JM Tech One · 2026-05-17 · 본 문서는 사내 전략 자료 / 외부 공유 금지
+</p>
+
+</body>
+</html>
