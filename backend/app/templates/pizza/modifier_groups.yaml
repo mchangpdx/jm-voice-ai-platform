@@ -1,0 +1,114 @@
+# Pizza vertical — modifier groups (8 groups).
+# (Pizza vertical modifier 그룹 — 8개)
+#
+# Schema (cafe/KBBQ pattern):
+#   id            — group code, referenced from menu.yaml items
+#   required      — true means at least 1 must be selected
+#   min/max       — selection range
+#   options[]     — each with id, en/es labels, price_delta, allergen_add/remove
+#   applies_to_categories — optional: limit group to these category ids
+#
+# Allergen dynamics: runtime computes effective_allergens =
+#   base_allergens + ∪(option.allergen_add) − ∪(option.allergen_remove)
+
+groups:
+  # ── Group 1: Pizza Size (REQUIRED for whole pies) ──────────────────────────
+  size:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [signature_pie, classic_pie, build_your_own]
+    options:
+      - {id: 14inch, en: "14 inch (Small)",  es: "14 pulgadas (Pequeña)",  price_delta:  0.00, default: true}
+      - {id: 18inch, en: "18 inch (Large)",  es: "18 pulgadas (Grande)",   price_delta:  8.00}
+
+  # ── Group 2: Crust Type (REQUIRED for whole pies) ──────────────────────────
+  crust:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [signature_pie, classic_pie, build_your_own]
+    options:
+      - {id: thin,        en: "Thin Crust",   es: "Masa fina",        price_delta: 0.00, default: true}
+      - {id: regular,     en: "Regular",      es: "Regular",          price_delta: 0.00}
+      - {id: gluten_free, en: "Gluten-Free",  es: "Sin gluten",       price_delta: 4.00, allergen_remove: [gluten]}
+      - {id: deep_dish,   en: "Deep Dish",    es: "Masa gruesa",      price_delta: 3.00}
+
+  # ── Group 3: Sauce (REQUIRED for build_your_own) ───────────────────────────
+  sauce:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [build_your_own]
+    options:
+      - {id: tomato,    en: "Tomato (Red)",          es: "Tomate (Roja)",      price_delta: 0.00, default: true}
+      - {id: white,     en: "White (Garlic Cream)",  es: "Blanca (Ajo)",       price_delta: 1.00, allergen_add: [dairy]}
+      - {id: pesto,     en: "Pesto",                 es: "Pesto",              price_delta: 2.00, allergen_add: [dairy, tree_nuts]}
+      - {id: bbq,       en: "BBQ",                   es: "BBQ",                price_delta: 1.00}
+      - {id: no_sauce,  en: "No Sauce",              es: "Sin salsa",          price_delta: 0.00}
+
+  # ── Group 4: Cheese (REQUIRED for all pies) ────────────────────────────────
+  cheese:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [signature_pie, classic_pie, build_your_own]
+    options:
+      - {id: mozzarella,    en: "Mozzarella",    es: "Mozzarella",        price_delta: 0.00, default: true}
+      - {id: vegan_cheese,  en: "Vegan Cheese",  es: "Queso vegano",      price_delta: 2.00, allergen_remove: [dairy]}
+      - {id: extra_cheese,  en: "Extra Cheese",  es: "Queso extra",       price_delta: 3.00}
+      - {id: no_cheese,     en: "No Cheese",     es: "Sin queso",         price_delta: -2.00, allergen_remove: [dairy]}
+
+  # ── Group 5: Meat Toppings (OPTIONAL multi-select) ─────────────────────────
+  topping_meat:
+    required: false
+    min: 0
+    max: 6
+    applies_to_categories: [signature_pie, classic_pie, build_your_own]
+    options:
+      - {id: pepperoni,       en: "Pepperoni",          es: "Pepperoni",          price_delta: 2.00, allergen_add: [pork]}
+      - {id: sausage,         en: "Italian Sausage",    es: "Salchicha italiana", price_delta: 2.00, allergen_add: [pork]}
+      - {id: bacon,           en: "Bacon",              es: "Tocino",             price_delta: 2.00, allergen_add: [pork]}
+      - {id: canadian_bacon,  en: "Canadian Bacon",     es: "Tocino canadiense",  price_delta: 2.00, allergen_add: [pork]}
+      - {id: meatball,        en: "Housemade Meatball", es: "Albóndiga casera",   price_delta: 3.00, allergen_add: [egg, dairy]}
+      - {id: chicken,         en: "Grilled Chicken",    es: "Pollo a la parrilla",price_delta: 2.50}
+
+  # ── Group 6: Veggie Toppings (OPTIONAL multi-select) ───────────────────────
+  topping_veg:
+    required: false
+    min: 0
+    max: 8
+    applies_to_categories: [signature_pie, classic_pie, build_your_own]
+    options:
+      - {id: mushroom,     en: "Mushroom",       es: "Champiñón",     price_delta: 1.50}
+      - {id: onion,        en: "Red Onion",      es: "Cebolla roja",  price_delta: 1.50}
+      - {id: bell_pepper,  en: "Bell Pepper",    es: "Pimiento",      price_delta: 1.50}
+      - {id: jalapeno,     en: "Jalapeño",       es: "Jalapeño",      price_delta: 1.50}
+      - {id: olive,        en: "Black Olive",    es: "Aceituna negra",price_delta: 1.50}
+      - {id: pineapple,    en: "Pineapple",      es: "Piña",          price_delta: 1.50}
+      - {id: tomato_fresh, en: "Fresh Tomato",   es: "Tomate fresco", price_delta: 1.50}
+      - {id: spinach,      en: "Spinach",        es: "Espinaca",      price_delta: 1.50}
+
+  # ── Group 7: Wing Sauce (REQUIRED for Buffalo Wings) ───────────────────────
+  wing_sauce:
+    required: true
+    min: 1
+    max: 1
+    applies_to_items: [buffalo_wings]
+    options:
+      - {id: buffalo,         en: "Buffalo (Classic)",  es: "Buffalo (Clásica)",  price_delta: 0.00, default: true}
+      - {id: bbq,             en: "BBQ",                es: "BBQ",                price_delta: 0.00}
+      - {id: garlic_parmesan, en: "Garlic Parmesan",    es: "Ajo Parmesano",      price_delta: 0.00, allergen_add: [dairy]}
+      - {id: honey_sriracha,  en: "Honey Sriracha",     es: "Miel Sriracha",      price_delta: 0.50}
+
+  # ── Group 8: Salad Dressing (REQUIRED for salads) ──────────────────────────
+  dressing:
+    required: true
+    min: 1
+    max: 1
+    applies_to_categories: [salad]
+    options:
+      - {id: caesar,    en: "Caesar",    es: "César",     price_delta: 0.00, allergen_add: [dairy, fish, egg]}
+      - {id: ranch,     en: "Ranch",     es: "Ranch",     price_delta: 0.00, allergen_add: [dairy, egg]}
+      - {id: italian,   en: "Italian",   es: "Italiana",  price_delta: 0.00}
+      - {id: balsamic,  en: "Balsamic",  es: "Balsámico", price_delta: 0.00, default: true}

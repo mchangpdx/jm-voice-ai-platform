@@ -45,6 +45,22 @@ export const VERTICAL_META: Record<string, VerticalMeta> = {
     avgValueLabel: "Avg Repair Ticket",
     industryLabel: "Auto Repair",
   },
+  // Restaurant-derivative verticals — labels mirror restaurant, only icon
+  // + industryLabel differ. (식당계 vertical — 라벨 동일, 아이콘만 차별화)
+  mexican: {
+    icon: "🌮",
+    primaryRevenueLabel: "Peak Hour Revenue",
+    conversionLabel: "Lead Conversion Rate",
+    avgValueLabel: "Avg Ticket",
+    industryLabel: "Mexican",
+  },
+  pizza: {
+    icon: "🍕",
+    primaryRevenueLabel: "Peak Hour Revenue",
+    conversionLabel: "Lead Conversion Rate",
+    avgValueLabel: "Avg Ticket",
+    industryLabel: "Pizza",
+  },
 };
 
 export function getVerticalMeta(industry: string): VerticalMeta {

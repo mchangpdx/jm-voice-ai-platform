@@ -1,0 +1,289 @@
+# Pizza vertical — default menu template (24 items: NY-style pizzeria).
+# (Pizza vertical default 메뉴 템플릿 — 24개, JM KBBQ 84개 대비 simpler)
+#
+# Source: Atlas Pizza (PDX, 3 locations) — NY-style slices + whole pies.
+# Pattern: Independent NY-style pizzeria FSR.
+# Customization: Operator adjusts prices + adds house specials via
+# Admin UI Wizard. Allergens are FDA-9 aligned with pizza-specific
+# patterns (pepperoni/sausage → pork for halal/kosher; meatball →
+# housemade with egg + dairy binder).
+#
+# Schema notes:
+#   base_price  = 14" whole pie price (USD).
+#   size +$8 via modifier_groups: size (14" → 18").
+#   modifier_groups required: size, crust, cheese (for pies).
+#   slices have NO size/crust modifier (fixed single slice).
+#   build_your_own additionally requires: sauce.
+
+vertical: pizza
+default_lang: en
+supported_langs: [en, es]   # EN + 1 native per multilingual_policy memo (2026-05-07)
+
+categories:
+  - id: signature_pie
+    en: Signature Pies (Whole)
+    desc: "House signature whole pies — 14\" base, 18\" available"
+  - id: classic_pie
+    en: Classic Pies (Whole)
+    desc: "Cheese, Pepperoni, Sausage, White Pizza"
+  - id: slice
+    en: Slices
+    desc: "Daily slices — 1 cheese, 1 pepperoni always available"
+  - id: build_your_own
+    en: Build Your Own Pizza
+    desc: "Choose crust, sauce, cheese, toppings"
+  - id: salad
+    en: Salads
+    desc: "Caesar, House, Caprese"
+  - id: side
+    en: Sides
+    desc: "Garlic knots, breadsticks, wings"
+  - id: dessert
+    en: Desserts
+    desc: "Brownies, cookies"
+  - id: drink
+    en: Drinks
+    desc: "Soda (12oz can)"
+
+
+items:
+  # ═══════════════════════════════════════════════════════════════════
+  # SIGNATURE PIES (S1–S6) — 14" base, 18" +$8 via size modifier
+  # ═══════════════════════════════════════════════════════════════════
+  - id: big_joe
+    en: Big Joe
+    category: signature_pie
+    base_price: 26.00
+    base_allergens: [dairy, gluten, egg]   # housemade meatball → egg
+    base_dietary: []
+    notes_en: "Housemade meatballs, lemon ricotta, basil, garlic"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: meat_lover
+    en: Meat Lover
+    category: signature_pie
+    base_price: 28.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Pepperoni, sausage, Canadian bacon, bacon"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: spicy_meat_veggie
+    en: Spicy Meat & Veggie
+    category: signature_pie
+    base_price: 26.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Pepperoni, sausage, bell peppers, jalapeños, pepperoncini"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: hawaiian
+    en: Hawaiian
+    category: signature_pie
+    base_price: 22.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Canadian bacon, pineapple, mozzarella"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: veggie_supreme
+    en: Veggie Supreme
+    category: signature_pie
+    base_price: 24.00
+    base_allergens: [dairy, gluten]
+    base_dietary: [vegetarian]
+    notes_en: "Mushrooms, bell peppers, olives, onions, tomato"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: vegan_garden
+    en: Vegan Garden
+    category: signature_pie
+    base_price: 26.00
+    base_allergens: [gluten]   # vegan_cheese default → no dairy
+    base_dietary: [vegan]
+    notes_en: "Vegan cheese, vegetables, basil, garlic oil"
+    modifier_groups: [size, crust, cheese, topping_veg]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CLASSIC PIES (C1–C4) — 14" base, 18" +$8 via size modifier
+  # ═══════════════════════════════════════════════════════════════════
+  - id: cheese_pie
+    en: Cheese Pizza
+    category: classic_pie
+    base_price: 18.00
+    base_allergens: [dairy, gluten]
+    base_dietary: [vegetarian]
+    notes_en: "Mozzarella + tomato sauce"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: pepperoni_pie
+    en: Pepperoni Pizza
+    category: classic_pie
+    base_price: 20.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Pepperoni + mozzarella"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: sausage_pie
+    en: Sausage Pizza
+    category: classic_pie
+    base_price: 20.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Italian sausage + mozzarella"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  - id: white_pizza
+    en: White Pizza
+    category: classic_pie
+    base_price: 22.00
+    base_allergens: [dairy, gluten]
+    base_dietary: [vegetarian]
+    notes_en: "Ricotta, mozzarella, garlic, olive oil (no tomato)"
+    modifier_groups: [size, crust, cheese, topping_meat, topping_veg]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SLICES (SL1–SL5) — Single slice, no size modifier
+  # ═══════════════════════════════════════════════════════════════════
+  - id: cheese_slice
+    en: Cheese Slice
+    category: slice
+    base_price: 4.00
+    base_allergens: [dairy, gluten]
+    base_dietary: [vegetarian]
+    notes_en: "Always available"
+    modifier_groups: []
+
+  - id: pepperoni_slice
+    en: Pepperoni Slice
+    category: slice
+    base_price: 5.00
+    base_allergens: [dairy, gluten, pork]
+    base_dietary: []
+    notes_en: "Always available"
+    modifier_groups: []
+
+  - id: daily_special_slice
+    en: Daily Special Slice
+    category: slice
+    base_price: 5.50
+    base_allergens: [dairy, gluten]
+    base_dietary: []
+    notes_en: "Rotates — Big Joe, Spicy, Veggie, etc."
+    modifier_groups: []
+
+  - id: vegan_slice
+    en: Vegan Slice
+    category: slice
+    base_price: 5.50
+    base_allergens: [gluten]
+    base_dietary: [vegan]
+    notes_en: "Vegan cheese"
+    modifier_groups: []
+
+  - id: gluten_free_slice
+    en: Gluten-Free Slice
+    category: slice
+    base_price: 7.00
+    base_allergens: [dairy]   # GF crust removes gluten
+    base_dietary: [gluten_free]
+    notes_en: "GF crust upcharge included"
+    modifier_groups: []
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SALADS (SA1–SA3) — dressing modifier required
+  # ═══════════════════════════════════════════════════════════════════
+  - id: caesar_salad
+    en: Caesar Salad
+    category: salad
+    base_price: 11.00
+    base_allergens: [dairy, gluten, egg, fish]   # caesar dressing → anchovy
+    base_dietary: []
+    notes_en: "Romaine, parmesan, croutons, caesar dressing"
+    modifier_groups: [dressing]
+
+  - id: house_salad
+    en: House Salad
+    category: salad
+    base_price: 9.00
+    base_allergens: []
+    base_dietary: [vegan, gluten_free]
+    notes_en: "Mixed greens, tomato, cucumber, vinaigrette"
+    modifier_groups: [dressing]
+
+  - id: caprese_salad
+    en: Caprese Salad
+    category: salad
+    base_price: 13.00
+    base_allergens: [dairy]
+    base_dietary: [vegetarian, gluten_free]
+    notes_en: "Mozzarella, tomato, basil, balsamic"
+    modifier_groups: [dressing]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SIDES (SD1–SD3)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: garlic_knots
+    en: Garlic Knots
+    category: side
+    base_price: 7.00
+    base_allergens: [gluten, dairy]
+    base_dietary: [vegetarian]
+    notes_en: "6 pieces with marinara"
+    serving: "6 pieces"
+    modifier_groups: []
+
+  - id: breadsticks
+    en: Breadsticks
+    category: side
+    base_price: 6.00
+    base_allergens: [gluten, dairy]
+    base_dietary: [vegetarian]
+    notes_en: "4 pieces with marinara"
+    serving: "4 pieces"
+    modifier_groups: []
+
+  - id: buffalo_wings
+    en: Buffalo Wings
+    category: side
+    base_price: 13.00
+    base_allergens: []   # default; wing_sauce can add dairy (garlic_parmesan)
+    base_dietary: [gluten_free]
+    notes_en: "8 pieces bone-in, choice of sauce"
+    serving: "8 pieces"
+    modifier_groups: [wing_sauce]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # DESSERTS (D1–D2)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: brownie
+    en: Brownie
+    category: dessert
+    base_price: 4.00
+    base_allergens: [dairy, gluten, egg]
+    base_dietary: [vegetarian]
+    notes_en: "Chocolate fudge brownie"
+    modifier_groups: []
+
+  - id: chocolate_chip_cookie
+    en: Chocolate Chip Cookie
+    category: dessert
+    base_price: 3.00
+    base_allergens: [dairy, gluten, egg]
+    base_dietary: [vegetarian]
+    notes_en: "Fresh-baked, single cookie"
+    modifier_groups: []
+
+  # ═══════════════════════════════════════════════════════════════════
+  # DRINKS (DR1)
+  # ═══════════════════════════════════════════════════════════════════
+  - id: soda_can
+    en: Soda
+    category: drink
+    base_price: 2.50
+    base_allergens: []
+    base_dietary: [vegan, gluten_free]
+    notes_en: "12oz can — Coke, Diet Coke, Sprite, Root Beer"
+    serving: "12oz can"
+    modifier_groups: []

@@ -1,0 +1,145 @@
+# Pizza vertical — allergen auto-inference rules.
+# (Pizza vertical 알러젠 자동 추론 규칙 — Phase 7-A AI helper용)
+#
+# Used by `app/services/onboarding/ai_helper.py:infer_allergens()` to
+# pre-fill allergens during new-store menu import. Operator reviews and
+# confirms in Admin UI Wizard before activation.
+#
+# Rules are FDA-9 aligned + pizza-specific patterns:
+#   - pepperoni / sausage / Canadian bacon / bacon → pork
+#     (not FDA-9 but flagged for halal/kosher/religious diets).
+#   - housemade meatball → typically uses egg + breadcrumb (dairy/wheat).
+#   - caesar dressing → contains anchovy (fish) + egg + parmesan (dairy).
+#   - pesto → basil + pine nuts (tree_nuts) + parmesan (dairy).
+#   - shared oven + flour-dusted surfaces → cross-contamination warning
+#     for severe gluten/celiac callers — escalate to manager.
+
+# ─── Severe allergy escalation (Iron Law — NO allergen_lookup tool) ─────────
+severe_allergy_escalation:
+  triggers:
+    - EpiPen
+    - anaphylaxis
+    - life-threatening
+    - severely allergic
+    - celiac
+    - cannot have any trace
+  action: transfer_to_manager
+  manager_phone: "+15037079566"   # JM Pizza manager (temp founder line)
+  message: |
+    I want to make sure we get this exactly right — let me connect you with
+    our manager who can verify directly with the kitchen.  One moment please.
+
+# ─── Cross-contamination disclosures (always surface) ───────────────────────
+cross_contamination:
+  shared_oven: true
+  flour_dusted_surfaces: true
+  shared_fryer: false   # wings are baked, not fried
+  disclosure: |
+    Our pizzas are baked in a shared oven with wheat flour on prep surfaces.
+    We cannot guarantee zero gluten exposure for severe gluten allergies or
+    celiac — please ask for the manager if that is a concern.
+
+# ─── Pattern-based inference (FDA-9 + pizza-specific) ───────────────────────
+patterns:
+  # ─── FDA-9 standard patterns ────────────────────────────────────────────
+  - keywords: [cheese, mozzarella, ricotta, parmesan, cream, butter, dairy, lactose, whey, milk, yogurt]
+    add_allergens: [dairy]
+    confidence: 0.95
+
+  - keywords: [flour, wheat, dough, crust, bread, breadstick, knot, crouton, pasta]
+    add_allergens: [gluten]
+    confidence: 0.95
+
+  - keywords: [egg, mayo, mayonnaise, aioli]
+    add_allergens: [egg]
+    confidence: 0.90
+
+  - keywords: [anchovy, anchovies, fish, tuna, salmon, sardine]
+    add_allergens: [fish]
+    confidence: 0.95
+
+  - keywords: [shrimp, prawn, lobster, crab, oyster, mussel, scallop, clam]
+    add_allergens: [shellfish]
+    confidence: 0.95
+
+  - keywords: [almond, walnut, pecan, cashew, pistachio, hazelnut, pine nut, pine nuts]
+    add_allergens: [tree_nuts]
+    confidence: 0.92
+
+  - keywords: [peanut, peanuts]
+    add_allergens: [peanuts]
+    confidence: 0.95
+
+  - keywords: [soy, soybean, tofu, edamame, tamari]
+    add_allergens: [soy]
+    confidence: 0.88
+
+  - keywords: [sesame, tahini]
+    add_allergens: [sesame]
+    confidence: 0.90
+
+  # ─── Pizza-specific patterns ────────────────────────────────────────────
+  - keywords: [pepperoni, salami]
+    add_allergens: [pork]
+    confidence: 0.93   # 거의 항상 pork (turkey pepperoni 드물게 예외)
+
+  - keywords: [italian sausage, breakfast sausage, sausage crumble]
+    add_allergens: [pork]
+    confidence: 0.85   # 일반적으로 pork — chicken sausage 명시 시 제외
+
+  - keywords: [canadian bacon, ham, prosciutto, bacon]
+    add_allergens: [pork]
+    confidence: 0.95
+
+  - keywords: [meatball, housemade meatball]
+    add_allergens: [egg, dairy, gluten]
+    confidence: 0.88   # binder = breadcrumb + egg + parmesan
+
+  - keywords: [caesar dressing, caesar salad]
+    add_allergens: [fish, dairy, egg]
+    confidence: 0.90   # anchovy + parmesan + egg yolk
+
+  - keywords: [pesto, basil pesto]
+    add_allergens: [tree_nuts, dairy]
+    confidence: 0.85   # pine nuts + parmesan
+
+  - keywords: [ranch, ranch dressing]
+    add_allergens: [dairy, egg]
+    confidence: 0.90
+
+  - keywords: [vegan cheese, dairy-free, lactose-free]
+    remove_allergens: [dairy]
+    confidence: 0.88
+
+  - keywords: [gluten-free crust, gf crust, cauliflower crust]
+    remove_allergens: [gluten]
+    confidence: 0.85
+
+  - keywords: [white pizza, white sauce, garlic cream]
+    add_allergens: [dairy]
+    confidence: 0.92
+
+# ─── Dietary tag inference ──────────────────────────────────────────────────
+dietary_patterns:
+  - keywords: [vegan, vegan cheese]
+    add_dietary: [vegan]
+
+  - keywords: [vegetarian, no meat, cheese pizza, veggie]
+    add_dietary: [vegetarian]
+
+  - keywords: [gluten-free, gluten free, gf]
+    add_dietary: [gluten_free]
+
+# ─── Vegan/GF safe whitelist (operator-curated) ─────────────────────────────
+vegan_safe_items:
+  - vegan_garden
+  - vegan_slice
+  - house_salad
+  - soda_can
+
+gluten_free_safe_items:
+  - gluten_free_slice         # GF crust
+  - house_salad
+  - caprese_salad             # no croutons
+  - buffalo_wings             # bone-in, baked (verify no flour dust)
+  - soda_can

@@ -1,0 +1,108 @@
+# Mexican vertical — allergen auto-inference rules.
+# (Mexican vertical 알러젠 자동 추론 규칙)
+#
+# Used by `app/services/onboarding/ai_helper.py:infer_allergens()` to
+# pre-fill allergens during new-store menu import. Operator reviews
+# and confirms in Admin UI Wizard before activation.
+#
+# Rules are FDA-9 aligned + Mexican-specific patterns (mole=nuts/sesame,
+# flour tortilla=gluten, cheese=dairy, churros=dairy/eggs/gluten, etc).
+# Pattern matching is case-insensitive substring.
+
+# ── Pattern → allergen-add rules ─────────────────────────────────────────────
+patterns:
+  # Dairy — Mexican cuisine is heavy on queso, crema, cotija
+  - keywords: [cheese, queso, crema, cream, milk, butter, yogurt,
+               cotija, oaxaca, mozzarella, asiento, cajeta,
+               leches, lechera, churros, quesadilla,
+               nachos, fundido, suizas, nogada]
+    add_allergens: [dairy]
+    confidence: 0.93
+    reason: "Dairy ingredient (queso/crema/leches) common in Mexican dishes"
+
+  # Wheat / gluten — flour tortilla, churros, beer batter
+  - keywords: [flour tortilla, flour, burrito, churro, beer-battered,
+               beer batter, "beer-battered", quesadilla, chimichanga,
+               sopaipilla, bread, tres leches, cake, sponge]
+    add_allergens: [gluten, wheat]
+    confidence: 0.95
+    reason: "Wheat-flour-based Mexican item (burrito tortilla, churros, beer batter)"
+
+  # Eggs — tres leches, churros, chiles rellenos batter, flan
+  - keywords: [egg, flan, custard, meringue, picadillo,
+               "chiles rellenos", "tres leches", churros, sponge,
+               huevos, omelet, omelette]
+    add_allergens: [eggs]
+    confidence: 0.90
+    reason: "Egg ingredient (rellenos batter, flan, tres leches sponge)"
+
+  # Tree nuts — mole negro (almonds), nogada (walnuts), horchata (almond milk)
+  - keywords: [almond, walnut, pecan, hazelnut, cashew, pistachio,
+               mole, nogada, horchata, marcona]
+    add_allergens: [nuts]
+    confidence: 0.90
+    reason: "Tree nut in Mexican specialty (mole/nogada/horchata)"
+
+  # Sesame — mole negro typically contains sesame seeds
+  - keywords: [sesame, ajonjolí, ajonjoli, "mole negro"]
+    add_allergens: [sesame]
+    confidence: 0.88
+    reason: "Sesame in mole negro and other Mexican sauces"
+
+  # Peanut — some moles use peanuts, some sauces
+  - keywords: [peanut, cacahuate, "peanut butter"]
+    add_allergens: [peanuts]
+    confidence: 0.95
+    reason: "Peanut explicitly named"
+
+  # Soy — less common in traditional Mexican, but possible in marinades
+  - keywords: [soy, soya, tofu, edamame]
+    add_allergens: [soy]
+    confidence: 0.95
+    reason: "Soy ingredient"
+
+  # Fish — Veracruz / pescado tacos
+  - keywords: [fish, pescado, tilapia, salmon, tuna, atún,
+               bacalao, mojarra, veracruz, ceviche]
+    add_allergens: [fish]
+    confidence: 0.95
+    reason: "Fish ingredient (pescado, ceviche, Veracruz)"
+
+  # Shellfish — coastal Mexican (camarón, langosta)
+  - keywords: [shrimp, camarón, camaron, lobster, langosta,
+               crab, jaiba, cangrejo, scallop, oyster, ostión,
+               clam, almeja, mussel, mejillón, mejillon]
+    add_allergens: [shellfish]
+    confidence: 0.95
+    reason: "Shellfish ingredient"
+
+
+# ── Reverse rules (dietary tags inferred from absence) ───────────────────────
+dietary_inference:
+  - if_absent: [dairy]
+    suggest: [dairy_free]
+    confidence: 0.90
+  - if_absent: [gluten, wheat]
+    suggest: [gluten_free]
+    confidence: 0.85
+  - if_absent: [nuts, peanuts]
+    suggest: [nut_free]
+    confidence: 0.92
+  - if_absent: [dairy, eggs]
+    suggest: [vegan]
+    confidence: 0.50   # require operator manual confirmation
+
+
+# ── Confidence thresholds for UI ─────────────────────────────────────────────
+ui_thresholds:
+  auto_check: 0.90
+  warning:    0.80
+  hint_only:  0.60
+
+
+# ── Override hints (operator-side) ───────────────────────────────────────────
+operator_hints:
+  - text: "Mexican cuisine: verify if corn tortillas are made in a shared facility with wheat — typical taquerias keep them separate, but confirm before tagging gluten_free."
+  - text: "Mole negro recipes vary by family — confirm with the kitchen whether peanuts are included (some Oaxacan recipes add them on top of almonds + sesame)."
+  - text: "Lard (manteca) is animal-derived — affects vegan/vegetarian tagging on refried beans and tamales."
+  - text: "Cross-contamination not yet captured here. Mark items 'allergen_unknown' if your kitchen shares prep surfaces with allergen-containing items."
