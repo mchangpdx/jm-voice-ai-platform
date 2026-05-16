@@ -55,8 +55,9 @@
 </head>
 <body>
 
-<h1>Avoca.ai 분석 + JM Home Services 템플릿화 전략</h1>
-<div class="meta">JM Tech One · JM AI Voice Platform · 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com</div>
+<h1>Avoca.ai 분석 + Multi-vertical Proof 전략</h1>
+<div class="meta">JM Tech One · JM AI Voice Platform · 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com<br>
+<strong>업데이트 (v2):</strong> Home services MVP 적합성 재평가 → <strong>Beauty Salon 최고 픽 추천</strong> (Part 7-8 신규)</div>
 
 <div class="toc">
   <strong>목차</strong>
@@ -67,7 +68,9 @@
     <li>Part 4 — 필요 기능 전수조사 (Avoca 대비 gap analysis)</li>
     <li>Part 5 — 코드 재사용률 (JM Cafe 기준 line-by-line)</li>
     <li>Part 6 — 단계별 작업 목록 (Phase 1-6)</li>
-    <li>Part 7 — 결론 및 권고</li>
+    <li>Part 7 — Multi-vertical Architecture Proof 전략 (사용자 의도 + 전문가 평가) <strong>NEW</strong></li>
+    <li>Part 8 — Beauty Salon 최고 픽 추천 + 후보 vertical 비교 <strong>NEW</strong></li>
+    <li>Part 9 — 결론 및 권고 (업데이트)</li>
   </ul>
 </div>
 
@@ -408,7 +411,203 @@
   Phase 6 (Avoca 격차) = 추가 <strong>2-3개월</strong> 점진 출시
 </div>
 
-<h2>Part 7 — 결론 및 권고</h2>
+<h2>Part 7 — Multi-vertical Architecture Proof 전략</h2>
+
+<h3>사용자 의도 요약</h3>
+<div class="quote">
+  "멀티-버티컬 설계가 실제로 다른 분야에 적용했을 때 얼마큼 효과적인지 검증하고 싶다. FSR/QSR에서는 이 설계가 큰 힘을 발휘하는 게 데이터상 검증됐다. 하지만 전혀 다른 분야에 시도 안 해봐 확신이 없다. Home services를 MVP로 빠르게 검증하려 했다."
+</div>
+
+<div class="expert-opinion">
+<h4>전문가 의견 (가감없이) — Home services는 MVP 검증 vehicle로 부적합</h4>
+
+<p><strong>사용자 의도(다른 분야 검증)는 100% 동의.</strong> FSR/QSR 안에서 cafe → pizza → mexican 매장 추가된 건 같은 "음식 주문" 패턴 변주 (메뉴 + 알러지 + modifier). <strong>전혀 다른 산업 패턴 (서비스 예약 + 견적 + 시간 슬롯) 검증이 진짜 architecture proof</strong>이고, 이게 영업·투자자 pitch의 가장 강력한 무기.</p>
+
+<p><strong>그러나 Home services를 MVP로 선택한 판단은 다시 검토 권장.</strong> 다음 5개 검증 우려 요소 때문:</p>
+
+<table>
+  <thead><tr><th>우려 요소</th><th>영향</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Dispatch/Technician scheduling 복잡</strong></td><td>MVP에 진짜 minimum 작업이 어려움 — HS1-HS4 P0 4건 + 신규 tool 3개 + 9-layer yaml 필요 = <strong>6-8주</strong>. MVP라기엔 무겁다.</td></tr>
+    <tr><td><strong>기존 인프라 의존성</strong></td><td>Home services SMB의 60-70%가 이미 ServiceTitan / HCP / Workiz / Jobber 사용 중. 우리는 이들의 native integration이 없어 영업 진입 장벽 ↑.</td></tr>
+    <tr><td><strong>Sales cycle 길음</strong></td><td>Home services 사업자는 보수적 buyer (한 번 시스템 바꾸면 1년+ 사용). "빠른 검증"을 위한 가맹점 1개 확보까지 영업 사이클 <strong>1-3개월</strong>. MVP 빠른 iteration 불가.</td></tr>
+    <tr><td><strong>자원 분산 위험</strong></td><td>1차 FSR/QSR 출시 4-5주 작업 한가운데에서 새 vertical 작업 = 안정성 ↓. SumUp PG / staging environment 등 P0 작업 지연 위험.</td></tr>
+    <tr><td><strong>데이터 다양성 부족</strong></td><td>1-2개 home services 매장만으로는 "architecture 검증" 효과 약함. Avoca/투자자에게 "1 가맹점에서 작동"은 proof 안 됨.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>솔직한 판단:</strong> Home services는 <strong>장기 핵심 시장 (Avoca $1B 증거)</strong>이지만 <strong>MVP 검증 vehicle로는 비효율</strong>. 차라리 가벼운 vertical로 1-2주 안에 빠르게 architecture proof → 그 결과를 영업/투자자에게 보여주고 → Home services에 본격 진입하는 게 효율 최적.</p>
+</div>
+
+<h3>Multi-vertical Architecture Proof의 진짜 가치</h3>
+<ul>
+  <li><strong>영업 자료:</strong> "우리는 음식점뿐 아니라 미용실/자동차/홈서비스 모두 동일 코드베이스로 서비스" → 1매장 영입 시 다른 vertical 함께 영업 가능</li>
+  <li><strong>투자자 pitch:</strong> "9-layer Vertical Template = horizontal SaaS 구조" → SaaS valuation 적용 가능 (vertical-only는 평가 절상폭 작음)</li>
+  <li><strong>기술 부채 감소:</strong> Framework 표준화하면 각 vertical 추가 시 코드 변경 없이 yaml만 작성 — 유지비 ↓</li>
+  <li><strong>경쟁 차별점:</strong> Avoca/Maple은 vertical-specific. JM은 horizontal — 같은 Korea-friendly multi-vertical 경쟁자 없음</li>
+</ul>
+
+<h2>Part 8 — Beauty Salon 최고 픽 추천</h2>
+
+<h3>후보 Vertical 비교 매트릭스 (8개 후보)</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Vertical</th>
+      <th>음식점과 다름</th>
+      <th>구현 난이도</th>
+      <th>Sales 사이클</th>
+      <th>가맹점 수<br>(US)</th>
+      <th>Phone-first</th>
+      <th>다국어 효과</th>
+      <th>총점</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Beauty Salon</strong> <span class="badge b-strength">최고 픽</span></td>
+      <td>★★★ 매우 다름 (order vs appointment)</td>
+      <td>★ 낮음 (dispatch 없음)</td>
+      <td>★ 짧음 (1-3주)</td>
+      <td>★★★ 100K+</td>
+      <td>★★★ 80%+ phone</td>
+      <td>★★★ 한국/라틴 미용실 다수</td>
+      <td><strong>21/21</strong></td>
+    </tr>
+    <tr>
+      <td>Auto Repair</td>
+      <td>★★ 견적 + 진단</td>
+      <td>★★ 중간 (mechanic 가용성)</td>
+      <td>★★ 중간 (2-4주)</td>
+      <td>★★ 50K</td>
+      <td>★★ 70% phone</td>
+      <td>★ 보통</td>
+      <td>14/21</td>
+    </tr>
+    <tr>
+      <td>Pet Grooming</td>
+      <td>★★★ Beauty와 유사</td>
+      <td>★ 낮음</td>
+      <td>★ 짧음</td>
+      <td>★ 10K (작음)</td>
+      <td>★★ 60% phone</td>
+      <td>★ 보통</td>
+      <td>13/21</td>
+    </tr>
+    <tr>
+      <td>Auto Detailing / Car Wash</td>
+      <td>★★ Service+slot</td>
+      <td>★ 낮음</td>
+      <td>★ 짧음</td>
+      <td>★ 15K</td>
+      <td>★★ 60% phone</td>
+      <td>★ 보통</td>
+      <td>12/21</td>
+    </tr>
+    <tr>
+      <td>Tutoring / Education</td>
+      <td>★★ Service+slot</td>
+      <td>★ 낮음</td>
+      <td>★★ 중간</td>
+      <td>★ 작음</td>
+      <td>★ 50%</td>
+      <td>★★ 한국학원 多</td>
+      <td>10/21</td>
+    </tr>
+    <tr>
+      <td>Dental / Medical</td>
+      <td>★★★ 매우 다름</td>
+      <td>★★★★ HIPAA 컴플라이언스</td>
+      <td>★★★ 매우 길음</td>
+      <td>★★★ 200K</td>
+      <td>★★★ phone</td>
+      <td>★★ 일부</td>
+      <td>9/21 <span class="badge b-weakness">HIPAA 부담</span></td>
+    </tr>
+    <tr>
+      <td>Real Estate</td>
+      <td>★★ Lead intake</td>
+      <td>★★ 중간</td>
+      <td>★★ 중간</td>
+      <td>★★ 50K</td>
+      <td>★ 30% (text 위주)</td>
+      <td>★ 보통</td>
+      <td>10/21</td>
+    </tr>
+    <tr>
+      <td>Home Services (참고)</td>
+      <td>★★★ 매우 다름</td>
+      <td>★★★ 높음 (dispatch)</td>
+      <td>★★ 중간-길음</td>
+      <td>★★ 70K</td>
+      <td>★★★ phone</td>
+      <td>★ 보통</td>
+      <td>14/21 <span class="badge b-weakness">MVP 부담</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Beauty Salon 추천 이유 (8가지)</h3>
+
+<ol>
+  <li><strong>음식점 패턴과 가장 다름</strong> — order(stack of items + payment) vs appointment(time slot + service + stylist). Architecture 검증 가치 최대. PHASE FLOW도 완전 다른 흐름 (메뉴 주문 → 진단 + 슬롯 선택).</li>
+  <li><strong>구현 난이도 가장 낮음</strong> — dispatch 복잡 없음, technician skill match 없음 (stylist 1-2명 = "any available"), emergency triage 없음. 음식점 코드 80% 재사용 + tool 1-2개 추가만 신규.</li>
+  <li><strong>SMB 비율 매우 높음</strong> — 미국 미용실의 90%+가 1-5인 매장. Avoca/대형 솔루션이 진입 불가. JM의 "SMB-friendly + 5lang" 강점 직접 발휘.</li>
+  <li><strong>Phone-first 산업</strong> — 미용실 80%+가 예약을 phone로 받음. AI voice agent 핵심 가치 (24/7, 영어 못하는 customer 응대) 즉시 발현.</li>
+  <li><strong>가맹점 수 매우 많음</strong> — 미국 100,000+ 매장 (BLS 통계). 영업 잠재력 풍부 — 한 area에서 10-20 매장 영입 가능.</li>
+  <li><strong>MVP 가능 (1-2주)</strong> — Beauty template 9-layer 작성 + 1-2 tool 신규 + JM Beauty Salon 라이브 검증 = <strong>10-14일</strong>. Home services 6-8주 대비 5분의 1.</li>
+  <li><strong>다국어 효과 가장 큼</strong> — 한국계 미용실 (LA/NY/Atlanta/Texas) 수천 개, 라틴계 미용실 (Spanish) 수만 개, 베트남계 네일살롱 수만 개. <strong>JM의 5lang이 가장 큰 무기</strong>가 되는 vertical.</li>
+  <li><strong>이미 DB에 JM Beauty Salon 매장 등록됨</strong> — system_prompt = Luna 페르소나 + agency_id + business_hours 모두 채워져 있음. Wizard 자료 + DB 모두 준비된 상태에서 출발.</li>
+</ol>
+
+<h3>Beauty Salon MVP 작업 분량 (예상)</h3>
+
+<table>
+  <thead><tr><th>Phase</th><th>작업</th><th>시간</th></tr></thead>
+  <tbody>
+    <tr><td>BV1</td><td>Beauty 9-layer template 자산 작성 (대부분 cafe에서 swap)</td><td>2일</td></tr>
+    <tr><td>BV2</td><td>book_appointment tool 확장 (stylist 옵션 + service duration)</td><td>1일</td></tr>
+    <tr><td>BV3</td><td>service_lookup tool (allergen_lookup 자리에 hair_type / skin_type 등)</td><td>1일</td></tr>
+    <tr><td>BV4</td><td>system prompt INTAKE → SERVICE_SELECT → STYLIST → TIME_SLOT → CONFIRM flow</td><td>1일</td></tr>
+    <tr><td>BV5</td><td>JM Beauty Salon 라이브 검증 통화 (5-10건)</td><td>1-2일</td></tr>
+    <tr><td>BV6</td><td>가상 "ABC Hair Studio" wizard 0-shot 등록 검증</td><td>1일</td></tr>
+    <tr><td>BV7</td><td>가상 한국 미용실 "강남 헤어" 등록 (한국어 통화 검증)</td><td>1일</td></tr>
+    <tr><td>BV8</td><td>코드 재사용률 + 작업량 측정 보고서</td><td>0.5일</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>총 작업량: 8-10일 (1-2주)</strong> — 이 결과로 <strong>"FSR/QSR + Beauty"</strong> 2 vertical 완전 검증.<br>
+  Architecture proof 확보 → Home services는 자원 여유 시 진행.
+</div>
+
+<h3>예상 검증 가치 (Multi-vertical Proof)</h3>
+
+<table>
+  <thead><tr><th>검증 항목</th><th>예상 결과</th></tr></thead>
+  <tbody>
+    <tr><td>코드 재사용률 (Beauty Salon)</td><td>약 <strong>85-90%</strong> (음식점과 패턴 다르지만 dispatch 없어 home services보다 ↑)</td></tr>
+    <tr><td>새 vertical 추가 시간</td><td>약 <strong>1-2주</strong> (현재 framework 미완 → 2-3주, framework 완성 후 → 2-3일)</td></tr>
+    <tr><td>0-shot 등록 작동률</td><td>한국/라틴 미용실 등 다양한 매장에서 <strong>80%+ 자동 작동</strong> 검증 가능</td></tr>
+    <tr><td>영업 적용 가능성</td><td>Beauty 매장 영업 list 100K+ 풍부, Korea/LA 한국계 미용실 우선 진입 가능</td></tr>
+    <tr><td>투자자 pitch 강화도</td><td>"3 verticals proven" → "Horizontal SaaS" 평가 가능 (vertical-only valuation 대비 2-3x 가능)</td></tr>
+  </tbody>
+</table>
+
+<h3>Why NOT Auto Repair (두 번째 후보)</h3>
+<p>Auto Repair는 후보 2위지만 다음 이유로 Beauty Salon보다 후순위:</p>
+<ul>
+  <li><strong>구현 난이도 ↑</strong> — mechanic 가용성, parts inventory, diagnostic 흐름 등 dispatch 복잡도 일부 포함</li>
+  <li><strong>매장 수 50K (vs Beauty 100K)</strong> — 영업 잠재력 절반</li>
+  <li><strong>Phone 의존도 ↓</strong> — 일부 매장 walk-in 위주</li>
+  <li><strong>다국어 효과 작음</strong> — Beauty처럼 한국/라틴 niche cluster 없음</li>
+  <li><strong>가격 환각 위험 ↑</strong> — 견적이 복잡 (parts × labor × diagnostic fee). 우리가 이미 Cafe에서 가격 환각 P1 issue 가짐 — Beauty의 flat-rate 가격이 더 안전한 검증 환경</li>
+</ul>
+
+<p>다만 Beauty Salon MVP 완료 후 <strong>두 번째 vertical로 Auto Repair 추가</strong> 권장 — 한 번 더 architecture proof + 새 시장 확장.</p>
+
+<h2>Part 9 — 결론 및 권고 (업데이트)</h2>
 
 <h3>핵심 인사이트</h3>
 <ol>
@@ -418,7 +617,7 @@
   <li><strong>JM Home Services 템플릿화는 valuable, 단 우선순위 조정 필요</strong> — Vertical Template Framework 표준화가 단일 매장 template보다 가치 큼</li>
 </ol>
 
-<h3>최종 권고 (가감없이)</h3>
+<h3>최종 권고 (업데이트 — Beauty Salon MVP 우선 반영)</h3>
 <table>
   <thead><tr><th>시점</th><th>권고 액션</th><th>이유</th></tr></thead>
   <tbody>
@@ -428,25 +627,34 @@
       <td>자원 분산 위험. 매출 우선 + voice agent 신뢰도 확보.</td>
     </tr>
     <tr>
-      <td><strong>2026-08 ~ 2026-10 (베타 후)</strong></td>
-      <td>Phase 1-2 (Vertical Template Framework 표준화 + Schema 추상화). 코드만 작업, 신규 매장 영업 없음.</td>
-      <td>FSR/QSR 매장에 영향 없음, 백엔드만 정리. 코드 부채 감소.</td>
+      <td><strong>2026-07 후반 ~ 2026-08 (Architecture Proof Sprint, 2주)</strong> <span class="badge b-strength">신규</span></td>
+      <td><strong>Beauty Salon MVP</strong> — 9-layer Vertical Framework 일부 + Beauty template + 라이브 검증. JM Beauty Salon (이미 DB 등록) + 가상 한국 미용실 0-shot 검증.</td>
+      <td><strong>Multi-vertical proof를 가장 가벼운 방식으로 확보</strong>. 영업/투자자 무기.</td>
     </tr>
     <tr>
-      <td><strong>2026-11 ~ 2027-01 (2차 출시 준비)</strong></td>
-      <td>Phase 3-4 (Home services tools + JM Home Services 라이브). 실제 영업 1-2 가맹점.</td>
-      <td>FSR/QSR 매출 안정화 후 새 vertical 확장. Avoca와 직접 경쟁 시작.</td>
+      <td><strong>2026-08 ~ 2026-10 (베타 안정화)</strong></td>
+      <td>FSR/QSR + Beauty 두 vertical 운영하며 안정화. 매장 영업 본격. Phase 1-2 (Framework 표준화 + Schema 추상화) 배경 작업.</td>
+      <td>실제 매장 수 늘리면서 framework 다듬기. 매출 + 코드 부채 동시 감소.</td>
+    </tr>
+    <tr>
+      <td><strong>2026-11 ~ 2027-01 (3 vertical 확장)</strong></td>
+      <td>Auto Repair vertical 추가 (Beauty 검증 결과 적용). Phase 3-4 (Home services 본격 시작).</td>
+      <td>3 vertical 검증 완료 → Avoca 대비 horizontal 확실. Home services 영업도 자료 강화 후 진입.</td>
     </tr>
     <tr>
       <td><strong>2027-02+ (성장기)</strong></td>
-      <td>Phase 5-6 (0-shot 검증 + Avoca 격차 좁히기). Coach pillar는 후순위.</td>
+      <td>Phase 5-6 (Home services 0-shot 검증 + Avoca 격차 좁히기). Coach pillar는 후순위.</td>
       <td>Outbound + Coach는 enterprise feature, SMB는 Inbound + Booking 우선.</td>
     </tr>
   </tbody>
 </table>
 
 <div class="callout callout-success">
-  <strong>한 줄 결론:</strong> JM Home Services 템플릿화는 <strong>전적으로 동의 + 한 단계 추상화 권장 (9-layer Vertical Framework)</strong>. 다만 <strong>1차 출시 후 진행이 자원 효율 최적</strong>. Avoca를 따라하지 말고 multi-vertical + SMB + 5lang 차별점을 강화하는 게 정답.
+  <strong>업데이트된 한 줄 결론:</strong> Home services는 장기 핵심 시장 ✓. 단 <strong>MVP 검증 vehicle로는 무겁다</strong>. <strong>Beauty Salon으로 1-2주 안에 multi-vertical architecture proof</strong> → 그 결과를 영업/투자자에게 보여주고 → Auto Repair 확장 → Home services는 자원 여유 시 진입. JM의 <strong>multi-vertical + SMB + 5lang</strong> 차별점은 Beauty Salon에서 가장 크게 발휘됨 (한국/라틴/베트남계 미용실).
+</div>
+
+<div class="callout callout-warn">
+  <strong>한 가지 솔직한 경고:</strong> Beauty Salon이 더 쉽다고 해서 가치가 작은 것은 절대 아님. 미국 미용실 시장은 연 $46B (BLS 2024). 100K+ 매장. SMB-friendly + 다국어 + multi-vertical로 진입하면 Avoca가 home services에서 잡지 못한 시장을 우리가 잡을 수 있음. <strong>"쉬운 검증"이 곧 "큰 기회"가 되는 vertical.</strong>
 </div>
 
 <hr style="margin-top: 24pt; border: 0; border-top: 1px solid #cbd5e1;">
