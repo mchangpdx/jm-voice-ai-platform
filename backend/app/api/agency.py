@@ -43,6 +43,11 @@ _VALID_PERIODS   = {"today", "week", "month", "all"}
 _DEFAULT_TIMEZONE = "America/Los_Angeles"
 _DEFAULT_WAGE     = 20.0
 
+# Platform admin users see the first agency for demos / cross-tenant views.
+# Replace with app_metadata.role lookup when Phase 2-E RBAC migration lands.
+# (Phase 2-E 이후 app_metadata.role으로 교체 예정 — 현재는 user_id 매칭)
+_ADMIN_USER_IDS = {"ba885c40-a9ed-4fba-a307-fe3db8329377"}  # admin@test.com
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,9 +69,20 @@ def _period_start(period: str, store_tz: str = _DEFAULT_TIMEZONE) -> str | None:
 
 
 async def _resolve_agency(client: httpx.AsyncClient, owner_id: str) -> dict:
-    """Lookup agency by owner_id. Raises 403 if not an agency user.
-    (owner_id로 에이전시 조회. 에이전시 사용자가 아니면 403)
+    """Lookup agency by owner_id. Platform admin falls back to the oldest agency
+    (for investor-demo / cross-tenant read views). Raises 403 otherwise.
+    (owner_id로 agency 조회 — admin은 가장 오래된 agency로 fallback, 그 외 403)
     """
+    if owner_id in _ADMIN_USER_IDS:
+        resp = await client.get(
+            f"{_REST}/agencies",
+            headers=_SUPABASE_HEADERS,
+            params={"select": "id,name", "order": "created_at.asc", "limit": "1"},
+        )
+        agencies = resp.json() if isinstance(resp.json(), list) else []
+        if agencies:
+            return agencies[0]
+
     resp = await client.get(
         f"{_REST}/agencies",
         headers=_SUPABASE_HEADERS,

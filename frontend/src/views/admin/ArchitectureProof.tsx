@@ -1,18 +1,15 @@
 // Architecture Proof page — investor-facing demonstration of 4-layer reuse
 // (아키텍처 입증 페이지 — 4계층 재사용성 투자자 시연용)
 //
-// Route: /admin/architecture-proof  (AGENCY role only)
+// Route: /admin/marketing/architecture-proof  (ADMIN role only — route guard)
 // Data: GET /api/agency/overview?period=month — 5 verticals roll-up
-//
-// Per FRONTEND_HANDOFF_SPEC 2026-05-10 §F-C.
+//        (admin override added 2026-05-17 so platform admin can see the demo)
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList,
 } from 'recharts'
 import api from '../../core/api'
-import { useAuth } from '../../core/AuthContext'
 import { getVerticalMeta } from '../../core/verticalLabels'
 import {
   CODE_REUSE_LAYERS,
@@ -62,21 +59,20 @@ function layerColor(pct: number): string {
 }
 
 export default function ArchitectureProof() {
-  const { role } = useAuth()
+  // Route-level RequireRole allow={['ADMIN']} already gates this page —
+  // no in-component role check needed. Data fetch falls through to
+  // /api/agency/overview which now accepts admin via backend override.
+  // (라우트 가드만으로 충분, 컴포넌트 내부 role 체크 제거)
   const [data, setData]       = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (role !== 'AGENCY') return
     api
       .get('/agency/overview?period=month')
       .then((r) => setData(r.data))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [role])
-
-  // Guard runs AFTER all hooks (React rules-of-hooks compliance)
-  if (role !== 'AGENCY') return <Navigate to="/" replace />
+  }, [])
 
   const stores       = data?.stores ?? []
   const totalReuseLoc = CODE_REUSE_LAYERS.reduce((s, l) => s + l.locReused, 0)
