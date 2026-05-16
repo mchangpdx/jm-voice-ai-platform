@@ -198,6 +198,39 @@ def test_t7c_cancel_order_description_routes_empty_snapshot_to_recent_orders() -
     assert "call recent_orders FIRST" in desc
 
 
+# ── T7d: cancel_order PRECONDITION (a) accepts recent_orders single ───────
+# Live trigger CAea87a1a8 (2026-05-17) — the agent wasted a turn on a
+# redundant "Just to confirm" recital after recent_orders had already
+# spoken the items + total. cancel_order's PRECONDITION (a) must now
+# accept BOTH in-call create_order success AND a recent_orders single
+# match so the LLM doesn't insist on a duplicate recital.
+
+def test_t7d_cancel_order_accepts_recent_orders_single_as_precondition() -> None:
+    from app.skills.order.order import CANCEL_ORDER_TOOL_DEF
+
+    desc = CANCEL_ORDER_TOOL_DEF["function_declarations"][0]["description"]
+    # OR branch lets the cross-call path satisfy PRECONDITION (a).
+    assert "recent_orders just" in desc
+    assert "recent_single" in desc
+    # And the duplicate-recital exception must call out the no-second-line
+    # rule so the LLM has an unambiguous branch.
+    assert "do NOT add a second" in desc
+
+
+# ── T7e: System prompt rule 13 has the CONFIRM SHORTCUT branch ────────────
+
+def test_t7e_rule_13_has_confirm_shortcut_after_recent_single() -> None:
+    from app.api.voice_websocket import build_system_prompt
+
+    prompt = build_system_prompt(MOCK_STORE)
+    assert "CONFIRM SHORTCUT" in prompt
+    # Must cover at least 3 of the 5 supported languages so multilingual
+    # confirm patterns (Korean / Spanish / English) don't fall through.
+    assert "yes cancel" in prompt
+    assert "취소" in prompt
+    assert "cancela" in prompt
+
+
 # ── T8: tool registry includes recent_orders without breaking others ─────────
 
 def test_t8_recent_orders_registered_in_realtime_tools() -> None:

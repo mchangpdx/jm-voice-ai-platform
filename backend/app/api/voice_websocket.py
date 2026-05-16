@@ -792,7 +792,16 @@ def build_system_prompt(
         "    been recited in THIS call routes through recent_orders, not\n"
         "    cancel_order. (live regression CA438ad0 / CAec46977 / CAbfdc4e\n"
         "    2026-05-16 — LLM paraphrased 'I don't see an active order' from\n"
-        "    cancel_order's hint script instead of calling recent_orders.)"
+        "    cancel_order's hint script instead of calling recent_orders.)\n"
+        "    CONFIRM SHORTCUT: when recent_orders returned recent_single,\n"
+        "    the tool message ALREADY voiced the items + total + age. The\n"
+        "    next customer turn with explicit cancel intent ('yes cancel',\n"
+        "    'cancel them', 'yes please', '네 취소해주세요', 'sí cancela') IS\n"
+        "    the recital — call cancel_order with user_explicit_confirmation\n"
+        "    =true on this very turn; do NOT add a second 'Just to confirm'\n"
+        "    line. Live trigger CAea87a1a8 2026-05-17 — agent wasted a turn\n"
+        "    on a redundant second recital after the customer had already\n"
+        "    confirmed cancel."
     )
 
     # CRM Wave 1 — customer_context block sits immediately before INVARIANTS.
