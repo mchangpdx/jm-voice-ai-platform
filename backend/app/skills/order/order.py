@@ -320,21 +320,28 @@ CANCEL_ORDER_TOOL_DEF: dict = {
         {
             "name": "cancel_order",
             "description": (
-                "Cancel an in-flight pickup order before it's paid. "
-                "Use ONLY when the customer EXPLICITLY says 'cancel my "
-                "order', 'cancel that', 'never mind, cancel it'. "
+                "Cancel an in-flight pickup order placed IN THIS SAME CALL "
+                "before it's paid. Use ONLY when the customer EXPLICITLY "
+                "says 'cancel my order', 'cancel that', 'never mind, cancel "
+                "it' AFTER you have already placed an order for them in "
+                "THIS call via create_order. "
                 "PRECONDITIONS: "
-                "(a) the customer has clearly stated cancel intent, "
-                "(b) you have recited 'Just to confirm — you want to cancel "
+                "(a) create_order has succeeded earlier in THIS call (you "
+                "    have an in-call order snapshot — last_order_items + "
+                "    last_order_total are non-empty), "
+                "(b) the customer has clearly stated cancel intent, "
+                "(c) you have recited 'Just to confirm — you want to cancel "
                 "    your order for [items] for $[total] — is that right?' "
                 "    using the items and total from this call's order, "
-                "(c) the customer has said an explicit verbal yes to that "
+                "(d) the customer has said an explicit verbal yes to that "
                 "    recital. "
+                "If NO order has been placed in THIS call yet (no in-call "
+                "snapshot) and the customer asks to cancel, call "
+                "recent_orders FIRST — that tool covers cross-call cancels. "
                 "Do NOT pass customer_phone, customer_name, customer_email, "
                 "or items — the system identifies the order via the inbound "
                 "caller ID. NEVER say 'I've cancelled that for you' without "
-                "actually calling this tool. If no in-flight order exists, "
-                "the bridge will respond accordingly and you must NOT retry."
+                "actually calling this tool."
             ),
             "parameters": {
                 "type": "object",

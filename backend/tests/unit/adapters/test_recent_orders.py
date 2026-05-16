@@ -160,6 +160,44 @@ def test_t7_system_prompt_rule_13_mentions_recent_orders() -> None:
     assert "NEVER invent" in prompt or "never invent" in prompt.lower()
 
 
+# ── T7b: Rule 13 lists the live-regression cancel phrases ──────────────────
+# Live trigger 2026-05-16 — CA438ad0 / CAec46977 / CAbfdc4e: LLM heard
+# "cancel the earlier one" / "cancel only one" / "the all my order" but
+# paraphrased cancel_no_target text instead of calling recent_orders.
+# Rule 13 must cover these phrasings or the LLM keeps drifting back to
+# the cancel_order branch.
+
+def test_t7b_rule_13_covers_live_cancel_phrasings() -> None:
+    from app.api.voice_websocket import build_system_prompt
+
+    prompt = build_system_prompt(MOCK_STORE)
+    # At least one representative live phrasing must be in the rule body
+    # so the LLM has explicit pattern-match anchors during inference.
+    assert "cancel the earlier one" in prompt
+    assert "cancel only one" in prompt
+    # The "first 3 turns before items have been recited" gate is what
+    # forces cancel_order → recent_orders routing during the greeting
+    # phase, before any in-call order exists.
+    assert "first 3 turns" in prompt
+    assert "ALWAYS call recent_orders FIRST" in prompt
+
+
+# ── T7c: cancel_order tool description routes empty-snapshot calls away ────
+
+def test_t7c_cancel_order_description_routes_empty_snapshot_to_recent_orders() -> None:
+    from app.skills.order.order import CANCEL_ORDER_TOOL_DEF
+
+    desc = CANCEL_ORDER_TOOL_DEF["function_declarations"][0]["description"]
+    # PRECONDITION (a) requires an in-call create_order success — this is
+    # the hard guard that prevents the LLM from firing cancel_order on a
+    # caller's first turn before any order has been placed.
+    assert "create_order has succeeded earlier in THIS call" in desc
+    # And the description must explicitly hand cross-call cancel attempts
+    # off to recent_orders so the LLM has a clear branch instead of a
+    # dead-end "I don't see an active order" reply.
+    assert "call recent_orders FIRST" in desc
+
+
 # ── T8: tool registry includes recent_orders without breaking others ─────────
 
 def test_t8_recent_orders_registered_in_realtime_tools() -> None:
