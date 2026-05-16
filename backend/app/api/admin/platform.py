@@ -18,9 +18,11 @@ import httpx
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from jose import JWTError, jwt
 
+from app.core.api_errors import get_recent_errors, summarize_errors
 from app.core.audit import audit_log
 from app.core.auth import _get_public_key
 from app.core.config import settings
+from app.services.sync.freeze import status as sync_freeze_status
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Platform"])
 
@@ -639,3 +641,87 @@ async def list_audit_logs(
         if r.status_code >= 300:
             raise HTTPException(r.status_code, f"Supabase: {r.text[:200]}")
         return r.json() if isinstance(r.json(), list) else []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2-C: System Health
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/health/webhooks")
+async def health_webhooks(_: str = Depends(require_admin)) -> dict[str, Any]:
+    """Snapshot of POS sync freeze state — which stores are currently
+    ignoring upstream webhook callbacks and when freezes expire.
+    (Sync freeze 상태 스냅샷 — 어느 매장이 webhook 무시 중인지 + 만료 시각)
+    """
+    freeze = sync_freeze_status()
+    return {
+        "sync_freeze": freeze,
+        "globally_frozen": freeze.get("global_frozen", False),
+        "active_freeze_count": len(freeze.get("active", {})),
+    }
+
+
+@router.get("/health/calls")
+async def health_calls(_: str = Depends(require_admin)) -> dict[str, Any]:
+    """Call volume + error rate windows (1h, 24h, 7d).
+    (통화량 + 에러율 윈도우 — 1시간 / 24시간 / 7일)
+    """
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    windows = {
+        "1h":  now - timedelta(hours=1),
+        "24h": now - timedelta(hours=24),
+        "7d":  now - timedelta(days=7),
+    }
+
+    async def _count(client: httpx.AsyncClient, since_iso: str, status_filter: str | None = None) -> int:
+        params: dict[str, Any] = {
+            "select":     "call_id",
+            "start_time": f"gte.{since_iso}",
+            "limit":      "1",
+        }
+        if status_filter:
+            params["call_status"] = status_filter
+        r = await client.get(
+            f"{_REST}/call_logs",
+            headers={**_SUPABASE_HEADERS, "Prefer": "count=exact"},
+            params=params,
+        )
+        rng = r.headers.get("content-range", "")
+        if "/" in rng:
+            try:
+                return int(rng.split("/")[-1])
+            except ValueError:
+                return 0
+        return 0
+
+    out: dict[str, Any] = {}
+    async with httpx.AsyncClient(timeout=15) as c:
+        for label, since_dt in windows.items():
+            since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            total  = await _count(c, since_iso)
+            failed = await _count(c, since_iso, status_filter="eq.failed")
+            out[label] = {
+                "total":      total,
+                "failed":     failed,
+                "error_rate": round(failed / total, 4) if total > 0 else 0.0,
+            }
+    return out
+
+
+@router.get("/health/api-errors")
+async def health_api_errors(
+    window_seconds: int = Query(3600, ge=60, le=7 * 24 * 3600),
+    limit:          int = Query(100, ge=1, le=500),
+    _:              str = Depends(require_admin),
+) -> dict[str, Any]:
+    """Recent 4xx/5xx API responses from the in-memory ring buffer.
+    Returns a summary + the most recent entries.
+    (최근 4xx/5xx 응답 — ring buffer에서 요약 + 최신 entries)
+    """
+    return {
+        "summary": summarize_errors(window_seconds=window_seconds),
+        "recent":  get_recent_errors(limit=limit, since_seconds=window_seconds),
+    }

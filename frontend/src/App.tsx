@@ -23,6 +23,7 @@ const AdminOverview     = lazy(() => import('./views/admin/Overview'))
 const AdminAgencies     = lazy(() => import('./views/admin/Agencies'))
 const AdminStores       = lazy(() => import('./views/admin/Stores'))
 const AdminAuditLog     = lazy(() => import('./views/admin/AuditLog'))
+const AdminSystemHealth = lazy(() => import('./views/admin/SystemHealth'))
 const ArchitectureProof = lazy(() => import('./views/admin/ArchitectureProof'))
 const OnboardingWizard  = lazy(() => import('./views/admin/onboarding/OnboardingWizard'))
 
@@ -93,7 +94,7 @@ function AppRoutes() {
           <Route path="stores"        element={<AdminStores />} />
           <Route path="users"         element={<ComingSoon title="Users & Roles" />} />
           <Route path="audit-log"     element={<AdminAuditLog />} />
-          <Route path="system-health" element={<ComingSoon title="System Health" />} />
+          <Route path="system-health" element={<AdminSystemHealth />} />
           <Route path="onboarding/new" element={<OnboardingWizard />} />
           <Route path="marketing/architecture-proof" element={<ArchitectureProof />} />
           {/* Backward compat: old /admin/architecture-proof */}

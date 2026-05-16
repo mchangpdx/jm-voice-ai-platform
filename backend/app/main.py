@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.audit import run_retention_loop  # Phase 2-D.2 — 90-day audit retention
+from app.core.api_errors import ApiErrorTracker  # Phase 2-C — system health 4xx/5xx ring buffer
 
 
 from app.api.agency import router as agency_router          # Agency multi-store dashboard (에이전시 멀티스토어 대시보드)
@@ -70,6 +71,10 @@ app.add_middleware(
     # Explicit headers required — wildcards are rejected with credentials by spec (자격증명 포함 시 와일드카드 사용 불가)
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+
+# Record every 4xx/5xx into an in-memory ring buffer for /admin/system-health
+# (Phase 2-C — admin system health 패널용 에러 집계 미들웨어)
+app.add_middleware(ApiErrorTracker)
 
 app.include_router(auth_router)          # Auth (인증)
 app.include_router(agency_router)        # Agency multi-store dashboard (에이전시 멀티스토어 대시보드)
