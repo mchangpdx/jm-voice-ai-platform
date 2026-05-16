@@ -50,6 +50,7 @@ from app.services.bridge import flows as bridge_flows
 from app.services.bridge.pay_link_email import send_pay_link_email
 from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
+from app.services.bridge import transactions as bridge_transactions
 from app.services.bridge.transactions import update_call_metrics
 from app.services.crm import customer_lookup, update_recent_customer_email
 from app.services.handoff.manager_alert import send_tier3_alert
@@ -77,7 +78,9 @@ from app.skills.order.order import (
     ORDER_SCRIPT_BY_HINT,
     ORDER_TOOL_DEF,
     RECALL_ORDER_TOOL_DEF,
+    RECENT_ORDERS_TOOL_DEF,
     render_recall_message,
+    render_recent_orders_message,
 )
 from app.skills.scheduler.reservation import (
     CANCEL_RESERVATION_TOOL_DEF,
@@ -93,6 +96,34 @@ from app.skills.transaction.transfer import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# Persona name extracted from `store.system_prompt`. The prompt template is
+# always "You are <Name>, the AI voice assistant for ..." (db_seeder
+# DEFAULT_PERSONAS). When the operator overrides the prompt we still try
+# to lift the first name token; falling back to "the assistant" keeps the
+# greeting line grammatical without inventing a fictitious persona.
+# Bug fix 2026-05-17 — greeting_instruction had "You are Aria" hardcoded,
+# so JM Taco (Sofia) / JM Pizza (Marco) callers heard Aria's intro.
+# (system_prompt에서 persona name 추출 — 매장별 페르소나 일치)
+import re as _persona_re
+
+_PERSONA_NAME_RE = _persona_re.compile(r"^\s*You are\s+([A-Z][a-zA-Z]+)\b")
+
+
+def _extract_persona_name(system_prompt: str | None) -> str:
+    """Return the first-token persona name from a stores.system_prompt.
+
+    Examples:
+        "You are Sofia, the AI voice assistant for JM Taco..." → "Sofia"
+        "You are Aria, the friendly barista for JM Cafe..."     → "Aria"
+        None / empty / no match                                  → ""
+    (system_prompt → persona — 매칭 실패 시 빈 문자열, 호출부에서 fallback)
+    """
+    if not system_prompt:
+        return ""
+    m = _PERSONA_NAME_RE.match(system_prompt)
+    return m.group(1) if m else ""
 
 # ── Supabase REST (mirror of voice_websocket._REST) ──────────────────────────
 _SUPABASE_HEADERS = {
@@ -216,6 +247,7 @@ _GEMINI_TOOL_DEFS = [
     CANCEL_RESERVATION_TOOL_DEF,
     ALLERGEN_LOOKUP_TOOL_DEF,
     RECALL_ORDER_TOOL_DEF,
+    RECENT_ORDERS_TOOL_DEF,        # N1 2026-05-17 — cross-call cancel/modify entry
     TRANSFER_TO_MANAGER_TOOL_DEF,
 ]
 OPENAI_REALTIME_TOOLS = [_gemini_to_openai_tool(t) for t in _GEMINI_TOOL_DEFS]
@@ -603,6 +635,29 @@ async def _dispatch_tool_call(
             "message": msg,
         }
 
+    if tool_name == "recent_orders":
+        # N1 (2026-05-17) — cross-call cancel/modify entry. caller_phone is
+        # server-injected from carrier auth (LLM cannot pass it); a missing
+        # phone yields an empty list and the recent_none script. Candidates
+        # are cached on session_state so a follow-up cancel/modify can
+        # disambiguate when the caller picks one verbally; today the
+        # existing cancel_order tool acts on the caller-id's single most
+        # recent tx, so single-match wires straight through.
+        # (cross-call entry — caller_phone server inject, candidates cache)
+        rows = await bridge_transactions.recent_for_phone(
+            store_id     = store_id,
+            caller_phone = caller_phone_e164 or "",
+            lookback_min = 30,
+        )
+        msg, reason, candidates = render_recent_orders_message(rows)
+        session_state["recent_orders_candidates"] = candidates
+        return {
+            "success":    True,
+            "reason":     reason,
+            "message":    msg,
+            "candidates": candidates,
+        }
+
     if tool_name == "transfer_to_manager":
         # Pull manager phone from the store row's custom_knowledge / system_prompt
         # if present; fall back to the founder line we ship with every pilot
@@ -960,14 +1015,45 @@ async def realtime_bridge(ws: WebSocket) -> None:
             # observed live in call CA00e5f988 turn=0 → "Sunrise Café").
             # (response.create의 instructions는 session prompt를 override —
             #  store_name을 직접 주입해야 환각 방지)
+            # 2026-05-17 fix — two bugs the live calls (CAe2c2…, CAe516…)
+            # surfaced together: (1) the "Aria" persona was hardcoded so
+            # JM Taco/JM Pizza callers heard the wrong character; (2) the
+            # CRM customer_context block's "Welcome back, {name}!" rule
+            # in system_prompt overrode response.create's store-name
+            # greeting, dropping the store identity from the first
+            # sentence. Resolve both by deriving the persona from the
+            # store row's system_prompt and making the store name a
+            # MUST-CONTAIN constraint on the first sentence.
+            # (Persona는 store.system_prompt에서 추출, store name은 첫 문장 필수)
             store_name_safe = (store_name or "").strip() or "the restaurant"
-            greeting_instruction = (
-                f"The call just connected. The customer has not spoken yet. "
-                f"You are Aria for {store_name_safe}. Greet in ONE short "
-                f"English sentence: say \"{store_name_safe}, how can I help?\" "
-                f"or a near-equivalent. Maximum 10 words. No name introduction, "
-                f"no markdown, no emojis."
+            persona_name    = _extract_persona_name(store.get("system_prompt")) or "the assistant"
+            is_returning    = bool(
+                customer_ctx is not None and customer_ctx.visit_count > 0
             )
+            caller_first_name = (
+                (customer_ctx.name or "").split()[0]
+                if (is_returning and customer_ctx and customer_ctx.name)
+                else ""
+            )
+            if is_returning and caller_first_name:
+                greeting_instruction = (
+                    f"The call just connected. The customer has not spoken yet. "
+                    f"You are {persona_name} for {store_name_safe}. ABSOLUTE RULE: "
+                    f"your FIRST sentence MUST contain the literal store name "
+                    f"\"{store_name_safe}\" AND the caller name \"{caller_first_name}\". "
+                    f"Example: \"{store_name_safe} — welcome back, {caller_first_name}! "
+                    f"What can I get started for you?\" Maximum 16 words. English only. "
+                    f"No markdown, no emojis."
+                )
+            else:
+                greeting_instruction = (
+                    f"The call just connected. The customer has not spoken yet. "
+                    f"You are {persona_name} for {store_name_safe}. ABSOLUTE RULE: "
+                    f"your FIRST sentence MUST contain the literal store name "
+                    f"\"{store_name_safe}\". Say \"{store_name_safe}, how can I help?\" "
+                    f"or a near-equivalent. Maximum 12 words. English only. "
+                    f"No name introduction, no markdown, no emojis."
+                )
             _dbg(f"[realtime] greeting prompt: {greeting_instruction!r}")
             try:
                 await oai.response.create(response={

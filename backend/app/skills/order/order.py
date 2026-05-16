@@ -183,14 +183,24 @@ MODIFY_ORDER_TOOL_DEF: dict = {
         {
             "name": "modify_order",
             "description": (
-                "Update the items on an in-flight pickup order, before payment. "
-                "Use ONLY when the customer explicitly asks to add, remove, or "
-                "change items on an order they JUST placed in this same call. "
+                "Update the items on an in-flight pickup order. Use this WHENEVER "
+                "the customer asks to add, remove, or change items on an order "
+                "they JUST placed in this same call — EVEN AFTER the payment "
+                "link has already been sent. The pay link is informational; the "
+                "order is fully modifiable until the customer taps it (state "
+                "stays 'pending'). DO NOT tell the customer 'I can't modify it' "
+                "or suggest 'cancel and remake' — just call modify_order with "
+                "the new item list. The same pay link will reflect the new total. "
                 "PRECONDITIONS: "
                 "(a) the customer has clearly stated the change, "
                 "(b) you have recited the FULL UPDATED order back with the new "
                 "    item list and the new total, "
                 "(c) the customer has said an explicit verbal yes to the recital. "
+                "ALWAYS INCLUDE THE COMPLETE `items` LIST — every call must "
+                "carry the full final basket (existing items + any new/changed "
+                "ones + leave out the removed ones). NEVER call with `items` "
+                "empty or omitted — even when the customer is 'just adding one "
+                "thing', re-send every previously confirmed item alongside it. "
                 "The 'items' list REPLACES the current order entirely — pass the "
                 "COMPLETE final list of items with their final quantities, NOT a "
                 "delta. Do NOT pass customer_phone / customer_name / customer_email "
@@ -520,6 +530,177 @@ RECALL_ORDER_TOOL_DEF: dict = {
 # and session["last_order_total"] in directly. Returns (message, reason).
 # Plural rule mirrors the existing closing-summary line (Proposal I).
 # (snapshot → recap 문구. closing-summary와 동일한 plural 규칙)
+
+# N1 — recent_orders tool definition (2026-05-17).
+# Cross-call cancel/modify entry point. recall_order is in-call snapshot
+# only (Phase 5 #25 invariant). When the caller references a PRIOR call
+# ('my last order', 'I ordered 10 minutes ago'), the LLM calls this tool
+# instead — bridge looks up actionable (pending / payment_sent /
+# fired_unpaid) tx within 30 min by caller phone. Result drives a verbal
+# recap, then a follow-up cancel_order/modify_order acts on the most
+# recent match (the existing tools fetch by caller-id, so single-match
+# wires straight through).
+# (cross-call 진입 tool — 30분 내 actionable tx, caller-id로 단일 매칭)
+
+RECENT_ORDERS_TOOL_DEF: dict = {
+    "function_declarations": [
+        {
+            "name": "recent_orders",
+            "description": (
+                "List the caller's recent (last 30 minutes) actionable "
+                "orders at THIS store. Use ONLY when the customer "
+                "references a PRIOR call ('my last order', 'I called "
+                "earlier', 'the burrito I ordered before') and you "
+                "have NO in-call order yourself. Pass NO arguments — "
+                "the system fills caller_phone from carrier ID. After "
+                "the result comes back, speak the message verbatim. If "
+                "the customer then confirms cancel/modify intent, "
+                "proceed through cancel_order / modify_order's normal "
+                "confirmation flow. Do NOT use for THIS call's order "
+                "(use recall_order). Do NOT invent past orders if the "
+                "tool returns recent_none."
+            ),
+            "parameters": {
+                "type":       "object",
+                "properties": {},
+                "required":   [],
+            },
+        }
+    ]
+}
+
+
+# Customer-facing lines for recent_orders outcomes. The voice handler
+# yields these verbatim — totals and item summaries are interpolated by
+# the renderer below before yielding, so the dispatcher doesn't need to
+# .format() these. (recent_orders 결과별 멘트 — renderer가 interpolate)
+
+RECENT_ORDERS_SCRIPT_BY_HINT: dict[str, str] = {
+    "recent_none": (
+        "I don't see any recent orders under your number. Want to place a "
+        "new one?"
+    ),
+    # `recent_single` and `recent_multi` are rendered with concrete content
+    # by `render_recent_orders_message` — these entries are kept here so
+    # the hint vocabulary lives in one place even though no string lookup
+    # happens for them at dispatch time.
+    # (single/multi는 renderer가 직접 문자열 생성, hint 키만 등록)
+    "recent_single": "",
+    "recent_multi":  "",
+}
+
+
+def _summarize_items(items: list, max_items: int = 3) -> str:
+    """Compress an items_json list into a short spoken phrase.
+
+    Mirrors `render_recall_message`'s plural rule. Used for both single
+    and multi-match scripts. Caps at `max_items` then appends 'and
+    more' so 5-line orders stay one breath long.
+    (items_json → 짧은 spoken phrase, plural + max_items cap)
+    """
+    parts: list[str] = []
+    overflow = 0
+    for idx, it in enumerate(items or []):
+        if not isinstance(it, dict):
+            continue
+        try:
+            qty = int(it.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1
+        nm = (it.get("name") or "").strip()
+        if not nm:
+            continue
+        if idx >= max_items:
+            overflow += 1
+            continue
+        plural = "" if qty == 1 else "s"
+        parts.append(f"{qty} {nm}{plural}")
+    if overflow:
+        parts.append("and more")
+    return ", ".join(parts) if parts else ""
+
+
+def _minutes_ago(created_at_iso: str | None) -> int:
+    """Whole minutes between created_at and now (UTC). 0 if unparseable.
+
+    Used to phrase the recap ("placed 8 minutes ago"). We snap to 1 when
+    the diff rounds to 0 so a brand-new tx still reads naturally instead
+    of "0 minutes ago".
+    (created_at → minutes ago, 0 → 1 snap, parse 실패 시 0)
+    """
+    if not created_at_iso:
+        return 0
+    try:
+        # Supabase returns ISO with timezone, e.g. 2026-05-17T01:23:45.123+00:00
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(str(created_at_iso).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        diff = datetime.now(timezone.utc) - ts
+        m = int(diff.total_seconds() // 60)
+        return max(m, 1)
+    except (ValueError, TypeError):
+        return 0
+
+
+def render_recent_orders_message(
+    rows: list[dict],
+) -> tuple[str, str, list[dict]]:
+    """Build the customer-facing recap line + reason + candidate list.
+
+    Returns (message, reason, candidates) where reason is one of
+    'recent_none' / 'recent_single' / 'recent_multi'. `candidates` is
+    a compact dict list the dispatcher caches on session state so a
+    follow-up cancel_order can identify the chosen row when the caller
+    later disambiguates verbally — current scope acts on the
+    caller-id's single most recent tx, so the list is informational.
+    (renderer — message + reason + cache용 candidates 반환)
+    """
+    if not rows:
+        return (RECENT_ORDERS_SCRIPT_BY_HINT["recent_none"], "recent_none", [])
+
+    candidates: list[dict] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        candidates.append({
+            "id":          r.get("id"),
+            "state":       r.get("state"),
+            "total_cents": int(r.get("total_cents") or 0),
+            "items":       r.get("items_json") or [],
+            "created_at":  r.get("created_at"),
+        })
+
+    if len(candidates) == 1:
+        c = candidates[0]
+        phrase = _summarize_items(c["items"]) or "your order"
+        total  = f"${c['total_cents'] / 100:.2f}"
+        mins   = _minutes_ago(c["created_at"])
+        ago    = (
+            f"placed {mins} minute{'' if mins == 1 else 's'} ago"
+            if mins else "from a moment ago"
+        )
+        message = (
+            f"I found your order — {phrase} for {total}, {ago}. "
+            f"Want me to cancel it or change something?"
+        )
+        return (message, "recent_single", candidates)
+
+    # Multi-match — speak up to 3 lines (LLM disambiguates verbally).
+    lines: list[str] = []
+    for c in candidates[:3]:
+        phrase = _summarize_items(c["items"], max_items=2) or "an order"
+        total  = f"${c['total_cents'] / 100:.2f}"
+        mins   = _minutes_ago(c["created_at"])
+        suffix = f"{mins} min ago" if mins else "recent"
+        lines.append(f"{phrase} for {total} ({suffix})")
+    summary = "; ".join(lines)
+    message = (
+        f"I see {len(candidates)} recent orders under your number: "
+        f"{summary}. Which one — the most recent, or tell me the items?"
+    )
+    return (message, "recent_multi", candidates)
+
 
 def render_recall_message(
     *,

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -19,7 +19,7 @@ from app.services.bridge.state_machine import State, transition
 
 log = logging.getLogger(__name__)
 
-_VERTICALS = {"restaurant", "kbbq", "home_services", "beauty", "auto_repair"}
+_VERTICALS = {"restaurant", "kbbq", "pizza", "home_services", "beauty", "auto_repair"}
 
 _SUPABASE_HEADERS = {
     "apikey":        settings.supabase_service_role_key,
@@ -249,6 +249,69 @@ async def get_transaction(transaction_id: str) -> Optional[dict[str, Any]]:
         return None
     rows = resp.json()
     return rows[0] if rows else None
+
+
+async def recent_for_phone(
+    *,
+    store_id:     str,
+    caller_phone: str,
+    lookback_min: int = 30,
+    limit:        int = 5,
+) -> list[dict[str, Any]]:
+    """Return the caller's recent actionable orders at this store.
+
+    Powers `recent_orders` tool (N1, 2026-05-17) — cross-call cancel
+    and modify entry point. "Actionable" means non-terminal state the
+    customer can still affect by phone: pending, payment_sent, and
+    fired_unpaid. paid/fulfilled/canceled/refunded/no_show/failed are
+    excluded — those are either complete or require manager handoff.
+    (cross-call cancel/modify 진입점 — 30분 내 actionable tx만)
+
+    Args:
+        store_id:     scoping store id (RLS + tenant isolation gate).
+        caller_phone: e164 from carrier auth.
+        lookback_min: how far back to search (default 30 min — covers
+                      typical "I called 10 minutes ago" callbacks
+                      without dragging in stale yesterday rows).
+        limit:        max rows to return (default 5 — multi-match
+                      script tops out at 5 readable summaries).
+
+    Returns:
+        List of transaction dicts, most recent first. Empty list when
+        nothing matches (Supabase ok'd the request but no rows). The
+        full row is returned so the dispatcher can render items_json,
+        total_cents, state, created_at in the customer-facing recap.
+    (반환: created_at DESC, 최대 limit건. 없으면 빈 list)
+    """
+    if not store_id or not caller_phone:
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=int(lookback_min))
+    params: dict[str, str] = {
+        "store_id":       f"eq.{store_id}",
+        "customer_phone": f"eq.{caller_phone}",
+        "state":          f"in.({State.PENDING},{State.PAYMENT_SENT},{State.FIRED_UNPAID})",
+        "created_at":     f"gte.{cutoff.isoformat()}",
+        "order":          "created_at.desc",
+        "limit":          str(int(limit)),
+    }
+    async with httpx.AsyncClient(timeout=8) as client:
+        try:
+            resp = await client.get(
+                f"{_REST}/bridge_transactions",
+                headers=_SUPABASE_HEADERS,
+                params=params,
+            )
+        except httpx.HTTPError as exc:
+            log.warning("recent_for_phone supabase error: %s", exc)
+            return []
+    if resp.status_code != 200:
+        log.warning(
+            "recent_for_phone HTTP %s for store=%s phone=%s: %s",
+            resp.status_code, store_id, caller_phone, resp.text[:200],
+        )
+        return []
+    rows = resp.json()
+    return rows if isinstance(rows, list) else []
 
 
 async def update_items_and_total(

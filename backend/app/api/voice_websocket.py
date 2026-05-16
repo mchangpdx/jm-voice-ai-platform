@@ -195,7 +195,10 @@ def _format_last_visit(created_at_iso: Optional[str]) -> str:
     return f"{days} days ago"
 
 
-def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
+def _render_customer_context_block(
+    ctx:        Optional[CustomerContext],
+    store_name: str = "",
+) -> str:
     """Render the returning-caller block placed right before INVARIANTS.
 
     Returns "" for None / first-time / visit_count==0 — caller must skip
@@ -204,6 +207,11 @@ def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
     the LLM uses for "Welcome back, {name}" and (b) the CRM rules that
     govern when "the usual" may be offered.
 
+    `store_name` is interpolated into the greeting rule so returning
+    callers hear the store identity in the first sentence. Bug fix
+    2026-05-17 — without the store name in the CRM block, the LLM's
+    "Welcome back, Michael!" overrode response.create's greeting that
+    carried the store name, and callers heard no store identification.
     (재방문 고객 블록 — INVARIANTS 직전 배치. 신규/익명/실패 시 빈 문자열)
     """
     if ctx is None or ctx.visit_count <= 0:
@@ -238,7 +246,20 @@ def _render_customer_context_block(ctx: Optional[CustomerContext]) -> str:
     # CRM Rules — exactly the playbook the LLM should follow on this call
     lines.append("")
     lines.append("CRM RULES:")
-    lines.append('- Greet by name once: "Welcome back, {name}!"')
+    # 2026-05-17 fix — embed the store name in the greeting so callers
+    # immediately know which business they reached. Previous wording
+    # ("Welcome back, {name}!") shadowed response.create's store-name
+    # greeting in live calls (CAe2c214… / CAe51612…).
+    # (매장명 + 고객명 결합 그리팅 — store 식별 누락 방지)
+    _store = (store_name or "").strip()
+    if _store:
+        lines.append(
+            f'- Greet ONCE in your FIRST sentence with BOTH the store name and '
+            f'the caller name: "Welcome back to {_store}, {{name}}!" or a '
+            f'near-equivalent. The store name "{_store}" MUST appear verbatim.'
+        )
+    else:
+        lines.append('- Greet by name once: "Welcome back, {name}!"')
     lines.append("- Email & phone are on file — do NOT ask NATO recital unless customer "
                  "explicitly says they are using a different email this time.")
     if ctx.email:
@@ -487,7 +508,54 @@ def build_system_prompt(
         # preserved: live-trigger rationale moved to git history + module-
         # level comments above the modifier resolver.
         # (산문 → checklist 압축; live-trigger 코멘트는 코드/git에 보존)
-        "5. ORDERS (create_order) — checklist:\n"
+        #
+        # 2026-05-16 — STRICT PHASE FLOW added. Prior flow let the LLM ask
+        # for name/email at any turn, which collided with mid-cart modify/
+        # cancel intents (live trigger Call A CA3a781af1... turns 13-22 —
+        # 10 turns wasted because the LLM tried to finalize email while
+        # the customer was still adding/removing refried beans). The phase
+        # gate forces "cart closed" before any payment-info collection.
+        # Designed to be a near-zero-cost migration when TCR-SMS lands:
+        # PHASE D (email) collapses to "caller phone via Twilio CID".
+        # (단계 게이트 — 메뉴 닫기 전 결제 정보 수집 금지)
+        "5. ORDERS (create_order) — STRICT PHASE FLOW (do NOT skip ahead):\n"
+        "  PHASE A — CART (collect items, modifiers, allergen Q):\n"
+        "    Stay in this phase until the customer EXPLICITLY signals\n"
+        "    completion. Acceptable completion signals (any language):\n"
+        "      en: 'that's it' / 'that's all' / 'nothing else' / 'we're good'\n"
+        "          / 'no' (in reply to your 'anything else?')\n"
+        "      es: 'eso es todo' / 'nada más'\n"
+        "      ja: '以上です' / 'それで全部です'\n"
+        "      zh: '就这些' / '没有了'\n"
+        "      ko: '그게 다예요' / '없어요'\n"
+        "    Until you hear that explicit signal: after each new item\n"
+        "    or modifier choice, ack briefly and ask 'Anything else?'.\n"
+        "    Optional mid-cart ack: 'OK, so far $X.' Do NOT ask for the\n"
+        "    customer's NAME or EMAIL while in PHASE A.\n"
+        "  PHASE B — TOTAL: once PHASE A closes, speak the total once.\n"
+        "    'OK, that comes to $X. Can I get a name for the order?'\n"
+        "  PHASE C — NAME: single short ask. Pass STT result verbatim\n"
+        "    (no surname guessing, no substitution). If ambiguous,\n"
+        "    repeat ONCE and use what the customer confirms.\n"
+        "  PHASE D — EMAIL (will become optional after TCR/SMS migration —\n"
+        "    once approved, replace this phase with the inbound caller\n"
+        "    phone from Twilio CID and skip ahead to PHASE E):\n"
+        "    'And what's the best email for the payment link?' → then\n"
+        "    follow EMAIL NATO READBACK in CUSTOMER below.\n"
+        "  PHASE E — RECITAL + create_order: recite items + name + total\n"
+        "    once, wait for explicit yes immediately after YOUR recital,\n"
+        "    fire create_order.\n"
+        "  PHASE BACK-TRACK: if at any point in PHASE B/C/D/E the customer\n"
+        "    adds, removes, swaps, or modifies an item (signals: 'add',\n"
+        "    'wait', 'actually', 'scratch', 'cancel that', 'change to'),\n"
+        "    RETURN TO PHASE A immediately. Apply the change, re-ack the\n"
+        "    new running total, re-issue 'anything else?'. Do NOT continue\n"
+        "    collecting name/email while the items list is still open.\n"
+        "  PHASE GUARDRAIL: if you have asked for name or email AND the\n"
+        "    customer is still adding/removing items, you skipped ahead.\n"
+        "    Abandon the name/email turn, return to PHASE A, and close\n"
+        "    the cart properly before re-asking.\n"
+        "\n"
         "  ITEMS:\n"
         "  • base item names from menu only (see I1) — never invent\n"
         "  • capture EVERY spoken modifier on each line (size, temperature,\n"
@@ -506,16 +574,17 @@ def build_system_prompt(
         "If you said any size word in the recital, the size entry MUST be in "
         "selected_modifiers — what you SAY and what you SEND must match.\n"
         "  • after a cancel, start with an EMPTY items list — never carry over\n"
-        "  CUSTOMER:\n"
+        "  CUSTOMER (collected during PHASE C/D — never during PHASE A):\n"
         "  • phone: from inbound caller ID — do NOT ask\n"
-        "  • name: ask 'May I have your name?' BEFORE the email step. ARGS-NAME GATE:\n"
-        "    pass to the tool the EXACT name STT decoded from the customer's reply —\n"
-        "    NEVER substitute a different surname because you find the STT version\n"
-        "    unusual (live: STT decoded 'Michael Chin', bot args sent 'Michael Tran').\n"
-        "    If the STT name looks ambiguous, repeat it back ONCE ('Got it, Michael\n"
-        "    Chin — is that right?') before the order recital and use whatever the\n"
-        "    customer confirms.\n"
-        "  • email: ask 'best email for the payment link?' BEFORE the order recital\n"
+        "  • name (PHASE C): ask 'May I have your name?' AFTER cart closed.\n"
+        "    ARGS-NAME GATE: pass to the tool the EXACT name STT decoded from\n"
+        "    the customer's reply — NEVER substitute a different surname because\n"
+        "    you find the STT version unusual (live: STT decoded 'Michael Chin',\n"
+        "    bot args sent 'Michael Tran'). If the STT name looks ambiguous,\n"
+        "    repeat it back ONCE ('Got it, Michael Chin — is that right?')\n"
+        "    before the order recital and use whatever the customer confirms.\n"
+        "  • email (PHASE D): ask 'best email for the payment link?' AFTER\n"
+        "    name is captured, BEFORE the order recital.\n"
         "  EMAIL NATO READBACK (required while SMS delivery is being verified):\n"
         "  • NATO-SOURCE GATE: the letters you read aloud MUST be the EXACT letters\n"
         "    STT decoded for the local part — letter by letter. If STT decoded\n"
@@ -704,9 +773,14 @@ def build_system_prompt(
         "    is the single source of truth for this call's snapshot.\n"
         "  SKIP: do NOT call right after a successful create_order/modify_order\n"
         "    — those have their own confirmation copy.\n"
-        "  CROSS-CALL: 'last order' / 'yesterday' / 'previous order' → do\n"
-        "    NOT call. Reply 'I can only see orders from this current call —\n"
-        "    want to place a new one?' and stop."
+        "  CROSS-CALL: 'last order' / 'I called earlier' / 'the burrito I\n"
+        "    ordered before' → do NOT use recall_order. Instead call\n"
+        "    recent_orders (NO arguments — caller phone is system-injected),\n"
+        "    speak the tool message verbatim, and if the customer then\n"
+        "    confirms cancel/modify intent route through the normal\n"
+        "    cancel_order / modify_order confirmation flow (the existing\n"
+        "    tools fetch by caller-id). If recent_orders returns\n"
+        "    recent_none, NEVER invent a past order — stay with the script."
     )
 
     # CRM Wave 1 — customer_context block sits immediately before INVARIANTS.
@@ -716,7 +790,9 @@ def build_system_prompt(
     # First-time / anonymous / lookup-failed → empty string → not appended,
     # so the prompt is byte-identical to the pre-CRM path.
     # (재방문 고객 컨텍스트 블록 — INVARIANTS 직전 동일 recency 영역)
-    crm_block = _render_customer_context_block(customer_context)
+    crm_block = _render_customer_context_block(
+        customer_context, store_name=str(store.get("name") or ""),
+    )
     if crm_block:
         parts.append(crm_block)
 

@@ -290,3 +290,64 @@ class TestDecompositionRule:
         assert "アイスのオーツラテ" in out                  # Japanese
         assert "热的燕麦拿铁" in out                       # Chinese
         assert "café con leche de avena grande" in out  # Spanish
+
+
+# ── 2026-05-17 greeting fix — store_name in CRM block ────────────────────────
+# Live trigger: CAe2c214… / CAe516… — returning callers heard "Welcome
+# back, Michael!" with no store identity. CRM block's greeting rule now
+# requires the store_name in the FIRST sentence; both the response.create
+# greeting AND the LLM's prompt-driven recovery line must surface it.
+
+class TestStoreNameInGreetingRule:
+    def test_returning_caller_block_embeds_store_name_in_greeting(self):
+        store = {"name": "JM Taco",
+                 "system_prompt": "You are Sofia, the AI voice assistant for JM Taco.",
+                 "menu_cache": "", "modifier_section": "", "business_hours": ""}
+        ctx = _ctx(visit_count=3, name="Michael Chang")
+        out = build_system_prompt(store, customer_context=ctx)
+        assert "Welcome back to JM Taco" in out
+        # Verbatim-MUST clause keeps the LLM from dropping the store name
+        # when paraphrasing the greeting.
+        assert '"JM Taco" MUST appear verbatim' in out
+
+    def test_returning_caller_block_falls_back_when_store_name_missing(self):
+        # Anonymous store row (e.g. dev fixture w/o name) — still produce
+        # a valid greeting line rather than crashing on an f-string with
+        # an empty store name.
+        store = {"name": "",
+                 "system_prompt": "You are the host.",
+                 "menu_cache": "", "modifier_section": "", "business_hours": ""}
+        ctx = _ctx(visit_count=2, name="Pat")
+        out = build_system_prompt(store, customer_context=ctx)
+        assert 'Welcome back, {name}!' in out
+        assert "MUST appear verbatim" not in out  # only fires when store_name set
+
+    def test_new_caller_unaffected_by_store_name_fix(self):
+        # No customer_context → no CRM block — store_name fix MUST NOT
+        # accidentally leak the greeting rule into first-time-call prompts.
+        store = {"name": "JM Taco",
+                 "system_prompt": "You are Sofia for JM Taco.",
+                 "menu_cache": "", "modifier_section": "", "business_hours": ""}
+        out = build_system_prompt(store, customer_context=None)
+        assert "CUSTOMER CONTEXT" not in out
+        assert "Welcome back" not in out
+
+
+class TestPersonaNameExtraction:
+    """The greeting_instruction's "You are <Persona>" header is derived
+    from store.system_prompt; the helper must handle the 3 shapes that
+    show up in the wild (vertical default, operator override, blank)."""
+
+    def test_extracts_first_name_from_vertical_default_prompt(self):
+        from app.api.realtime_voice import _extract_persona_name
+        prompt = "You are Sofia, the AI voice assistant for JM Taco. Speak naturally."
+        assert _extract_persona_name(prompt) == "Sofia"
+
+    def test_returns_empty_when_pattern_does_not_match(self):
+        from app.api.realtime_voice import _extract_persona_name
+        assert _extract_persona_name("Random operator prompt.") == ""
+
+    def test_handles_none_and_empty(self):
+        from app.api.realtime_voice import _extract_persona_name
+        assert _extract_persona_name(None) == ""
+        assert _extract_persona_name("") == ""
