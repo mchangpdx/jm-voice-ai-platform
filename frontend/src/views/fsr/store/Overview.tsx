@@ -54,6 +54,17 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'all',   label: 'All'   },
 ]
 
+// Cross-component sync event for voice-bot prompt fields.
+// Fired by Overview + AiVoiceBot after a successful save so the
+// other view re-syncs without a full reload.
+// (Overview + AiVoiceBot 간 daily instructions 동기화 이벤트)
+const VOICE_BOT_EVENT = 'voice-bot:updated'
+
+interface VoiceBotPayload {
+  temporary_prompt: string | null
+  system_prompt?: string | null
+}
+
 export default function Overview() {
   const { storeName, industry } = useAuth()
   // Vertical-aware KPI labels — falls back to restaurant if industry is null/unknown
@@ -62,11 +73,10 @@ export default function Overview() {
   const [period, setPeriod] = useState<Period>('all')
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
-  const [dailyInstructions, setDailyInstructions] = useState(
-    "Today's specials, sold-out items, or event notes — highest priority during live calls."
-  )
-  const [savedInstructions, setSavedInstructions] = useState(dailyInstructions)
+  const [dailyInstructions, setDailyInstructions] = useState('')
+  const [savedInstructions, setSavedInstructions] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [loadingMetrics, setLoadingMetrics] = useState(true)
   const [loadingOrders, setLoadingOrders] = useState(true)
   const [recentCalls, setRecentCalls] = useState<CallLogItem[]>([])
@@ -93,9 +103,54 @@ export default function Overview() {
       .finally(() => setLoadingCalls(false))
   }, [])
 
-  const handleSave = () => {
+  // Voice-bot Daily Instructions — single source of truth = backend /store/voice-bot.
+  // (Daily Instructions 단일 진실원천 = /store/voice-bot temporary_prompt)
+  useEffect(() => {
+    api.get('/store/voice-bot')
+      .then((r) => {
+        const value = (r.data?.temporary_prompt ?? '') as string
+        setDailyInstructions(value)
+        setSavedInstructions(value)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Cross-component sync: AiVoiceBot saves → Overview reflects without reload.
+  // (AiVoiceBot에서 저장 시 Overview도 즉시 반영)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<VoiceBotPayload>).detail
+      if (!detail) return
+      const value = detail.temporary_prompt ?? ''
+      setDailyInstructions(value)
+      setSavedInstructions(value)
+    }
+    window.addEventListener(VOICE_BOT_EVENT, handler)
+    return () => window.removeEventListener(VOICE_BOT_EVENT, handler)
+  }, [])
+
+  const handleSave = async () => {
+    if (saving) return
+    if (dailyInstructions === savedInstructions) return
     setSaving(true)
-    setTimeout(() => { setSavedInstructions(dailyInstructions); setSaving(false) }, 600)
+    setSaveError('')
+    try {
+      const r = await api.patch('/store/voice-bot', {
+        temporary_prompt: dailyInstructions,
+      })
+      const updated = (r.data?.temporary_prompt ?? '') as string
+      setSavedInstructions(updated)
+      setDailyInstructions(updated)
+      window.dispatchEvent(
+        new CustomEvent<VoiceBotPayload>(VOICE_BOT_EVENT, {
+          detail: { temporary_prompt: updated },
+        }),
+      )
+    } catch {
+      setSaveError('Save failed. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -284,11 +339,20 @@ Always speak in a highly cheerful, upbeat, energetic, and welcoming tone. Smile 
               placeholder="e.g. Early summer Special 30% off cold drinks!"
             />
             <div className={styles.charCount}>{dailyInstructions.length} characters</div>
+            {saveError && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>{saveError}</div>}
             <div className={styles.personaBtns}>
-              <button className={styles.saveBtn} onClick={handleSave} disabled={saving}>
+              <button
+                className={styles.saveBtn}
+                onClick={handleSave}
+                disabled={saving || dailyInstructions === savedInstructions}
+              >
                 💾 {saving ? 'Saving...' : 'Save Changes'}
               </button>
-              <button className={styles.revertBtn} onClick={() => setDailyInstructions(savedInstructions)}>
+              <button
+                className={styles.revertBtn}
+                onClick={() => setDailyInstructions(savedInstructions)}
+                disabled={saving || dailyInstructions === savedInstructions}
+              >
                 ↺ Revert
               </button>
             </div>

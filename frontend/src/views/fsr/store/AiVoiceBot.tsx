@@ -10,6 +10,14 @@ interface VoiceBotSettings {
   temporary_prompt: string | null
 }
 
+// Cross-component sync event (Overview ↔ AiVoiceBot)
+const VOICE_BOT_EVENT = 'voice-bot:updated'
+
+interface VoiceBotPayload {
+  temporary_prompt: string | null
+  system_prompt?: string | null
+}
+
 interface AgentStatus {
   model:                string
   voice:                string
@@ -84,6 +92,25 @@ export default function AiVoiceBot() {
       .finally(() => setAgentLoading(false))
   }, [])
 
+  // Cross-component sync — Overview saves daily instructions → mirror here.
+  // (Overview에서 daily instructions 저장 시 여기도 즉시 반영)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<VoiceBotPayload>).detail
+      if (!detail) return
+      if (typeof detail.temporary_prompt === 'string') {
+        setTempDraft(detail.temporary_prompt)
+        setTempSaved(detail.temporary_prompt)
+      }
+      if (typeof detail.system_prompt === 'string') {
+        setSystemDraft(detail.system_prompt)
+        setSystemSaved(detail.system_prompt)
+      }
+    }
+    window.addEventListener(VOICE_BOT_EVENT, handler)
+    return () => window.removeEventListener(VOICE_BOT_EVENT, handler)
+  }, [])
+
   const handleSave = async () => {
     if (!anyDirty) return
     setSaving(true)
@@ -96,6 +123,14 @@ export default function AiVoiceBot() {
       setSystemSaved(updated.system_prompt ?? '')
       setTempSaved(updated.temporary_prompt ?? '')
       setSettings(updated)
+      window.dispatchEvent(
+        new CustomEvent<VoiceBotPayload>(VOICE_BOT_EVENT, {
+          detail: {
+            temporary_prompt: updated.temporary_prompt,
+            system_prompt:    updated.system_prompt,
+          },
+        }),
+      )
       flash('Saved successfully.')
     } catch {
       flash('Save failed. Please try again.', true)
