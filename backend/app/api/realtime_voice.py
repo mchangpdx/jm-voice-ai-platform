@@ -986,7 +986,17 @@ async def realtime_bridge(ws: WebSocket) -> None:
                                 "prefix_padding_ms":    300,
                                 "silence_duration_ms":  1200,
                                 "create_response":      True,
-                                "interrupt_response":   True,
+                                # 2026-05-17 Bug 2 fix — start with interrupt_response
+                                # OFF so PSTN carrier noise + line static during the
+                                # Twilio handshake window can't cancel the in-flight
+                                # greeting before bot_speaking flips True. The
+                                # response.done handler below promotes this to True
+                                # the moment the greeting finishes, so normal in-call
+                                # barge-in resumes for every subsequent turn.
+                                # Live triggers: CA438ad0… (welcome back, <cut>),
+                                # CAe51612… (7-second silent post-connect window).
+                                # (그리팅 보호 — response.done 후 True로 전환)
+                                "interrupt_response":   False,
                             },
                             "transcription": _input_transcription,
                         },
@@ -1055,6 +1065,20 @@ async def realtime_bridge(ws: WebSocket) -> None:
                     f"No name introduction, no markdown, no emojis."
                 )
             _dbg(f"[realtime] greeting prompt: {greeting_instruction!r}")
+            # 2026-05-17 Bug 2 fix — discard any PSTN carrier noise that
+            # landed in the input buffer during the Twilio handshake, then
+            # let the line settle for 300ms. Without these two steps the
+            # server VAD sometimes fires speech_started on line static
+            # before the greeting's first audio frame arrives, which used
+            # to silently cancel the greeting (Calls CA438ad0… / CAe51612…
+            # / CA78068c… on 2026-05-15/16).
+            # (PSTN 잡음 흡수 — buffer clear + 300ms wait)
+            try:
+                await oai.input_audio_buffer.clear()
+                _dbg("[realtime] ✓ input_audio_buffer.clear sent (pre-greeting)")
+            except Exception as exc:
+                _dbg(f"[realtime] input_audio_buffer.clear failed: {exc}")
+            await asyncio.sleep(0.3)
             try:
                 await oai.response.create(response={
                     "output_modalities": ["audio"],
@@ -1079,6 +1103,13 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # OpenAI) and reset on response.done.
                 # (bot 발화 중 추적 — 진짜 끼어들기일 때만 clear)
                 "bot_speaking": False,
+                # 2026-05-17 Bug 2 fix — one-shot latch. interrupt_response
+                # starts OFF (in session.update above) so the greeting can't
+                # be cancelled by PSTN noise; the first response.done flips
+                # this True and re-issues session.update with interrupt_response
+                # ON so normal in-call barge-in is restored.
+                # (one-shot — 그리팅 끝나면 정상 interrupt 모드로 전환)
+                "greeting_done": False,
             }
 
             # Per-call state for tool snapshots (recall_order / cancel recital
@@ -1404,6 +1435,33 @@ async def realtime_bridge(ws: WebSocket) -> None:
                             # be skipped (see speech_started handler).
                             # (bot 발화 종료 — 이후 caller 발화는 barge-in 아님)
                             stats["bot_speaking"] = False
+
+                            # 2026-05-17 Bug 2 fix — promote interrupt_response
+                            # to True once the greeting has fully landed.
+                            # Subsequent caller speech_started events now
+                            # interrupt the bot as normal. One-shot via the
+                            # greeting_done latch so the second/third response
+                            # don't re-issue session.update unnecessarily.
+                            # (그리팅 done → interrupt mode 정상 복귀)
+                            if not stats.get("greeting_done"):
+                                stats["greeting_done"] = True
+                                try:
+                                    await oai.session.update(session={
+                                        "type": "realtime",
+                                        "audio": {"input": {"turn_detection": {
+                                            "type":                "server_vad",
+                                            "threshold":           0.5,
+                                            "prefix_padding_ms":   300,
+                                            "silence_duration_ms": 1200,
+                                            "create_response":     True,
+                                            "interrupt_response":  True,
+                                        }}},
+                                    })
+                                    _dbg("[realtime] ✓ interrupt_response promoted "
+                                         "to True post-greeting")
+                                except Exception as exc:
+                                    _dbg(f"[realtime] post-greeting session.update "
+                                         f"failed: {exc}")
 
                             # Diagnostic — capture id / status / output shape so
                             # the silent-after-tool failure mode (Wave A.3 fire_immediate
