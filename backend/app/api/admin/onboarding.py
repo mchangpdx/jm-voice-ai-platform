@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_tenant_id
 from app.core.config import settings
+from app.adapters.twilio.numbers import update_voice_webhook
 from app.services.onboarding.ai_helper import (
     apply_allergen_inference_to_normalized,
 )
@@ -286,6 +287,41 @@ async def post_finalize(
                 "Store DB row was saved; retry the push from the wizard or "
                 "fall back to CSV import in Loyverse Back Office."
             ))
+
+    # A5 (2026-05-17) — auto-provision the Twilio voice webhook so the
+    # wizard truly finalizes zero-touch. dry-run skips the Twilio call;
+    # real runs try once and degrade gracefully — failures append a
+    # manual fallback line to next_steps rather than rolling back.
+    # (Twilio webhook 자동 설정 — 실패 시 manual fallback in next_steps)
+    if not req.dry_run:
+        webhook_url = "https://jmtechone.ngrok.app/twilio/voice/inbound"
+        twilio_result = await update_voice_webhook(
+            phone_e164  = req.phone_number,
+            webhook_url = webhook_url,
+        )
+        result["twilio_webhook"] = twilio_result
+        if not twilio_result.get("ok"):
+            # Remove the boilerplate manual instruction if it was emitted by
+            # finalize_store, then replace with a status-aware line so the
+            # operator knows exactly why auto-provision didn't stick.
+            # (finalize_store가 넣은 기본 Twilio 안내 제거 후 상태별 안내로 교체)
+            reason = twilio_result.get("reason", "unknown")
+            result["next_steps"] = [
+                s for s in (result.get("next_steps") or [])
+                if "Twilio Console" not in s
+            ]
+            result["next_steps"].insert(0, (
+                f"Twilio webhook auto-provision did not complete ({reason}). "
+                f"In Twilio Console, set the voice webhook for {req.phone_number} → "
+                f"{webhook_url}"
+            ))
+        else:
+            # Drop the manual instruction since auto-provision succeeded.
+            # (자동 완료 — manual 단계 안내 제거)
+            result["next_steps"] = [
+                s for s in (result.get("next_steps") or [])
+                if "Twilio Console" not in s
+            ]
 
     return result
 
