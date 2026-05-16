@@ -2,8 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  text-align: left;
-  padding: 16px 0;
+  padding: 20px 0;
+  max-width: 640px;
 }
 
 .pendingBadge {
@@ -11,31 +11,82 @@
   background: #fef3c7;
   color: #92400e;
   border: 1px solid #fcd34d;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
 }
 
-.heading { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin: 0; }
-.headingKo { color: #94a3b8; font-weight: 500; font-size: 0.88rem; }
-.sub { font-size: 0.9rem; color: #64748b; line-height: 1.6; margin: 0; }
-.subKo { color: #94a3b8; font-size: 0.8rem; }
+.pendingBadgeSuccess {
+  align-self: flex-start;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+
+.heading {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  font-size: 0.95rem;
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Fact strip */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.fact {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.factLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.factValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-top: 4px;
+}
 
 .actions {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 12px;
+  padding-top: 16px;
   border-top: 1px solid #f1f5f9;
+  margin-top: 12px;
 }
 .primary {
   background: #1e40af;
   color: #ffffff;
   border: none;
-  padding: 10px 20px;
+  padding: 11px 22px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 700;
@@ -46,7 +97,7 @@
   background: none;
   border: 1px solid #e2e8f0;
   color: #475569;
-  padding: 10px 16px;
+  padding: 11px 18px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;

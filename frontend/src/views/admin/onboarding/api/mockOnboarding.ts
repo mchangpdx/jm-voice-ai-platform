@@ -143,6 +143,7 @@ export async function mockPreviewYaml(req: PreviewYamlRequest): Promise<PreviewY
         allergens: i.detected_allergens ?? [],
       })),
     },
+    modifier_groups_yaml: { groups: {} },
   }
 }
 

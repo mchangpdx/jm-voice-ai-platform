@@ -1,5 +1,5 @@
 // Source-type segmented toggle for Step 1
-// (Step 1 소스 타입 5개 선택 토글: Loyverse / URL / Photo / CSV / Manual)
+// (Step 1 소스 타입 5개 선택 토글)
 import type { SourceType } from '../types'
 import styles from './SourceTypeToggle.module.css'
 
@@ -8,14 +8,15 @@ interface Option {
   label: string
   icon: string
   hint: string
+  recommended?: boolean
 }
 
 const OPTIONS: Option[] = [
-  { value: 'loyverse', label: 'Loyverse token (API 키)', icon: '🔑', hint: 'Paste your Loyverse API token' },
-  { value: 'url',      label: 'Website URL (메뉴 URL)',  icon: '🔗', hint: 'Public menu page link' },
-  { value: 'image',    label: 'Menu photos (사진)',       icon: '📷', hint: 'Drag & drop JPG/PNG' },
-  { value: 'csv',      label: 'CSV file (CSV 파일)',      icon: '📄', hint: 'Spreadsheet export' },
-  { value: 'manual',   label: 'Manual entry (수동 입력)', icon: '✏️', hint: 'Type items by hand' },
+  { value: 'loyverse', label: 'Loyverse token', icon: '🔑', hint: 'Auto-sync from your POS', recommended: true },
+  { value: 'url',      label: 'Website URL',   icon: '🔗', hint: 'Crawl a public menu page' },
+  { value: 'image',    label: 'Photos or PDF', icon: '📷', hint: 'Drop menu images' },
+  { value: 'csv',      label: 'CSV file',      icon: '📄', hint: 'Upload a spreadsheet' },
+  { value: 'manual',   label: 'Manual entry',  icon: '✏️', hint: 'Type items by hand' },
 ]
 
 interface Props {
@@ -37,6 +38,7 @@ export default function SourceTypeToggle({ value, onChange }: Props) {
             className={`${styles.option} ${active ? styles.active : ''}`}
             onClick={() => onChange(o.value)}
           >
+            {o.recommended && <span className={styles.recommendedTag}>Recommended</span>}
             <span className={styles.icon} aria-hidden="true">{o.icon}</span>
             <span className={styles.label}>{o.label}</span>
             <span className={styles.hint}>{o.hint}</span>

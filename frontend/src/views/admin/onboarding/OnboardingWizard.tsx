@@ -6,7 +6,7 @@
 //
 // Phase 1 (this PR): Steps 1-3 wired to mock client.
 // Phase 2 (next PR): Steps 4-6 wired once backend Phase 4-5 endpoints land.
-// (Phase 1: Step 1-3 mock 연결, Phase 2: 백엔드 endpoint 완료 후 4-6 연결)
+// UI copy: English only per [[feedback-ui-language-english-only]].
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import WizardStepper, { type StepDef } from './components/WizardStepper'
@@ -16,16 +16,24 @@ import Step3_EditItems from './steps/Step3_EditItems'
 import Step4_ModifierReview from './steps/Step4_ModifierReview'
 import Step5_POSSync from './steps/Step5_POSSync'
 import Step6_TestCall from './steps/Step6_TestCall'
-import type { RawMenuExtraction, NormalizedMenuItem } from './types'
+import type {
+  RawMenuExtraction, NormalizedMenuItem, ModifierGroupsYaml,
+} from './types'
+
+interface PreviewState {
+  menu_yaml: Record<string, unknown>
+  modifier_groups_yaml: ModifierGroupsYaml
+  vertical: string
+}
 import styles from './OnboardingWizard.module.css'
 
 const STEPS: StepDef[] = [
-  { key: 1, label: '1. Source (소스)' },
-  { key: 2, label: '2. AI Preview (미리보기)' },
-  { key: 3, label: '3. Edit Items (편집)' },
-  { key: 4, label: '4. Modifiers (옵션)' },
-  { key: 5, label: '5. POS Sync (동기화)' },
-  { key: 6, label: '6. Test Call (테스트 콜)' },
+  { key: 1, label: 'Source' },
+  { key: 2, label: 'Preview' },
+  { key: 3, label: 'Edit' },
+  { key: 4, label: 'Modifiers' },
+  { key: 5, label: 'Sync' },
+  { key: 6, label: 'Test call' },
 ]
 
 export default function OnboardingWizard() {
@@ -33,6 +41,7 @@ export default function OnboardingWizard() {
   const [step, setStep] = useState<number>(1)
   const [raw, setRaw] = useState<RawMenuExtraction | null>(null)
   const [normalized, setNormalized] = useState<NormalizedMenuItem[] | null>(null)
+  const [preview, setPreview] = useState<PreviewState | null>(null)
 
   const go = (n: number) => setStep(n)
 
@@ -40,15 +49,11 @@ export default function OnboardingWizard() {
     <div className={styles.page}>
       <header className={styles.pageHeader}>
         <div>
-          <h1 className={styles.title}>
-            New Store Onboarding <span className={styles.titleSub}>(신규 매장 온보딩)</span>
-          </h1>
+          <p className={styles.eyebrow}>New store onboarding</p>
+          <h1 className={styles.title}>Launch a voice agent in minutes</h1>
           <p className={styles.subtitle}>
-            Provide a menu source — AI extracts items, you review, and we activate the voice agent.
-            <br />
-            <span className={styles.subtitleKo}>
-              메뉴 소스를 제공하면 AI가 아이템을 추출하고, 검토 후 보이스 에이전트가 활성화됩니다.
-            </span>
+            Share your menu — we extract items, you review, and we activate the agent.
+            <span className={styles.timeHint}>Takes about 3 minutes.</span>
           </p>
         </div>
         <button
@@ -88,11 +93,12 @@ export default function OnboardingWizard() {
             raw={raw}
             normalized={normalized}
             onBack={() => go(3)}
-            onContinue={() => go(5)}
+            onContinue={(p) => { setPreview(p); go(5) }}
           />
         )}
         {step === 5 && (
           <Step5_POSSync
+            preview={preview}
             onBack={() => go(4)}
             onContinue={() => go(6)}
           />

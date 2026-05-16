@@ -16,7 +16,7 @@ import {
 
 // Toggle here to flip the entire wizard onto real endpoints
 // (이 한 줄만 false 로 바꾸면 라이브 endpoint 사용)
-const USE_MOCK = true
+const USE_MOCK = false
 
 export async function extractMenu(req: ExtractRequest): Promise<RawMenuExtraction> {
   if (USE_MOCK) return mockExtract(req)

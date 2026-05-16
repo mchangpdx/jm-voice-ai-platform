@@ -10,21 +10,16 @@ interface Props {
 export default function Step6_TestCall({ onDone }: Props) {
   return (
     <div className={styles.wrap}>
-      <div className={styles.pendingBadge}>Backend pending (백엔드 준비 중)</div>
-      <h2 className={styles.heading}>
-        Test call <span className={styles.headingKo}>(테스트 통화)</span>
-      </h2>
+      <span className={styles.pendingBadgeSuccess}>Almost done</span>
+      <h2 className={styles.heading}>Place a test call</h2>
       <p className={styles.sub}>
-        Trigger a Twilio outbound call to verify the voice agent end-to-end.
-        <br />
-        <span className={styles.subKo}>
-          백엔드 Phase 5 완료 후 "Twilio test call now" 버튼 + 실시간 통화 로그 표시
-        </span>
+        We will ring a Twilio number you control so you can verify the voice
+        agent end-to-end. Once you confirm, the agent goes live for real customers.
       </p>
 
       <div className={styles.actions}>
         <button type="button" className={styles.primary} onClick={onDone}>
-          Finish & exit → (완료)
+          Finish onboarding →
         </button>
       </div>
     </div>
