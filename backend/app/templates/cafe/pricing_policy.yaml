@@ -1,0 +1,36 @@
+# Cafe vertical — Phase 9 layer (pricing policy).
+# (Cafe — 가격 정책. per-item, optional tip, no late-cancel fee.)
+#
+# Cafe pricing is per-item with optional tip at payment time. No
+# late-cancel fee — customers rarely call to cancel a pickup; if they
+# do, the order is voided and the barista is notified.
+
+model: per_item
+
+gratuity:
+  enabled: true
+  default_pct: 0          # tip is offered at POS, not added to phone-order total
+  required_for: []
+  notes: >
+    Tip is collected at the point-of-sale terminal when the customer
+    arrives or via the payment link. Phone agent does not solicit tip.
+
+surcharges:
+  - id: delivery_fee
+    label: Delivery
+    type: flat
+    amount: 0
+    applies_when: order_is_delivery
+    enabled: false        # cafe is pickup-only by default
+    notes: Flip enabled=true and set amount when a cafe enables delivery.
+
+late_cancel_fee:
+  enabled: false
+  pct_of_service: 0.0
+  free_window_hours: 0
+
+tax_rate: 0.0              # default Oregon (no sales tax). Stores in CA/WA override per-store.
+notes: >
+  Default tax_rate=0.0 reflects Oregon (no sales tax). California /
+  Washington / NY stores override this at the store level — taxes are
+  computed at POS settlement, not pre-quoted on the phone.

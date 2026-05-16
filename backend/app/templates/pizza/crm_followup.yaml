@@ -1,0 +1,25 @@
+# Pizza vertical — Phase 8 layer (CRM follow-up).
+# (Pizza — regulars 주 1-2회 주문, 7-day inactivity check.)
+
+triggers:
+  - id: usual_order_checkin
+    when:
+      type: inactivity
+      delay_days: 14            # pizza cadence is weekly-biweekly
+      filter:
+        customer_status: returning
+        min_prior_orders: 4
+    channel: sms
+    template_id: pizza_usual_checkin_v1
+    enabled: false
+
+  - id: pay_link_reminder
+    when:
+      type: post_call
+      delay_minutes: 5
+      filter:
+        order_state: payment_sent
+        payment_not_paid: true
+    channel: sms
+    template_id: pizza_payment_reminder_v1
+    enabled: false

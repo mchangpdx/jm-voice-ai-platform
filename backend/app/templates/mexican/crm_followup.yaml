@@ -1,0 +1,25 @@
+# Mexican vertical — Phase 8 layer (CRM follow-up).
+# (Mexican — usual order check-in. Bilingual EN/ES.)
+
+triggers:
+  - id: usual_order_checkin
+    when:
+      type: inactivity
+      delay_days: 10
+      filter:
+        customer_status: returning
+        min_prior_orders: 3
+    channel: sms
+    template_id: mexican_usual_checkin_v1
+    enabled: false
+
+  - id: pay_link_reminder
+    when:
+      type: post_call
+      delay_minutes: 5
+      filter:
+        order_state: payment_sent
+        payment_not_paid: true
+    channel: sms
+    template_id: mexican_payment_reminder_v1
+    enabled: false

@@ -1,0 +1,53 @@
+# Cafe vertical — Phase 7 layer (emergency rules).
+# (Cafe — 알러지/응급 룰. 자동 결정 금지 시나리오.)
+#
+# These rules surface a *handoff* signal to staff rather than letting
+# the LLM make consequential decisions about allergens or substitutions.
+# Cafe allergen risk is real (dairy/nuts/gluten); the agent must escalate
+# rather than promise allergen-free.
+
+rules:
+  - id: severe_allergy_declared
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["anaphylaxis", "anaphylactic", "severe allergy",
+               "allergic reaction", "epipen"]
+        - es: ["anafilaxis", "alergia severa"]
+        - ko: ["아나필락시스", "심한 알레르기"]
+    action:
+      type: apology_policy
+      message_en: >
+        I want to make sure we get this right. For severe allergies,
+        let me have a barista double-check with the kitchen — can you
+        hold for a moment, or would you prefer we call you back?
+      message_ko: >
+        심각한 알레르기는 정확히 확인하기 위해 직원이 주방과 다시
+        확인하겠습니다. 잠시만 기다려 주시거나 다시 전화드릴까요?
+      log_severity: warn
+      do_not_promise: "allergen-free preparation"
+
+  - id: cross_contamination_concern
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["cross contamination", "shared equipment", "shared fryer"]
+    action:
+      type: apology_policy
+      message_en: >
+        I can't guarantee a 100% allergen-free environment in our shop —
+        we share prep surfaces and equipment. I'll note it on your
+        order so the barista takes extra care.
+      log_severity: warn
+
+  - id: pickup_time_unrealistic
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["right now", "two minutes", "1 minute", "as fast as possible"]
+    action:
+      type: offer_alternatives
+      message_en: >
+        Our prep time is usually 8 to 12 minutes during this hour.
+        Does about 10 minutes work?
+      log_severity: info

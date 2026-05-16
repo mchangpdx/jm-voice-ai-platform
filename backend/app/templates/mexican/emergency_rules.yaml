@@ -1,0 +1,33 @@
+# Mexican vertical — Phase 7 layer (emergency rules).
+# (Mexican — 알러지 + 매운 음식 confirm.)
+
+rules:
+  - id: severe_allergy_declared
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["anaphylaxis", "severe allergy", "epipen"]
+        - es: ["anafilaxis", "alergia severa"]
+    action:
+      type: apology_policy
+      message_en: >
+        For severe allergies, let me have someone double-check with
+        the kitchen — can you hold for a moment?
+      message_es: >
+        Para alergias severas, déjeme verificar con la cocina —
+        ¿puede esperar un momento?
+      log_severity: warn
+
+  - id: vegetarian_with_lard_concern
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["vegetarian", "no lard", "no meat broth", "vegan"]
+        - es: ["vegetariano", "sin manteca", "vegano"]
+    action:
+      type: apology_policy
+      message_en: >
+        Some of our beans and rice are prepared with traditional
+        ingredients — I'll note your preference and have the cook
+        confirm what's safe.
+      log_severity: info

@@ -1,0 +1,31 @@
+# KBBQ vertical — Phase 9 layer (pricing policy).
+# (KBBQ — per item + 18% default tip on table reservations.)
+#
+# KBBQ is full-service dine-in dominant. Server-based service means
+# gratuity is normal — the phone agent quotes per-item prices, the
+# POS adds 18% suggested gratuity at checkout.
+
+model: per_item
+
+gratuity:
+  enabled: true
+  default_pct: 18
+  required_for: [reservation]    # auto-gratuity on group reservations
+  notes: >
+    Tip suggested at POS. Auto-gratuity on group reservations 6+.
+
+surcharges:
+  - id: reservation_no_show_fee
+    label: Reservation no-show
+    type: flat
+    amount: 25.00
+    applies_when: no_show
+    enabled: false
+    notes: Per-store. Some stores charge no-show; many don't.
+
+late_cancel_fee:
+  enabled: false
+  pct_of_service: 0.0
+  free_window_hours: 0
+
+tax_rate: 0.0

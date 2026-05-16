@@ -1,0 +1,19 @@
+# Cafe vertical — Phase 6 layer (scheduler model).
+# (Cafe — pickup-only, no time-slot scheduling needed.)
+#
+# Cafe is pickup-only. Customer says "I'll pick up in 15 min" or similar;
+# no slot reservation, no resource binding. Reservation tools
+# (make_reservation/cancel_reservation/modify_reservation) are still in
+# the default tool set for the rare cafe with private events.
+
+slot_kind: none
+default_duration_min: 0
+opening_block_min: 0
+buffer_min: 0
+advance_booking_limit_days: 0
+notes: >
+  Cafe operates a walk-in / call-ahead pickup model. Pickup time is a
+  hint, not a hard reservation — kitchen prepares as soon as the order
+  fires. If a specific cafe enables reservations (private events,
+  tasting room), the store config can override slot_kind to 'table'
+  without changing this template.

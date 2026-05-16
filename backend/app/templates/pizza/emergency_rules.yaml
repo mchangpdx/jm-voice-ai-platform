@@ -1,0 +1,32 @@
+# Pizza vertical — Phase 7 layer (emergency rules).
+# (Pizza — gluten/dairy 알러지 위주, 응급 escalation.)
+
+rules:
+  - id: severe_allergy_declared
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["anaphylaxis", "severe allergy", "epipen",
+               "gluten-free required", "celiac"]
+    action:
+      type: apology_policy
+      message_en: >
+        For severe allergies and celiac, our prep area shares surfaces
+        with wheat flour — I can't guarantee a fully gluten-free pizza
+        even on our gluten-free crust. Want me to have a manager call
+        you back to discuss?
+      log_severity: warn
+      do_not_promise: "fully gluten-free"
+
+  - id: delivery_late_complaint
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["where's my order", "still waiting", "an hour ago",
+               "never showed up"]
+    action:
+      type: handoff_human
+      message_en: >
+        I'm sorry about the wait — let me transfer you to a manager
+        who can check on your order right away.
+      log_severity: warn

@@ -32,6 +32,7 @@ from app.services.bridge.pay_link_sms import send_pay_link
 from app.services.bridge.reservation_email import send_reservation_email
 from app.services.crm import CustomerContext
 from app.services.handoff.manager_alert import send_tier3_alert
+from app.templates._base.validator import load_template  # Phase 1.6
 from app.skills.menu.allergen import (  # Phase 2-C.B5
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -873,6 +874,39 @@ def build_system_prompt(
         "promises, undeliverable receipts, or stranded reservations. They "
         "are non-negotiable."
     )
+
+    # Phase 1.6 — vertical-aware ADDITIVE block.
+    # (Phase 1.6 — vertical 9-layer template를 prompt에 ADDITIVE 주입)
+    #
+    # ORDER-kind verticals (cafe/pizza/mexican/kbbq) get NO change here —
+    # their behavior is locked by the hard-coded PHASE FLOW above (rule 5).
+    # SERVICE-kind verticals append an extra block listing their declared
+    # phases from intake_flow.yaml. As of Phase 1.6 only Beauty resolves
+    # to a service kind, and Beauty's intake_flow.yaml is empty until
+    # Phase 4 — so this whole block is dormant for live food stores.
+    vertical_name = (store.get("industry") or "").strip().lower()
+    if vertical_name:
+        try:
+            _vt = load_template(vertical_name)
+        except Exception as exc:  # pragma: no cover — load_template is lenient
+            log.warning("Phase 1.6 load_template failed for %s: %s", vertical_name, exc)
+            _vt = None
+        if _vt and _vt.get("kind") in ("service", "service_with_dispatch"):
+            flow = _vt.get("intake_flow") or {}
+            phases = flow.get("phases") or []
+            if phases:
+                block = [
+                    f"=== INTAKE FLOW ({_vt['kind']} vertical) ===",
+                    "Follow these phases in order. Backtrack to an earlier "
+                    "phase if the customer changes their mind mid-flow.",
+                ]
+                for ph in phases:
+                    pid   = ph.get("id", "?")
+                    label = ph.get("label", pid)
+                    desc  = (ph.get("description") or "").strip().replace("\n", " ")
+                    block.append(f"  PHASE {pid} ({label}): {desc}")
+                block.append("=" * 40)
+                parts.append("\n".join(block))
 
     return "\n\n".join(parts)
 

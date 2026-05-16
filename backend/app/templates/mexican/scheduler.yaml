@@ -1,0 +1,12 @@
+# Mexican vertical — Phase 6 layer (scheduler).
+# (Mexican — pickup model. 시간 슬롯 없음.)
+
+slot_kind: none
+default_duration_min: 0
+opening_block_min: 0
+buffer_min: 0
+advance_booking_limit_days: 0
+notes: >
+  Taqueria / cantina pattern. Pickup-dominant, no slot reservations
+  by default. Full-service cantinas with table reservations would
+  override to slot_kind: table at store level.

@@ -1,0 +1,12 @@
+# Pizza vertical — Phase 6 layer (scheduler).
+# (Pizza — pickup + delivery. 시간 슬롯 없음, 영업시간만 적용.)
+
+slot_kind: none
+default_duration_min: 0
+opening_block_min: 0
+buffer_min: 0
+advance_booking_limit_days: 0
+notes: >
+  Pickup or delivery model. Prep time hint 15-25 min (varies with busy
+  signal). No slot reservation. Catering orders for events can be
+  handled via a separate flow — not in scope for the base template.

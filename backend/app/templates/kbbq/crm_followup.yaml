@@ -1,0 +1,37 @@
+# KBBQ vertical — Phase 8 layer (CRM follow-up).
+# (KBBQ — 가족/그룹 dining 빈도 낮음, 30일 inactivity.)
+
+triggers:
+  - id: usual_visit_checkin
+    when:
+      type: inactivity
+      delay_days: 30
+      filter:
+        customer_status: returning
+        min_prior_orders: 2
+    channel: sms
+    template_id: kbbq_usual_checkin_v1
+    enabled: false
+
+  - id: reservation_reminder
+    when:
+      type: post_appointment
+      delay_days: -1            # day before
+      filter:
+        order_state: reservation_confirmed
+    channel: sms
+    template_id: kbbq_reservation_reminder_v1
+    enabled: false
+    notes: >
+      Confirm reservation the day before. Easy reschedule via reply.
+
+  - id: pay_link_reminder
+    when:
+      type: post_call
+      delay_minutes: 5
+      filter:
+        order_state: payment_sent
+        payment_not_paid: true
+    channel: sms
+    template_id: kbbq_payment_reminder_v1
+    enabled: false

@@ -1,0 +1,30 @@
+# KBBQ vertical — Phase 6 layer (scheduler).
+# (KBBQ — reservation-capable. table-bound slot model.)
+#
+# KBBQ dine-in revenue dominates takeout. Many stores accept table
+# reservations for groups of 4+. The default scheduler enables a
+# table model with conservative defaults; stores adjust per-location.
+
+slot_kind: table
+default_duration_min: 90       # avg KBBQ dinner duration
+duration_buckets: [60, 90, 120, 150]
+opening_block_min: 15
+buffer_min: 15                 # turnover buffer between groups
+advance_booking_limit_days: 30
+resources:
+  - id: table_2
+    en: 2-seater
+    capacity: 2
+  - id: table_4
+    en: 4-seater
+    capacity: 4
+  - id: table_6
+    en: 6-seater
+    capacity: 6
+  - id: table_8_grill
+    en: 8-seater with grill
+    capacity: 8
+notes: >
+  Default table layout — stores override via the wizard when their
+  floor plan differs. Reservations under 4 people are usually walk-in,
+  but the model supports them for groups planning ahead.

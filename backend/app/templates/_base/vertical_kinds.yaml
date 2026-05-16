@@ -1,0 +1,148 @@
+# Vertical kind classification + per-vertical defaults.
+# (수직 kind 분류 + vertical별 default — Phase 1.2)
+#
+# This file is the single source of truth for:
+#   1. Which kind a vertical belongs to (order / service / service_with_dispatch).
+#   2. Default tool sets that the realtime_voice dispatcher should activate.
+#   3. Default intake phase sequence (used when intake_flow.yaml is absent).
+#   4. Multilingual policy per vertical (from [[feedback_multilingual_policy]]).
+#   5. Default persona name — mirrors DEFAULT_PERSONAS in db_seeder.py.
+#
+# Authority: db_seeder.DEFAULT_PERSONAS for persona templates (don't fork);
+# this file references persona NAME only for spec/validator convenience.
+
+# ── Kinds ────────────────────────────────────────────────────────────────────
+# 3 kinds cover the SMB landscape we target.
+# (3 kind로 SMB 전체 cover)
+
+kinds:
+  order:
+    description: >
+      Customer orders specific menu items, items are prepared, customer
+      picks up or has them delivered. No time-slot scheduling needed
+      beyond pickup time hint.
+    default_tools:
+      - create_order
+      - modify_order
+      - cancel_order
+      - recall_order
+      - recent_orders
+      - allergen_lookup
+      - make_reservation
+      - cancel_reservation
+      - modify_reservation
+      - the_usual_lookup
+    default_intake_phases: [CART, TOTAL, NAME, EMAIL, RECITAL]
+    scheduler_default: none      # pickup-only; reservation when supported
+    crm_default_triggers: [usual_order_check_in]
+    typical_call_duration_sec: 90-180
+
+  service:
+    description: >
+      Customer books an appointment for a service delivered at the
+      business location by a named provider (stylist / esthetician /
+      technician). Time-slot bound to provider availability.
+    default_tools:
+      - book_appointment
+      - modify_appointment
+      - cancel_appointment
+      - service_lookup
+      - list_stylists
+      - allergen_lookup        # chemical sensitivity for beauty
+      - the_usual_lookup       # returning client favorite service
+    default_intake_phases: [INTAKE, SERVICE_SELECT, STYLIST, TIME_SLOT, CONFIRM]
+    scheduler_default: stylist
+    crm_default_triggers: [service_refresh_reminder]
+    typical_call_duration_sec: 90-240
+
+  service_with_dispatch:
+    description: >
+      Customer requests a service delivered at THEIR location, often
+      preceded by diagnostic or quote step. Technician dispatched to
+      customer address. Common pattern for home services and field repair.
+    default_tools:
+      - book_appointment
+      - modify_appointment
+      - cancel_appointment
+      - service_lookup
+      - dispatch_technician
+      - emergency_handoff
+      - allergen_lookup        # hazard class (gas, electrical, etc.)
+    default_intake_phases: [SYMPTOM_INTAKE, DIAGNOSTIC_QUOTE, APPT_SCHEDULE, CONFIRM]
+    scheduler_default: technician
+    crm_default_triggers: [preventive_maintenance_reminder]
+    typical_call_duration_sec: 120-300
+
+# ── Vertical → kind mapping ─────────────────────────────────────────────────
+# Every vertical with a persona in DEFAULT_PERSONAS appears here.
+# (DEFAULT_PERSONAS의 10개 vertical 모두 분류 — single source of truth)
+
+verticals:
+  pizza:
+    kind: order
+    persona_name: Marco
+    multilingual: [en, es]
+    notes: NY-style pizzeria. Tip-friendly culture.
+  restaurant:
+    kind: order
+    persona_name: Aria
+    multilingual: [en]
+    notes: Generic full-service. Use only when no narrower vertical fits.
+  cafe:
+    kind: order
+    persona_name: Aria
+    multilingual: [en, es, ko, ja, zh]
+    notes: 5-language by default — broad urban demographic.
+  kbbq:
+    kind: order
+    persona_name: Yuna
+    multilingual: [en, ko]
+    notes: Reservation-capable (table_kind=table when reservations enabled).
+  mexican:
+    kind: order
+    persona_name: Sofia
+    multilingual: [en, es]
+    notes: Taqueria / cantina pattern.
+  sushi:
+    kind: order
+    persona_name: Hana
+    multilingual: [en, ja]
+    notes: Reservation-capable. Omakase service may need scheduler upgrade.
+  chinese:
+    kind: order
+    persona_name: Mei
+    multilingual: [en, zh]
+    notes: Pickup-dominant pattern.
+  beauty:
+    kind: service
+    persona_name: Luna
+    multilingual: [en, ko, es]
+    notes: 24h cancellation policy. Stylist-bound slots. ⭐ Beauty MVP target.
+  home_services:
+    kind: service_with_dispatch
+    persona_name: Rex
+    multilingual: [en, es]
+    notes: Plumbing / electrical / HVAC. Dispatch model.
+  auto_repair:
+    kind: service_with_dispatch
+    persona_name: Alex
+    multilingual: [en, es]
+    notes: Drop-off pattern, but vehicle-tied scheduling.
+
+# ── Tool dispatcher hint ────────────────────────────────────────────────────
+# The realtime_voice dispatcher (Phase 1.6) uses kinds[<kind>].default_tools
+# as the WHITE-LIST of tools to activate per call. Vertical-specific
+# overrides land in the store row (future field: stores.tools_override)
+# — out of scope for Phase 1.
+
+# ── Backward compat ─────────────────────────────────────────────────────────
+# When stores.vertical_kind is NULL (pre-Phase 2), the resolver looks up
+# verticals[<vertical>].kind from this file. Phase 2 adds the column with
+# default 'order' for every existing row to make the path explicit.
+
+# ── Adding a new vertical ───────────────────────────────────────────────────
+# 1. Add an entry under `verticals:` with kind / persona_name / multilingual.
+# 2. Append the persona template to DEFAULT_PERSONAS in db_seeder.py.
+# 3. (Optional) Add a KPI module under app/knowledge/<vertical>.py.
+# 4. Create backend/app/templates/<new_vertical>/ with the 4 historical
+#    + 5 new yaml layers (some optional — see spec.md §2 lenient loading).

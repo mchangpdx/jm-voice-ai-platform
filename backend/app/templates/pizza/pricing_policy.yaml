@@ -1,0 +1,37 @@
+# Pizza vertical — Phase 9 layer (pricing policy).
+# (Pizza — per item + delivery_fee. Tax는 store-level override.)
+
+model: per_item
+
+gratuity:
+  enabled: true
+  default_pct: 0          # tip at POS / delivery driver, not phone
+  required_for: []
+
+surcharges:
+  - id: delivery_fee
+    label: Delivery
+    type: flat
+    amount: 4.99
+    applies_when: order_is_delivery
+    enabled: true         # most pizzerias enable delivery
+    notes: Per-store override OK. Disable for pickup-only locations.
+
+  - id: minimum_delivery_order
+    label: Delivery minimum
+    type: flat
+    amount: 15.00
+    applies_when: order_is_delivery
+    enabled: true
+    notes: Surcharge if order subtotal < minimum.
+
+late_cancel_fee:
+  enabled: false
+  pct_of_service: 0.0
+  free_window_hours: 0
+
+tax_rate: 0.0              # default. NY/CA/WA stores override at store-level.
+notes: >
+  Pizza is delivery-heavy. Stores in NY (sales tax ~8.875%) or CA
+  (~7.25%) override tax_rate at the store level. Default 0.0 keeps
+  Oregon/no-tax stores correct out of the box.

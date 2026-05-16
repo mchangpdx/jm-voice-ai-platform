@@ -1,0 +1,102 @@
+# Cafe vertical — Phase 5 layer (intake flow).
+# (Cafe — PHASE FLOW yaml화. Phase 1.4 작성, Phase 1.6에서 build_system_prompt가 이걸 read.)
+#
+# Mirrors the STRICT PHASE FLOW currently hard-coded in
+# voice_websocket.py rule 5 (added 2026-05-16). Until Phase 1.6 actually
+# reads this file, behavior is unchanged — this file is documentation +
+# future migration target.
+#
+# Designed for near-zero-cost TCR/SMS migration: when SMS-only delivery
+# is approved, PHASE D collapses to "caller phone via Twilio CID" and the
+# email_required flag flips to false.
+
+kind: order
+
+phases:
+  - id: CART
+    label: Cart
+    description: >
+      Collect items + modifiers + allergen questions. Stay until the
+      customer EXPLICITLY signals completion (see completion_signals).
+      Mid-cart ack OK ("OK, so far $X."). Do NOT ask for name or email.
+    requires: [items]
+    backtrack_allowed: true
+    guardrails:
+      - rule: NO_NAME_OR_EMAIL_IN_CART
+        message: >
+          Asking for name/email here is a phase skip. Abandon the
+          name/email turn, return to PHASE A, and close cart first.
+      - rule: ASK_BEFORE_DEFAULT
+        message: >
+          Required modifier missing (size, milk) → ask once.
+          NEVER auto-default — a dairy-allergic customer must not
+          be silently given whole milk.
+
+  - id: TOTAL
+    label: Total
+    description: Once CART closes, speak the total once.
+    say: "OK, that comes to $X. Can I get a name for the order?"
+    requires: [cart_total]
+
+  - id: NAME
+    label: Name
+    description: >
+      Single short ask. Pass STT result verbatim — no surname guessing,
+      no substitution. If ambiguous, repeat ONCE and use what customer
+      confirms. ARGS-NAME GATE: pass tool args = EXACT STT decoded name.
+    requires: [customer_name]
+    guardrails:
+      - rule: NAME_VERBATIM
+        message: >
+          Live regression: STT decoded 'Michael Chin', bot args sent
+          'Michael Tran'. NEVER substitute surname.
+
+  - id: EMAIL
+    label: Email
+    description: >
+      'Best email for the payment link?' → NATO readback per CUSTOMER
+      section. Will become optional after TCR/SMS migration — caller
+      phone via Twilio CID will replace this phase.
+    requires: [customer_email]
+    deprecation_hint: tcr_sms_migration_pending
+    guardrails:
+      - rule: NATO_SOURCE
+        message: >
+          Letters read aloud MUST be EXACT STT-decoded letters.
+          NEVER substitute first letter based on inferred English name.
+      - rule: ARGS_EMAIL_GATE
+        message: >
+          customer_email arg MUST equal the exact character sequence
+          just read in NATO, character-by-character.
+
+  - id: RECITAL
+    label: Recital + create_order
+    description: >
+      Recite items + name + total ONCE. Wait for explicit yes
+      IMMEDIATELY after recital. Fire create_order.
+    requires: [explicit_confirm]
+    fires_tool: create_order
+    guardrails:
+      - rule: RECITAL_DEDUP_8S
+        message: Within 8s of prior recital → silent skip (no duplicate).
+
+# Cross-phase rules
+backtrack:
+  enabled: true
+  signal_keywords: [add, wait, actually, scratch, "cancel that", "change to"]
+  applies_in_phases: [TOTAL, NAME, EMAIL, RECITAL]
+  on_trigger: RETURN_TO_CART
+  side_effect: re-ack new running total + re-issue 'anything else?'
+
+# Completion signals per language (cart close detection)
+completion_signals:
+  - language: en
+    patterns: ["that's it", "that's all", "nothing else", "we're good", "no"]
+  - language: es
+    patterns: ["eso es todo", "nada más"]
+  - language: ja
+    patterns: ["以上です", "それで全部です"]
+  - language: zh
+    patterns: ["就这些", "没有了"]
+  - language: ko
+    patterns: ["그게 다예요", "없어요"]

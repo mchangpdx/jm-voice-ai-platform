@@ -1,0 +1,48 @@
+# KBBQ vertical — Phase 7 layer (emergency rules).
+# (KBBQ — soy/sesame 알러지 + reservation 단기 변경 정책.)
+
+rules:
+  - id: severe_allergy_declared
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["anaphylaxis", "severe allergy", "epipen",
+               "soy allergy", "sesame allergy"]
+        - ko: ["아나필락시스", "심한 알레르기", "콩 알레르기", "참깨 알레르기"]
+    action:
+      type: apology_policy
+      message_en: >
+        Soy and sesame are in many of our marinades and banchan.
+        Let me have the kitchen confirm which items are safe.
+      message_ko: >
+        간장과 참깨가 양념과 반찬에 많이 들어갑니다. 주방에서 안전한
+        메뉴를 확인해드릴게요.
+      log_severity: warn
+
+  - id: reservation_short_notice_change
+    trigger:
+      type: time_window
+      time_before_appt_hours: 2
+    action:
+      type: apology_policy
+      message_en: >
+        Within 2 hours of your reservation, I'll let the host know —
+        if seating is tight tonight, you may face a short wait.
+      message_ko: >
+        예약 2시간 전이라 호스트에게 바로 알려드릴게요. 자리가
+        촘촘하면 잠시 대기가 있을 수 있습니다.
+      log_severity: info
+
+  - id: large_party_handoff
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["birthday party", "corporate", "private room",
+               "20 people", "30 people"]
+        - ko: ["생일", "회식", "단체"]
+    action:
+      type: handoff_human
+      message_en: >
+        Large parties go through our event coordinator — let me have
+        someone call you back to plan the details.
+      log_severity: info

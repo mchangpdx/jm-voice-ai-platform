@@ -1,0 +1,35 @@
+# Cafe vertical — Phase 8 layer (CRM follow-up).
+# (Cafe — outbound CRM trigger 정의. SMS/email은 jm_crm 모듈이 dispatch.)
+#
+# Cafe customers have high frequency but low absolute spend. CRM strategy
+# is light-touch: check in on regulars who slip past their usual cadence,
+# never push promotions to one-time visitors.
+
+triggers:
+  - id: usual_order_checkin
+    when:
+      type: inactivity
+      delay_days: 7
+      filter:
+        customer_status: returning
+        min_prior_orders: 3
+    channel: sms
+    template_id: cafe_usual_checkin_v1
+    enabled: false       # post-launch — wait for CRM Wave 2 to deploy
+    notes: >
+      For customers with ≥3 prior orders, no order in 7 days, gently
+      check in. Skip if last contact <14 days ago to avoid spam.
+
+  - id: pay_link_reminder
+    when:
+      type: post_call
+      delay_minutes: 5
+      filter:
+        order_state: payment_sent
+        payment_not_paid: true
+    channel: sms
+    template_id: cafe_payment_reminder_v1
+    enabled: false       # not yet wired — depends on SumUp webhook
+    notes: >
+      Reminds the customer about the payment link if they haven't paid
+      within 5 min. Single reminder only.

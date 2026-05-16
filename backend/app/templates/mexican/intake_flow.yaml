@@ -1,0 +1,59 @@
+# Mexican vertical — Phase 5 layer (intake flow).
+# (Mexican / 멕시칸 — CART→TOTAL→NAME→EMAIL→RECITAL. 5 lang 중 en+es.)
+#
+# Mexican vertical is "incomplete" at template level (only allergen_rules
+# exists in legacy form). Menu and modifier_groups are loaded from the
+# store row via the wizard, not from a template. This file documents the
+# intake gate that already runs for JM Taco today.
+
+kind: order
+
+phases:
+  - id: CART
+    label: Cart
+    description: >
+      Capture each item (tacos, burritos, sides) with spice level,
+      protein choice, fillings. Bilingual EN/ES.
+    requires: [items]
+    backtrack_allowed: true
+    guardrails:
+      - rule: NO_NAME_OR_EMAIL_IN_CART
+        message: Cart open → defer name/email.
+      - rule: SPICE_LEVEL_CONFIRMS
+        message: >
+          Spicy / picante request → confirm level (mild/medium/hot) once.
+
+  - id: TOTAL
+    label: Total
+    say: "OK, that comes to $X. Can I get a name for the order?"
+    requires: [cart_total]
+
+  - id: NAME
+    label: Name
+    requires: [customer_name]
+    guardrails:
+      - rule: NAME_VERBATIM
+        message: STT verbatim. Spanish-language names common — no anglicization.
+
+  - id: EMAIL
+    label: Email
+    requires: [customer_email]
+    deprecation_hint: tcr_sms_migration_pending
+
+  - id: RECITAL
+    label: Recital + create_order
+    requires: [explicit_confirm]
+    fires_tool: create_order
+
+backtrack:
+  enabled: true
+  signal_keywords: [add, wait, actually, "cancel that", "change to",
+                    "agregar", "espera", "cancelar", "cambiar"]
+  applies_in_phases: [TOTAL, NAME, EMAIL, RECITAL]
+  on_trigger: RETURN_TO_CART
+
+completion_signals:
+  - language: en
+    patterns: ["that's it", "that's all", "nothing else"]
+  - language: es
+    patterns: ["eso es todo", "nada más", "es todo"]

@@ -1,0 +1,59 @@
+# KBBQ vertical — Phase 5 layer (intake flow).
+# (KBBQ / 한식 BBQ — 주문 + 예약 둘 다 지원. EN/KO bilingual.)
+#
+# KBBQ supports both same-day order (banchan delivery / takeout) AND
+# reservations (table-based dine-in). The default phase flow handles
+# orders. Reservation calls follow make_reservation tool's own flow —
+# fewer required slots (party size, time, name, contact).
+
+kind: order
+
+phases:
+  - id: CART
+    label: Cart
+    description: >
+      Capture banchan + entrees + drinks. KBBQ groups: meat platters,
+      sides, soups, banchan. Confirm party size if group order.
+    requires: [items]
+    backtrack_allowed: true
+    guardrails:
+      - rule: NO_NAME_OR_EMAIL_IN_CART
+        message: Cart open → defer name/email.
+      - rule: PARTY_SIZE_FOR_PLATTERS
+        message: >
+          Multi-meat platters → confirm party size for portion sanity.
+
+  - id: TOTAL
+    label: Total
+    say: "OK, that comes to $X. Can I get a name for the order?"
+    requires: [cart_total]
+
+  - id: NAME
+    label: Name
+    requires: [customer_name]
+    guardrails:
+      - rule: NAME_VERBATIM
+        message: Korean names common (Kim/Lee/Park/Chang). STT verbatim.
+
+  - id: EMAIL
+    label: Email
+    requires: [customer_email]
+    deprecation_hint: tcr_sms_migration_pending
+
+  - id: RECITAL
+    label: Recital + create_order
+    requires: [explicit_confirm]
+    fires_tool: create_order
+
+backtrack:
+  enabled: true
+  signal_keywords: [add, wait, actually, "cancel that", "change to",
+                    "추가", "잠깐", "취소", "변경"]
+  applies_in_phases: [TOTAL, NAME, EMAIL, RECITAL]
+  on_trigger: RETURN_TO_CART
+
+completion_signals:
+  - language: en
+    patterns: ["that's it", "that's all", "nothing else"]
+  - language: ko
+    patterns: ["그게 다예요", "없어요", "다 됐어요", "이게 다입니다"]

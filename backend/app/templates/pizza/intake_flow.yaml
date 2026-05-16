@@ -1,0 +1,65 @@
+# Pizza vertical — Phase 5 layer (intake flow).
+# (Pizza — CART→TOTAL→NAME→EMAIL→RECITAL. cafe와 동일 패턴.)
+#
+# Pizza orders are higher-ticket than cafe (multi-pizza orders common)
+# but the phase sequence is identical. Delivery-capable stores collect
+# address before RECITAL — handled via cart line item, not a separate
+# phase, to keep the gate logic simple.
+
+kind: order
+
+phases:
+  - id: CART
+    label: Cart
+    description: >
+      Collect pizzas + sides + drinks + modifiers. Pizza-specific:
+      capture crust type, size, every topping (add/remove). Confirm
+      delivery vs pickup before TOTAL.
+    requires: [items]
+    backtrack_allowed: true
+    guardrails:
+      - rule: NO_NAME_OR_EMAIL_IN_CART
+        message: Cart open → defer name/email to PHASE C/D.
+      - rule: ASK_BEFORE_DEFAULT
+        message: >
+          Required modifier (size, crust) missing → ask once, never auto-default.
+      - rule: CAPTURE_EVERY_TOPPING
+        message: >
+          'No pineapple, extra cheese' → both must be in selected_modifiers.
+
+  - id: TOTAL
+    label: Total
+    description: Speak total once. Include delivery fee if applicable.
+    say: "OK, that comes to $X. Can I get a name for the order?"
+    requires: [cart_total]
+
+  - id: NAME
+    label: Name
+    requires: [customer_name]
+    guardrails:
+      - rule: NAME_VERBATIM
+        message: Pass STT verbatim. No surname substitution.
+
+  - id: EMAIL
+    label: Email
+    description: For payment link. Will collapse to caller-phone post TCR/SMS.
+    requires: [customer_email]
+    deprecation_hint: tcr_sms_migration_pending
+
+  - id: RECITAL
+    label: Recital + create_order
+    requires: [explicit_confirm]
+    fires_tool: create_order
+
+backtrack:
+  enabled: true
+  signal_keywords: [add, wait, actually, scratch, "cancel that", "change to",
+                    "remove", "extra", "no", "hold the"]
+  applies_in_phases: [TOTAL, NAME, EMAIL, RECITAL]
+  on_trigger: RETURN_TO_CART
+
+completion_signals:
+  - language: en
+    patterns: ["that's it", "that's all", "nothing else", "we're good"]
+  - language: es
+    patterns: ["eso es todo", "nada más"]

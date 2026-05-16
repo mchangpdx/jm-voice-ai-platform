@@ -1,0 +1,24 @@
+# Mexican vertical — Phase 9 layer (pricing policy).
+# (Mexican — per item, optional delivery_fee, OR tax=0.)
+
+model: per_item
+
+gratuity:
+  enabled: true
+  default_pct: 0
+  required_for: []
+
+surcharges:
+  - id: delivery_fee
+    label: Delivery
+    type: flat
+    amount: 0
+    applies_when: order_is_delivery
+    enabled: false        # taqueria pickup-only by default
+
+late_cancel_fee:
+  enabled: false
+  pct_of_service: 0.0
+  free_window_hours: 0
+
+tax_rate: 0.0
