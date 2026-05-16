@@ -10,12 +10,26 @@ interface VoiceBotSettings {
   temporary_prompt: string | null
 }
 
-// Cross-component sync event (Overview ↔ AiVoiceBot)
+// Cross-tab + cross-component sync (Overview ↔ AiVoiceBot)
 const VOICE_BOT_EVENT = 'voice-bot:updated'
+const VOICE_BOT_CHANNEL = 'jm-voice-bot'
 
 interface VoiceBotPayload {
   temporary_prompt: string | null
   system_prompt?: string | null
+}
+
+function broadcastVoiceBot(payload: VoiceBotPayload) {
+  window.dispatchEvent(
+    new CustomEvent<VoiceBotPayload>(VOICE_BOT_EVENT, { detail: payload }),
+  )
+  try {
+    const bc = new BroadcastChannel(VOICE_BOT_CHANNEL)
+    bc.postMessage(payload)
+    bc.close()
+  } catch {
+    // BroadcastChannel unsupported — same-tab event still fires.
+  }
 }
 
 interface AgentStatus {
@@ -92,11 +106,10 @@ export default function AiVoiceBot() {
       .finally(() => setAgentLoading(false))
   }, [])
 
-  // Cross-component sync — Overview saves daily instructions → mirror here.
-  // (Overview에서 daily instructions 저장 시 여기도 즉시 반영)
+  // Cross-component + cross-tab sync — Overview saves → mirror here.
+  // (Overview에서 daily instructions 저장 시 같은 탭/다른 탭 모두 즉시 반영)
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<VoiceBotPayload>).detail
+    const apply = (detail: VoiceBotPayload | null) => {
       if (!detail) return
       if (typeof detail.temporary_prompt === 'string') {
         setTempDraft(detail.temporary_prompt)
@@ -107,8 +120,22 @@ export default function AiVoiceBot() {
         setSystemSaved(detail.system_prompt)
       }
     }
-    window.addEventListener(VOICE_BOT_EVENT, handler)
-    return () => window.removeEventListener(VOICE_BOT_EVENT, handler)
+    const sameTab = (e: Event) => apply((e as CustomEvent<VoiceBotPayload>).detail)
+    const crossTab = (e: MessageEvent<VoiceBotPayload>) => apply(e.data ?? null)
+
+    window.addEventListener(VOICE_BOT_EVENT, sameTab)
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel(VOICE_BOT_CHANNEL)
+      bc.addEventListener('message', crossTab)
+    } catch {
+      // BroadcastChannel unsupported — same-tab event still fires.
+    }
+    return () => {
+      window.removeEventListener(VOICE_BOT_EVENT, sameTab)
+      bc?.removeEventListener('message', crossTab)
+      bc?.close()
+    }
   }, [])
 
   const handleSave = async () => {
@@ -123,14 +150,10 @@ export default function AiVoiceBot() {
       setSystemSaved(updated.system_prompt ?? '')
       setTempSaved(updated.temporary_prompt ?? '')
       setSettings(updated)
-      window.dispatchEvent(
-        new CustomEvent<VoiceBotPayload>(VOICE_BOT_EVENT, {
-          detail: {
-            temporary_prompt: updated.temporary_prompt,
-            system_prompt:    updated.system_prompt,
-          },
-        }),
-      )
+      broadcastVoiceBot({
+        temporary_prompt: updated.temporary_prompt,
+        system_prompt:    updated.system_prompt,
+      })
       flash('Saved successfully.')
     } catch {
       flash('Save failed. Please try again.', true)
