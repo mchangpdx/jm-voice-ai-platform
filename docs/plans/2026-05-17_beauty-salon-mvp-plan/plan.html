@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<title>Beauty Salon MVP — Multi-vertical Architecture Proof Plan (2026-05-17)</title>
+<style>
+  :root { color-scheme: light only; }
+  html, body { background: #ffffff !important; color: #0f172a !important; }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #ffffff !important; color: #0f172a !important; }
+  }
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.5; font-size: 9.8pt; }
+  h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #1e40af; margin-top: 20pt; padding-bottom: 4pt; border-bottom: 2px solid #c7d2fe; }
+  h3 { font-size: 11.5pt; color: #1e40af; margin-top: 14pt; }
+  h4 { font-size: 10.5pt; color: #312e81; margin-top: 10pt; }
+  .meta { color: #64748b; font-size: 9pt; margin-bottom: 14pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 8.5pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 5pt 7pt; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #1e3a8a; font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.center { text-align: center; }
+  code { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 1pt 3pt; }
+  pre { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 7pt 9pt; line-height: 1.4; border-left: 3px solid #6366f1; overflow-x: auto; }
+  ul, ol { padding-left: 18pt; margin: 4pt 0; }
+  li { margin: 2pt 0; }
+  .badge { display: inline-block; padding: 1.5pt 6pt; border-radius: 3px; font-size: 8pt; font-weight: 700; white-space: nowrap; }
+  .b-p0 { background: #fee2e2; color: #991b1b; }
+  .b-p1 { background: #fef3c7; color: #92400e; }
+  .b-p2 { background: #dbeafe; color: #1e40af; }
+  .b-phase { background: #ede9fe; color: #5b21b6; }
+  .b-strength { background: #dcfce7; color: #14532d; }
+  .b-warn { background: #fef3c7; color: #92400e; }
+  .callout { border-left: 4px solid #6366f1; background: #eef2ff; padding: 8pt 12pt; margin: 10pt 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { border-color: #f59e0b; background: #fef3c7; }
+  .callout-success { border-color: #10b981; background: #d1fae5; }
+  .callout-danger { border-color: #ef4444; background: #fee2e2; }
+  .toc { background: #f8fafc; border: 1px solid #cbd5e1; padding: 8pt 14pt; border-radius: 4px; margin-bottom: 16pt; font-size: 9pt; }
+  .toc ul { margin: 0; padding-left: 14pt; }
+  .pagebreak { page-break-before: always; }
+  .summary-tile { display: inline-block; min-width: 92pt; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6pt 10pt; margin: 4pt 6pt 4pt 0; }
+  .summary-tile .label { font-size: 8pt; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+  .summary-tile .value { font-size: 13pt; font-weight: 700; color: #1e3a8a; margin-top: 2pt; }
+  .phase-header { background: #ede9fe; border-left: 4px solid #7c3aed; padding: 6pt 12pt; margin: 14pt 0 6pt 0; border-radius: 0 4px 4px 0; }
+  .phase-header h3 { margin: 0; color: #5b21b6; }
+  .phase-header .duration { font-size: 9pt; color: #6b21a8; }
+</style>
+</head>
+<body>
+
+<h1>Beauty Salon MVP — Multi-vertical Architecture Proof Plan</h1>
+<div class="meta">JM Tech One · JM AI Voice Platform · Plan 작성일 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com<br>
+<strong>실행 예정:</strong> 2026-07 후반 (FSR/QSR 베타 출시 후) · <strong>예상 sprint 기간:</strong> 2주 (10-14일)</div>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ul>
+    <li>요약 + 핵심 목표</li>
+    <li>Phase 0 — 새 세션 환경 준비 (0.5일)</li>
+    <li>Phase 1 — Vertical Template Framework 표준화 (3-4일) ⭐ 핵심</li>
+    <li>Phase 2 — Schema 추상화 + 안정성 가드 (2일)</li>
+    <li>Phase 3 — Beauty Vertical-specific Tools (2-3일)</li>
+    <li>Phase 4 — Beauty Template 자료 작성 (2일)</li>
+    <li>Phase 5 — JM Beauty Salon 라이브 검증 (1.5일)</li>
+    <li>Phase 6 — 0-shot 검증 + 데이터 측정 (1.5일)</li>
+    <li>Phase 7 — 문서화 + 보고서 (1일)</li>
+    <li>안정성 가드 + 확장성 가드</li>
+    <li>예상 측정 결과 + 산출물</li>
+    <li>Risk Register + Rollback Plan</li>
+  </ul>
+</div>
+
+<h2>요약 + 핵심 목표</h2>
+
+<div>
+  <span class="summary-tile"><div class="label">Sprint 기간</div><div class="value">10-14일</div></span>
+  <span class="summary-tile"><div class="label">목표 재사용률</div><div class="value">85-90%</div></span>
+  <span class="summary-tile"><div class="label">신규 코드 line</div><div class="value">3-4K</div></span>
+  <span class="summary-tile"><div class="label">Phase 수</div><div class="value">8 (0-7)</div></span>
+  <span class="summary-tile"><div class="label">검증 통화</div><div class="value">15-20</div></span>
+  <span class="summary-tile"><div class="label">신규 매장 (가상)</div><div class="value">3</div></span>
+</div>
+
+<div class="callout">
+  <strong>Sprint 핵심 목표:</strong> 2주 안에 multi-vertical architecture proof 확보 (FSR/QSR + Beauty 동시 가동). JM Beauty Salon 라이브 작동 + 0-shot 신규 매장 등록 검증 + 코드 재사용률 측정 데이터 확보. 영업/투자자 자료로 사용.
+</div>
+
+<h2>전체 작업 흐름 (시각화)</h2>
+
+<pre>
+Phase 0   [환경] ────────────────── 0.5d
+Phase 1   [Framework] ▓▓▓▓▓▓▓▓▓▓▓▓ 3-4d  ⭐ 가장 중요 (확장성 보장)
+Phase 2   [Schema]    ▓▓▓▓▓▓░░░░░░ 2d    (안정성 가드 — backward compat)
+Phase 3   [Tools]     ▓▓▓▓▓▓▓▓░░░░ 2-3d  (book/cancel/modify/lookup)
+Phase 4   [Template]  ▓▓▓▓▓▓░░░░░░ 2d    (Beauty 9-layer yaml)
+Phase 5   [Live]      ▓▓▓▓░░░░░░░░ 1.5d  (JM Beauty 통화 검증)
+Phase 6   [0-shot]    ▓▓▓▓░░░░░░░░ 1.5d  (가상 매장 3개 + 측정)
+Phase 7   [Report]    ▓▓░░░░░░░░░░ 1d    (영업/투자자 PDF)
+                       Total: 10-14일
+</pre>
+
+<div class="pagebreak"></div>
+
+<div class="phase-header">
+  <h3>Phase 0 — 새 세션 환경 준비 <span class="duration">(0.5일)</span></h3>
+</div>
+
+<h4>목표</h4>
+<p>새 세션 시작 시 즉시 코드 변경에 들어갈 수 있는 상태 확보. 회귀 baseline 확정.</p>
+
+<h4>Task</h4>
+<ol>
+  <li>session_resume_2026-05-17 read → context 확보</li>
+  <li>JM Beauty Salon DB row 확인 (Luna persona, agency_id, business_hours)</li>
+  <li>uvicorn 라이브 상태 확인 + 200+ unit tests baseline 통과 확인</li>
+  <li>Twilio test 번호 1개 확보 (Beauty MVP용, sandbox 별도 권장)</li>
+  <li>Phase별 detailed task list 생성</li>
+</ol>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ Baseline 200+ tests all pass</li>
+  <li>✓ JM Beauty Salon row 검증 (system_prompt = Luna)</li>
+  <li>✓ Test phone number 활성</li>
+  <li>✓ Phase 1 시작 준비</li>
+</ul>
+
+<div class="phase-header">
+  <h3>Phase 1 — Vertical Template Framework 표준화 <span class="duration">(3-4일)</span> ⭐ 핵심</h3>
+</div>
+
+<h4>목표 (확장성 핵심)</h4>
+<p>이번 sprint의 가장 큰 가치. 한 번만 잘 만들면 모든 future vertical 추가가 yaml만 작성하면 가능. <strong>9-layer Vertical Template Framework</strong> 표준 설계 + 구현.</p>
+
+<h4>Task</h4>
+<table>
+  <thead><tr><th>#</th><th>작업</th><th>시간</th><th>산출물</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1.1</td>
+      <td>9-layer spec 문서 작성 (각 layer schema + 필수 필드)</td>
+      <td>1일</td>
+      <td><code>backend/app/templates/_base/spec.md</code></td>
+    </tr>
+    <tr>
+      <td>1.2</td>
+      <td>vertical_kind 분류 정의 (order / service / service_with_dispatch)</td>
+      <td>0.5일</td>
+      <td><code>_base/vertical_kinds.yaml</code></td>
+    </tr>
+    <tr>
+      <td>1.3</td>
+      <td>yaml validator (loading 시 자동 검증, 명확한 에러)</td>
+      <td>0.5일</td>
+      <td><code>_base/validator.py</code> + unit tests</td>
+    </tr>
+    <tr>
+      <td>1.4</td>
+      <td>기존 cafe template 9-layer 마이그레이션 (회귀 안전)</td>
+      <td>0.5일</td>
+      <td><code>templates/cafe/</code> 재구성</td>
+    </tr>
+    <tr>
+      <td>1.5</td>
+      <td>pizza / mexican / kbbq 마이그레이션 (동일 패턴)</td>
+      <td>1일</td>
+      <td>4 vertical 모두 9-layer 통일</td>
+    </tr>
+    <tr>
+      <td>1.6</td>
+      <td>build_system_prompt vertical-aware (intake_flow.yaml 읽음)</td>
+      <td>0.5일</td>
+      <td><code>voice_websocket.py</code> 갱신</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>9-Layer 표준 (재명시)</h4>
+<table>
+  <thead><tr><th>Layer</th><th>파일명</th><th>역할</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>safety_rules.yaml</code></td><td>위험 매트릭스 (음식점 = allergen, beauty = chemical sensitivity, home = hazard)</td></tr>
+    <tr><td>2</td><td><code>service_categories.yaml</code></td><td>서비스 카테고리 (메뉴 또는 서비스 항목)</td></tr>
+    <tr><td>3</td><td><code>option_groups.yaml</code></td><td>옵션 변형 (modifier 또는 service add-on)</td></tr>
+    <tr><td>4</td><td><code>system_prompt_base.txt</code></td><td>vertical 페르소나 + 룰</td></tr>
+    <tr><td>5</td><td><code>intake_flow.yaml</code> ⭐ NEW</td><td>PHASE FLOW 정의 (음식점 5-phase / service 5-phase 다름)</td></tr>
+    <tr><td>6</td><td><code>scheduler.yaml</code> ⭐ NEW</td><td>슬롯 구조 (테이블 / stylist / technician)</td></tr>
+    <tr><td>7</td><td><code>emergency_rules.yaml</code> ⭐ NEW</td><td>긴급 처리 (severe allergy / 24h cancel / 가스누출)</td></tr>
+    <tr><td>8</td><td><code>crm_followup.yaml</code> ⭐ NEW</td><td>vertical 별 followup (the usual / 6-week refresh / 정기 점검)</td></tr>
+    <tr><td>9</td><td><code>pricing_policy.yaml</code> ⭐ NEW</td><td>가격 정책 (메뉴 / flat-rate / hourly+fee / membership)</td></tr>
+  </tbody>
+</table>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ 9-layer spec 문서 confirm</li>
+  <li>✓ 4 기존 vertical 모두 9-layer로 마이그레이션</li>
+  <li>✓ build_system_prompt yaml-driven</li>
+  <li>✓ 200+ unit tests + 라이브 통화 (cafe, pizza, mexican 1건씩) 통과</li>
+  <li>✓ 회귀 없음 — 기존 매장 동작 변경 없음</li>
+</ul>
+
+<div class="pagebreak"></div>
+
+<div class="phase-header">
+  <h3>Phase 2 — Schema 추상화 + 안정성 가드 <span class="duration">(2일)</span></h3>
+</div>
+
+<h4>목표 (안정성 핵심)</h4>
+<p>기존 FSR/QSR 매장 무손상이 최우선. backward compat 철저. vertical_kind column 도입으로 코드 path 분기.</p>
+
+<h4>Task</h4>
+<table>
+  <thead><tr><th>#</th><th>작업</th><th>시간</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>2.1</td>
+      <td>migration: <code>ALTER TABLE stores ADD COLUMN vertical_kind TEXT</code></td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>2.2</td>
+      <td>seed: 기존 매장 모두 'order'로 마킹 (cafe/pizza/mexican/kbbq/restaurant)</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>2.3</td>
+      <td>bridge_jobs view 생성 (alias of bridge_transactions, vertical_kind 필터)</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>2.4</td>
+      <td>menu_items에 service_kind / duration_min nullable column 추가</td>
+      <td>0.5일</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ DB migration 적용 + rollback SQL 준비</li>
+  <li>✓ 기존 매장 7개 모두 'order'로 마킹</li>
+  <li>✓ bridge_jobs view query 가능</li>
+  <li>✓ 음식점 통화 회귀 없음</li>
+</ul>
+
+<div class="phase-header">
+  <h3>Phase 3 — Beauty Vertical-specific Tools <span class="duration">(2-3일)</span></h3>
+</div>
+
+<h4>Task</h4>
+<table>
+  <thead><tr><th>#</th><th>Tool</th><th>설명</th><th>시간</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>3.1</td>
+      <td><code>book_appointment</code></td>
+      <td>make_reservation 확장 — service_name, stylist_preference, requested_time. 결과: slot 매칭 + bridge_jobs row + SMS 확인</td>
+      <td>1일</td>
+    </tr>
+    <tr>
+      <td>3.2</td>
+      <td><code>service_lookup</code></td>
+      <td>allergen_lookup 패턴 — service_name(예: balayage)에 대해 가격/소요시간/권장 stylist/add-on 반환</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>3.3</td>
+      <td><code>modify_appointment</code></td>
+      <td>cancel_order 패턴 — 시간/서비스/stylist 변경</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>3.4</td>
+      <td><code>cancel_appointment</code></td>
+      <td>24h 이내 취소는 manager 안내 룰 (pricing_policy.yaml)</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>3.5</td>
+      <td><code>list_stylists</code></td>
+      <td>"What stylists do you have?" → 현재 매장 stylist list + 전문 분야</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>3.6</td>
+      <td>realtime_voice.py dispatcher 분기 (vertical_kind 'service' → service tools)</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>3.7</td>
+      <td>Unit tests + 회귀 (200+ 기존 + 신규 ~20)</td>
+      <td>0.5일</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ 5 신규 tool 등록 (전체 voice tool 15개)</li>
+  <li>✓ Dispatcher가 vertical_kind에 따라 올바른 tool set 활성화</li>
+  <li>✓ 음식점 tool (create_order 등) 회귀 없음</li>
+  <li>✓ 신규 unit tests 모두 통과</li>
+</ul>
+
+<div class="phase-header">
+  <h3>Phase 4 — Beauty Template 자료 작성 <span class="duration">(2일)</span></h3>
+</div>
+
+<h4>Task</h4>
+<pre>backend/app/templates/beauty/
+├── safety_rules.yaml          — perm/coloring 화학물질, 임산부 주의, 두피 sensitivity
+├── service_categories.yaml    — haircut / coloring / styling / nails / facial / brows
+├── option_groups.yaml          — 길이(short/medium/long), 추가(blowdry, deep conditioning, treatment)
+├── system_prompt_base.txt     — Luna persona 강화 (현재 1줄 → 실용 paragraph + 룰)
+├── intake_flow.yaml           — INTAKE → SERVICE_SELECT → STYLIST → TIME_SLOT → CONFIRM
+├── scheduler.yaml             — 30/45/60/90/120분 슬롯 분류, stylist별 available
+├── emergency_rules.yaml       — 24h cancellation 정책, 응급 변경
+├── crm_followup.yaml          — 6-week haircut refresh 알림 (returning customer)
+└── pricing_policy.yaml        — flat-rate per service + add-on 합산, 팁 룰</pre>
+
+<h4>5lang 응답 패턴</h4>
+<ul>
+  <li>Korean: stylist 호칭 (선생님), service 명칭 (커트/펌/염색)</li>
+  <li>Spanish: estilista, corte, color, balayage</li>
+  <li>Vietnamese: nail salon 특화 (manicure/pedicure)</li>
+  <li>Japanese: シャンプー, カット, カラー</li>
+  <li>Chinese: 剪发, 染发, 烫发</li>
+</ul>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ 9 layer yaml 모두 완성 + validator 통과</li>
+  <li>✓ system_prompt_base.txt 한국어 응답 검증 (한 매장 simulate)</li>
+  <li>✓ 5lang 핵심 용어 dictionary 완비</li>
+</ul>
+
+<div class="pagebreak"></div>
+
+<div class="phase-header">
+  <h3>Phase 5 — JM Beauty Salon 라이브 검증 <span class="duration">(1.5일)</span></h3>
+</div>
+
+<h4>Task</h4>
+<table>
+  <thead><tr><th>#</th><th>작업</th><th>시간</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>5.1</td>
+      <td>JM Beauty Salon DB 보강 (service_items insert, stylist 1-2명, hours 확인)</td>
+      <td>0.5일</td>
+    </tr>
+    <tr>
+      <td>5.2</td>
+      <td>Twilio test 번호 활성 + webhook 자동 (A5 활용)</td>
+      <td>0.5h</td>
+    </tr>
+    <tr>
+      <td>5.3</td>
+      <td>라이브 통화 10건 (시나리오별)</td>
+      <td>1일</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>통화 시나리오 (10건)</h4>
+<table>
+  <thead><tr><th>#</th><th>언어</th><th>시나리오</th><th>예상 결과</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>EN</td><td>"Can I book a haircut tomorrow at 2pm?"</td><td>book_appointment 성공, SMS 확인</td></tr>
+    <tr><td>2</td><td>EN</td><td>"I need a color and a cut, how long does it take?"</td><td>service_lookup → duration + 가격 안내</td></tr>
+    <tr><td>3</td><td>KO</td><td>"내일 2시에 헤어컷 예약 가능해요?"</td><td>한국어 흐름 정상</td></tr>
+    <tr><td>4</td><td>ES</td><td>"¿Puedo reservar un corte mañana a las 2?"</td><td>스페인어 흐름 정상</td></tr>
+    <tr><td>5</td><td>EN</td><td>"Modify: change my haircut to a color"</td><td>modify_appointment 성공</td></tr>
+    <tr><td>6</td><td>EN</td><td>"Cancel my 2pm appointment"</td><td>cancel_appointment (24h 이상)</td></tr>
+    <tr><td>7</td><td>EN</td><td>24h 이내 취소 시도</td><td>manager 안내 / 정책 룰 작동</td></tr>
+    <tr><td>8</td><td>EN</td><td>영업시간 외 통화</td><td>voicemail or manager handoff</td></tr>
+    <tr><td>9</td><td>KO</td><td>"이번 주 가능한 시간 알려주세요"</td><td>list_stylists + slot 안내</td></tr>
+    <tr><td>10</td><td>EN</td><td>Returning customer (CRM Wave 1)</td><td>"Welcome back, Michael" + 6-week refresh 제안</td></tr>
+  </tbody>
+</table>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ 10건 통화 중 8건 이상 성공 (80%+)</li>
+  <li>✓ 5lang 모두 자연스러운 응답</li>
+  <li>✓ 음식점 매장 회귀 통화 1-2건 (cafe/pizza) — 영향 없음 확인</li>
+</ul>
+
+<div class="phase-header">
+  <h3>Phase 6 — 0-shot 검증 + 데이터 측정 <span class="duration">(1.5일)</span></h3>
+</div>
+
+<h4>Task</h4>
+<ol>
+  <li><strong>가상 매장 3개 wizard 등록</strong> (1일)
+    <ul>
+      <li>"ABC Hair Studio" (English) — vertical=beauty 선택 → 9-layer 자동 적용 → 통화 검증</li>
+      <li>"강남 헤어" (Korean) — KO 통화 검증</li>
+      <li>"Cabello Latino" (Spanish) — ES 통화 검증</li>
+      <li>측정: wizard 시간, 자동 작동률, 통화 성공률</li>
+    </ul>
+  </li>
+  <li><strong>코드 재사용률 line-by-line 측정</strong> (0.5일)
+    <ul>
+      <li>JM Cafe code base와 file-by-file 비교</li>
+      <li>vertical-specific 신규 line 수 / 전체 line 수</li>
+      <li>재사용률 % 계산 (예상: 85-90%)</li>
+    </ul>
+  </li>
+</ol>
+
+<h4>측정 보고 항목</h4>
+<table>
+  <thead><tr><th>지표</th><th>목표</th></tr></thead>
+  <tbody>
+    <tr><td>매장 등록 wizard 시간</td><td>&lt; 10분</td></tr>
+    <tr><td>0-shot 자동 작동률</td><td>≥ 80%</td></tr>
+    <tr><td>통화 성공률 (한/영/스 동일)</td><td>≥ 80%</td></tr>
+    <tr><td>코드 재사용률 (JM Cafe 기준)</td><td>85-90%</td></tr>
+    <tr><td>신규 line 수</td><td>3,000-4,000</td></tr>
+  </tbody>
+</table>
+
+<h4>Exit Criteria</h4>
+<ul>
+  <li>✓ 3 가상 매장 모두 wizard 등록 성공</li>
+  <li>✓ 각 매장 통화 3-5건 통과</li>
+  <li>✓ 측정 데이터 수집 완료</li>
+</ul>
+
+<div class="phase-header">
+  <h3>Phase 7 — 문서화 + 보고서 <span class="duration">(1일)</span></h3>
+</div>
+
+<h4>산출물</h4>
+<ol>
+  <li><strong>Beauty Salon MVP Result Report PDF</strong> (영업/투자자용)
+    <ul>
+      <li>Architecture proof 증명 (코드 재사용률 85-90% 실측)</li>
+      <li>통화 transcript archive (영/한/스)</li>
+      <li>측정 결과 매트릭스 (작업 시간, 작동률, 성공률)</li>
+      <li>Next vertical (Auto Repair) 예상 시간: <strong>2-3일</strong> (framework 적용)</li>
+      <li>Beauty 시장 진입 영업 전략 ($46B 시장, 100K+ 매장, 한국/라틴 cluster)</li>
+    </ul>
+  </li>
+  <li>session_resume + handoff 갱신 (다음 sprint 명시)</li>
+  <li>관련 메모리 update</li>
+</ol>
+
+<div class="pagebreak"></div>
+
+<h2>안정성 가드</h2>
+
+<table>
+  <thead><tr><th>가드</th><th>내용</th><th>검증 시점</th></tr></thead>
+  <tbody>
+    <tr><td><strong>회귀 안전</strong></td><td>매 Phase 마다 200+ unit tests 통과 + 음식점 라이브 통화 1-2건</td><td>각 Phase 종료 시</td></tr>
+    <tr><td><strong>Feature flag</strong></td><td><code>vertical_kind</code> column 분기 — service path는 OFF 상태로 deploy 가능</td><td>Phase 2 완료</td></tr>
+    <tr><td><strong>Backward compat</strong></td><td>bridge_transactions / menu_items 테이블 그대로 + bridge_jobs view alias</td><td>Phase 2-3 동안</td></tr>
+    <tr><td><strong>Live 검증 단계</strong></td><td>JM Beauty 1개 → 가상 3개 → 실제 영업 1개 (optional)</td><td>Phase 5-6</td></tr>
+    <tr><td><strong>Rollback plan</strong></td><td>vertical_kind config 변경만으로 음식점 flow 복귀 가능</td><td>비상 시</td></tr>
+    <tr><td><strong>Database migration</strong></td><td>모든 SQL change에 rollback SQL 동시 작성</td><td>Phase 2</td></tr>
+    <tr><td><strong>Staging environment</strong></td><td>(P0 sprint 후) staging에서 Phase 1-3 먼저 검증 → prod 적용</td><td>가능시</td></tr>
+  </tbody>
+</table>
+
+<h2>확장성 가드</h2>
+
+<table>
+  <thead><tr><th>가드</th><th>가치</th></tr></thead>
+  <tbody>
+    <tr><td>9-layer Framework 표준화</td><td>새 vertical 추가 = yaml만 작성 (2-3일)</td></tr>
+    <tr><td>Tool dispatcher vertical-aware</td><td>한 코드베이스, vertical-specific tool set 자동 활성</td></tr>
+    <tr><td>Frontend wizard vertical-aware</td><td>step labels + field 자동 변경 (메뉴 vs 서비스)</td></tr>
+    <tr><td>DB vertical_kind column</td><td>미래 vertical 추가 시 schema 변경 없음</td></tr>
+    <tr><td>9-layer yaml validator</td><td>새 vertical template 작성 시 즉시 검증</td></tr>
+    <tr><td>Persona 동적 추출 (이미 완성)</td><td>system_prompt에서 자동 추출 — 추가 코드 없음</td></tr>
+  </tbody>
+</table>
+
+<h2>예상 측정 결과</h2>
+
+<table>
+  <thead><tr><th>지표</th><th>목표</th><th>측정 방법</th></tr></thead>
+  <tbody>
+    <tr><td>Beauty 코드 재사용률 (vs JM Cafe)</td><td><strong>85-90%</strong></td><td>line-by-line diff</td></tr>
+    <tr><td>신규 코드 line</td><td><strong>3,000-4,000</strong></td><td>git diff stat</td></tr>
+    <tr><td>MVP 총 작업 시간</td><td><strong>10-14일</strong></td><td>실측</td></tr>
+    <tr><td>0-shot 매장 등록 자동 작동률</td><td><strong>80%+</strong></td><td>3 가상 매장 wizard 측정</td></tr>
+    <tr><td>라이브 통화 성공률</td><td><strong>90%+</strong></td><td>15-20 통화 측정</td></tr>
+    <tr><td>회귀 test 통과율</td><td><strong>100%</strong></td><td>매 Phase 종료</td></tr>
+    <tr><td>Next vertical (Auto Repair) 예상 시간</td><td><strong>2-3일</strong></td><td>Phase 7 계산</td></tr>
+  </tbody>
+</table>
+
+<h2>Risk Register + Rollback Plan</h2>
+
+<table>
+  <thead><tr><th>Risk</th><th>확률</th><th>영향</th><th>완화</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Phase 1 마이그레이션 시 cafe 회귀</td>
+      <td>중</td>
+      <td>높음</td>
+      <td>매 vertical 마이그레이션 후 라이브 통화. 회귀 시 git revert.</td>
+    </tr>
+    <tr>
+      <td>vertical_kind dispatch 분기에서 음식점 tool 누락</td>
+      <td>중</td>
+      <td>높음</td>
+      <td>Phase 3.6에서 명시적 white-list 사용. 회귀 unit test 강화.</td>
+    </tr>
+    <tr>
+      <td>Beauty 통화에서 한국어 응답 어색</td>
+      <td>중</td>
+      <td>중</td>
+      <td>Phase 4에서 한국어 simulate. Phase 5에서 실제 통화 검증.</td>
+    </tr>
+    <tr>
+      <td>Twilio test 번호 음질/지연 문제</td>
+      <td>낮</td>
+      <td>중</td>
+      <td>실제 매장 번호 사용 (JM Beauty 번호 활용)</td>
+    </tr>
+    <tr>
+      <td>0-shot 자동 작동률 80% 미달</td>
+      <td>낮</td>
+      <td>중</td>
+      <td>vertical detection 강화, default fallback 추가</td>
+    </tr>
+    <tr>
+      <td>Sprint 기간 14일 초과</td>
+      <td>중</td>
+      <td>낮</td>
+      <td>Phase 6 단축 (가상 매장 1개만), Phase 7 다음 sprint로</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>산출물 정리</h2>
+
+<table>
+  <thead><tr><th>Phase</th><th>산출물</th><th>저장 위치</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>9-layer spec.md + validator.py + 4 vertical 마이그레이션</td><td><code>backend/app/templates/_base/</code></td></tr>
+    <tr><td>2</td><td>DB migration SQL + rollback SQL + view alias</td><td><code>backend/scripts/migrate_vertical_kind.sql</code></td></tr>
+    <tr><td>3</td><td>5 신규 tool (book/cancel/modify/lookup/list) + 신규 ~20 unit tests</td><td><code>backend/app/skills/appointment/</code></td></tr>
+    <tr><td>4</td><td><code>templates/beauty/</code> 9-layer yaml + 5lang dictionary</td><td><code>backend/app/templates/beauty/</code></td></tr>
+    <tr><td>5</td><td>라이브 검증 transcript archive (10건)</td><td><code>docs/onboarding-validation/2026-XX-XX-jm-beauty-mvp/</code></td></tr>
+    <tr><td>6</td><td>0-shot 등록 데이터 + 측정 결과 매트릭스</td><td><code>docs/strategic-research/2026-XX-XX_beauty-mvp-metrics/</code></td></tr>
+    <tr><td>7</td><td>Beauty MVP Result Report PDF (영업/투자자용)</td><td><code>docs/strategic-research/2026-XX-XX_beauty-mvp-result/</code></td></tr>
+  </tbody>
+</table>
+
+<h2>Sprint 완료 후 즉시 가능한 후속 작업</h2>
+
+<ol>
+  <li><strong>실제 Beauty Salon 영업</strong> — LA/NY 한국계 미용실 1-2개 영입 → 라이브 검증</li>
+  <li><strong>Auto Repair vertical 추가</strong> — framework 활용, 2-3일 작업</li>
+  <li><strong>Frontend wizard polish</strong> — vertical-specific UI 자동 적용</li>
+  <li><strong>영업 자료 강화</strong> — "3 verticals proven" + 코드 재사용률 % 활용</li>
+  <li><strong>투자자 deck</strong> — Horizontal SaaS valuation 적용 (vertical-only 대비 2-3x)</li>
+</ol>
+
+<div class="callout callout-success">
+  <strong>Sprint 종료 시 영업/투자자 메시지:</strong> "우리는 음식점 / 미용실 / 자동차 / 홈서비스 등 모든 SMB vertical을 같은 코드베이스로 서비스. 한국어 + 영어 + 스페인어 + 일본어 + 중국어 native. 새 vertical 추가는 2-3일. Avoca는 home services only English only. JM은 horizontal multi-vertical multi-lingual."
+</div>
+
+<hr style="margin-top: 24pt; border: 0; border-top: 1px solid #cbd5e1;">
+<p style="font-size: 8.5pt; color: #64748b; text-align: center; margin-top: 12pt;">
+  JM Tech One · 2026-05-17 · Beauty Salon MVP Plan v1<br>
+  실행 예정: 2026-07 후반 (FSR/QSR 베타 출시 후) · Plan 작성 세션: 2026-05-17 EOD
+</p>
+
+</body>
+</html>
