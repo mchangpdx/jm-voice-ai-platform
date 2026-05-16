@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Avoca.ai 분석 + JM Home Services 템플릿화 전략 (2026-05-17)</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Apple SD Gothic Neo", sans-serif; color: #0f172a; line-height: 1.5; font-size: 9.8pt; }
+  h1 { font-size: 22pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #1e40af; margin-top: 20pt; padding-bottom: 4pt; border-bottom: 2px solid #c7d2fe; }
+  h3 { font-size: 11.5pt; color: #1e40af; margin-top: 14pt; }
+  h4 { font-size: 10.5pt; color: #312e81; margin-top: 10pt; }
+  .meta { color: #64748b; font-size: 9pt; margin-bottom: 14pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 8.5pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 5pt 7pt; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #1e3a8a; font-weight: 700; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.center { text-align: center; }
+  code { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 1pt 3pt; }
+  pre { font-family: "SF Mono", "Menlo", monospace; font-size: 8.5pt; background: #f1f5f9; border-radius: 3px; padding: 7pt 9pt; line-height: 1.4; border-left: 3px solid #6366f1; overflow-x: auto; }
+  ul, ol { padding-left: 18pt; margin: 4pt 0; }
+  li { margin: 2pt 0; }
+  .badge { display: inline-block; padding: 1.5pt 6pt; border-radius: 3px; font-size: 8pt; font-weight: 700; white-space: nowrap; }
+  .b-p0 { background: #fee2e2; color: #991b1b; }
+  .b-p1 { background: #fef3c7; color: #92400e; }
+  .b-p2 { background: #dbeafe; color: #1e40af; }
+  .b-p3 { background: #f1f5f9; color: #475569; }
+  .b-strength { background: #dcfce7; color: #14532d; }
+  .b-weakness { background: #fee2e2; color: #991b1b; }
+  .b-opportunity { background: #fef3c7; color: #92400e; }
+  .callout { border-left: 4px solid #6366f1; background: #eef2ff; padding: 8pt 12pt; margin: 10pt 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { border-color: #f59e0b; background: #fef3c7; }
+  .callout-success { border-color: #10b981; background: #d1fae5; }
+  .callout-danger { border-color: #ef4444; background: #fee2e2; }
+  .toc { background: #f8fafc; border: 1px solid #cbd5e1; padding: 8pt 14pt; border-radius: 4px; margin-bottom: 16pt; font-size: 9pt; }
+  .toc ul { margin: 0; padding-left: 14pt; }
+  .pagebreak { page-break-before: always; }
+  .summary-tile { display: inline-block; min-width: 92pt; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6pt 10pt; margin: 4pt 6pt 4pt 0; }
+  .summary-tile .label { font-size: 8pt; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+  .summary-tile .value { font-size: 13pt; font-weight: 700; color: #1e3a8a; margin-top: 2pt; }
+  .quote { border-left: 3px solid #94a3b8; padding: 4pt 12pt; margin: 8pt 0; color: #475569; font-style: italic; }
+  .expert-opinion { border: 2px solid #6366f1; background: #eef2ff; padding: 10pt 14pt; margin: 12pt 0; border-radius: 6px; }
+  .expert-opinion h4 { margin-top: 0; color: #4338ca; }
+</style>
+</head>
+<body>
+
+<h1>Avoca.ai 분석 + JM Home Services 템플릿화 전략</h1>
+<div class="meta">JM Tech One · JM AI Voice Platform · 2026-05-17 · 작성자: Claude (Opus 4.7) · 대상: mchang@jmtechone.com</div>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ul>
+    <li>Part 1 — Avoca.ai 전수조사 (제품/기술/시장/약점)</li>
+    <li>Part 2 — JM Tech One vs Avoca 비교 매트릭스</li>
+    <li>Part 3 — JM Home Services 템플릿화 전략 (사용자 제안 + 전문가 의견)</li>
+    <li>Part 4 — 필요 기능 전수조사 (Avoca 대비 gap analysis)</li>
+    <li>Part 5 — 코드 재사용률 (JM Cafe 기준 line-by-line)</li>
+    <li>Part 6 — 단계별 작업 목록 (Phase 1-6)</li>
+    <li>Part 7 — 결론 및 권고</li>
+  </ul>
+</div>
+
+<h2>Part 1 — Avoca.ai 전수조사</h2>
+
+<h3>회사 개요 (2026-04-29 기준)</h3>
+<div>
+  <span class="summary-tile"><div class="label">Valuation</div><div class="value">$1B</div></span>
+  <span class="summary-tile"><div class="label">총 펀딩</div><div class="value">$125M+</div></span>
+  <span class="summary-tile"><div class="label">투자자</div><div class="value" style="font-size:10pt;">Kleiner Perkins<br>Meritech, GC</div></span>
+  <span class="summary-tile"><div class="label">고객 매장</div><div class="value">1,000+</div></span>
+  <span class="summary-tile"><div class="label">2026 booking</div><div class="value">$1B (목표)</div></span>
+</div>
+
+<h3>타겟 산업 (21 trades)</h3>
+<p>HVAC, Plumbing, Electrical, Construction, Garage Door, Handyman, Home Cleaners, Home Security, Interior Designers, Junk Removal, Landscapers, Lawn Care, Movers, Painters, Pest Control, Pet Sitting, Pool Maintenance, Pressure Washers, Restoration Services, Roofing, Window Cleaners.</p>
+<p><strong>주력 vertical:</strong> HVAC / Plumbing / Electrical / Garage Door (4개).</p>
+
+<h3>제품 구조 — 3-Pillar System</h3>
+
+<table>
+  <thead><tr><th>Pillar</th><th>역할</th><th>핵심 기능</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Convert</strong> (Inbound)</td>
+      <td>24/7 inbound 통화/문자/채팅 응답 + 자동 booking</td>
+      <td>2초 이내 pick-up, IVR 없음, 자동 ServiceTitan booking, emergency 분류, multi-channel 통합</td>
+    </tr>
+    <tr>
+      <td><strong>Nurture</strong> (Outbound)</td>
+      <td>이탈 고객 재참여 + 신규 lead nurturing</td>
+      <td>SMS + Voice 드립 캠페인, 15초 이내 speed-to-lead, 과거 고객 재활성, Google LSA 직접 통합</td>
+    </tr>
+    <tr>
+      <td><strong>Coach</strong> (Analytics)</td>
+      <td>CSR 팀 자동 코칭 + 실시간 가시성</td>
+      <td>통화별 0-100 점수, objection handling 식별, 자동 코칭 추천, 매니저 대시보드 통합</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>통합 (Integrations)</h3>
+<ul>
+  <li><strong>ServiceTitan</strong> — Gold Partner (bidirectional native sync: 일정/dispatch/customer profile/call analytics/marketing attribution)</li>
+  <li>Housecall Pro — functional but not Gold</li>
+  <li>FieldRoutes (pest control 등)</li>
+  <li>Salesforce, Clover, Google Local Service Ads</li>
+  <li><strong>Gap:</strong> Workiz, FieldEdge, ServiceM8, Service Fusion 미지원</li>
+</ul>
+
+<h3>고객 실적 (검증된 case)</h3>
+<table>
+  <thead><tr><th>고객</th><th>성과</th></tr></thead>
+  <tbody>
+    <tr><td>H.L. Bowman ($100M biz)</td><td>9 CSR로 운영, Avoca가 70% 통화 처리</td></tr>
+    <tr><td>Granite Comfort</td><td>+20% YoY 매출, 50%+ booking, 9 call center → 1 통합</td></tr>
+    <tr><td>Wilson Companies</td><td>통화 품질 40% → 95%, booking 85%, 주당 400 통화</td></tr>
+    <tr><td>AireServ</td><td>인간 응답 2/3 month = 5 booking, Avoca 1/3 month = 43 booking</td></tr>
+    <tr><td>Reliable Comfort</td><td>150+ 동시 통화 처리, staff 추가 없이</td></tr>
+  </tbody>
+</table>
+
+<h3>가격 + ICP</h3>
+<ul>
+  <li><strong>가격:</strong> 비공개. 3rd party 추정 $1,000–$3,000/월 (sales-quoted only)</li>
+  <li><strong>ICP:</strong> $3M+ 연매출, 5+ CSR, ServiceTitan/HCP 사용 매장</li>
+  <li><strong>비추천:</strong> 솔로 운영자, sub-$1M 회사, non-ServiceTitan 사용자</li>
+</ul>
+
+<h3>강점 (5개)</h3>
+<table>
+  <tbody>
+    <tr><td><span class="badge b-strength">강점</span></td><td>Series B $1B credibility — Kleiner Perkins backing</td></tr>
+    <tr><td><span class="badge b-strength">강점</span></td><td>Coach pillar 독창성 — call scoring 자동 코칭, 직접 경쟁자 없음</td></tr>
+    <tr><td><span class="badge b-strength">강점</span></td><td>ServiceTitan native — middleware 없는 deep integration</td></tr>
+    <tr><td><span class="badge b-strength">강점</span></td><td>Operator-validated design — 실제 HVAC 운영자 피드백 기반</td></tr>
+    <tr><td><span class="badge b-strength">강점</span></td><td>명단 가능한 enterprise 고객 (1-800-GOT-JUNK, Goettl, TurnPoint, Authority Brands)</td></tr>
+  </tbody>
+</table>
+
+<h3>약점 (6개)</h3>
+<table>
+  <tbody>
+    <tr><td><span class="badge b-weakness">약점</span></td><td>가격 불투명 — 솔로/소형 매장 가격대 진입 불가</td></tr>
+    <tr><td><span class="badge b-weakness">약점</span></td><td><strong>Home services 전용</strong> — restaurant/beauty/auto 등 multi-vertical 안 됨</td></tr>
+    <tr><td><span class="badge b-weakness">약점</span></td><td>다국어 지원 빈약 — 영어 위주, 한국어/일본어 미지원</td></tr>
+    <tr><td><span class="badge b-weakness">약점</span></td><td>Free trial 없음 — sales-led demo만 가능</td></tr>
+    <tr><td><span class="badge b-weakness">약점</span></td><td>일부 compliance 미흡 — HIPAA, GDPR 일부 미지원</td></tr>
+    <tr><td><span class="badge b-weakness">약점</span></td><td>SMB 진입 장벽 — $3M+ 매장만 ROI 가능</td></tr>
+  </tbody>
+</table>
+
+<div class="pagebreak"></div>
+
+<h2>Part 2 — JM Tech One vs Avoca 비교</h2>
+
+<table>
+  <thead><tr><th>항목</th><th>Avoca.ai</th><th>JM Tech One</th><th>JM 위치</th></tr></thead>
+  <tbody>
+    <tr><td>Valuation</td><td>$1B (Series B 완료)</td><td>2인 팀, bootstrap</td><td><span class="badge b-weakness">자금력 ↓</span></td></tr>
+    <tr><td>Target vertical</td><td>Home services only (21 trades)</td><td><strong>Multi-vertical</strong> (FSR/QSR/beauty/auto/home)</td><td><span class="badge b-strength">차별화 ↑</span></td></tr>
+    <tr><td>Target customer</td><td>$3M+ revenue, 5+ CSR</td><td><strong>SMB</strong> ($300K-$3M), 1-5 직원</td><td><span class="badge b-strength">untapped market</span></td></tr>
+    <tr><td>다국어</td><td>영어 위주</td><td><strong>5lang</strong> (EN/ES/KO/JA/ZH)</td><td><span class="badge b-strength">한국 시장 독점</span></td></tr>
+    <tr><td>POS 통합</td><td>ServiceTitan, HCP, Clover</td><td>Loyverse + SumUp 1차, 다중 어댑터 패턴</td><td><span class="badge b-opportunity">아직 vertical narrow</span></td></tr>
+    <tr><td>Voice agent</td><td>24/7 inbound + booking</td><td>24/7 inbound + ordering + payment + booking</td><td><span class="badge b-strength">기능 깊이 ↑</span></td></tr>
+    <tr><td>CRM</td><td>ServiceTitan 의존</td><td>자체 multi-tenant CRM (Wave 1 완성)</td><td><span class="badge b-strength">의존성 ↓</span></td></tr>
+    <tr><td>Outbound</td><td>Nurture pillar (드립 캠페인)</td><td><span class="badge b-p2">P2 — 미구현</span></td><td><span class="badge b-weakness">갭</span></td></tr>
+    <tr><td>Coach (call scoring)</td><td>독창적 강점</td><td><span class="badge b-p2">P2 — 미구현</span></td><td><span class="badge b-weakness">갭</span></td></tr>
+    <tr><td>Dispatch / Technician 가용성</td><td>ServiceTitan에 위임</td><td><span class="badge b-p1">P1 — 미구현</span></td><td><span class="badge b-weakness">Home services 갭</span></td></tr>
+    <tr><td>Emergency triage</td><td>HVAC 특화 logic</td><td>일부 (전체 manager handoff)</td><td><span class="badge b-opportunity">강화 필요</span></td></tr>
+    <tr><td>Order/Payment 흐름</td><td>Booking only (결제는 ST에 위임)</td><td><strong>Voice → Order → Payment 통합</strong></td><td><span class="badge b-strength">FSR/QSR 우위</span></td></tr>
+    <tr><td>Frontend Admin</td><td>자체 dashboard (Coach pillar)</td><td>자체 dashboard (KPI는 P1)</td><td><span class="badge b-opportunity">기능 다듬기</span></td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>핵심 인사이트:</strong> Avoca는 home services에 깊지만 좁고 비쌈. JM Tech One은 multi-vertical에 넓지만 home services는 얕음. <strong>FSR/QSR에서 우위 + home services 진입 = 새 SMB 시장 점유 가능</strong>.
+</div>
+
+<div class="pagebreak"></div>
+
+<h2>Part 3 — JM Home Services 템플릿화 전략</h2>
+
+<h3>사용자 제안 요약</h3>
+<div class="quote">
+  "JM Cafe가 FSR/QSR 매장 신규 등록 기준 템플릿으로 쓰였듯, JM Home Services를 home services 업종의 기준 템플릿으로 만들면 비슷한 업종 회사 영입 시 기능/코드 재사용 효과가 큼."
+</div>
+
+<div class="expert-opinion">
+<h4>전문가 의견 (Claude Opus 4.7)</h4>
+
+<p><strong>사용자 제안에 동의 — 단, 한 단계 더 추상화 권장.</strong></p>
+
+<p>현재 JM Cafe는 FSR/QSR template으로 작동 중. JM Pizza / JM Taco 등록이 거의 0-shot으로 성공한 이유는 다음 5개 자산이 잘 정의되어 있기 때문:</p>
+<ol>
+  <li><code>allergen_rules.yaml</code> — vertical 특화 위험 매트릭스</li>
+  <li><code>menu.yaml</code> — 서비스 카테고리</li>
+  <li><code>modifier_groups.yaml</code> — 옵션 변형</li>
+  <li><code>system_prompt_base.txt</code> — 페르소나 + 룰</li>
+  <li>PHASE FLOW gate (CART → TOTAL → NAME → EMAIL → RECITAL)</li>
+</ol>
+
+<p><strong>JM Home Services는 위 구조의 home services 변형이 아직 미완.</strong> 단순히 "JM Home Services를 template화"하는 것보다 <strong>"Vertical Template Framework 표준화"</strong>를 권장.</p>
+
+<p>모든 vertical (restaurant / home / beauty / auto)이 동일한 <strong>9-layer 표준</strong>을 따르도록:</p>
+
+<table>
+  <thead><tr><th>Layer</th><th>JM Cafe (FSR)</th><th>JM Home Services</th></tr></thead>
+  <tbody>
+    <tr><td>1. risk_rules.yaml</td><td>allergen_rules.yaml</td><td>safety_hazard_rules.yaml (가스누출/감전/누수)</td></tr>
+    <tr><td>2. service_categories.yaml</td><td>menu.yaml</td><td>HVAC/plumbing/electrical 서비스 항목</td></tr>
+    <tr><td>3. option_groups.yaml</td><td>modifier_groups.yaml</td><td>service_options.yaml (긴급도/약속시간/추가 진단)</td></tr>
+    <tr><td>4. system_prompt_base.txt</td><td>Aria/Sofia/Marco 페르소나</td><td>Rex 페르소나 + dispatch 룰</td></tr>
+    <tr><td>5. intake_flow.yaml <em>(NEW)</em></td><td>CART → TOTAL → NAME → EMAIL → RECITAL</td><td>INTAKE → DIAGNOSIS → ESTIMATE → SCHEDULE → CONFIRM</td></tr>
+    <tr><td>6. scheduler.yaml <em>(NEW)</em></td><td>Table reservation</td><td>Technician 슬롯 (2-4h 윈도우, emergency 즉시)</td></tr>
+    <tr><td>7. emergency_rules.yaml <em>(NEW)</em></td><td>알러지 severe</td><td>물누수/가스/감전/HVAC 정지</td></tr>
+    <tr><td>8. crm_followup.yaml <em>(NEW)</em></td><td>"the usual" 제안</td><td>year-over-year 정기 점검 reminder</td></tr>
+    <tr><td>9. pricing_policy.yaml <em>(NEW)</em></td><td>Item × variants</td><td>Service call fee + hourly/flat + membership plan</td></tr>
+  </tbody>
+</table>
+
+<p><strong>왜 이렇게 추상화하면 더 좋은가?</strong></p>
+<ul>
+  <li>모든 vertical이 같은 9 자산만 작성하면 등록 가능 → 새 vertical 추가 <strong>1-2일</strong> (현재는 1-2주)</li>
+  <li>코드 재사용률 80%+ (UI/통화/DB/결제 공유)</li>
+  <li>JM Home Services 등록 = home services 전체 vertical의 reference implementation</li>
+  <li><strong>다음 ABC Plumbing 등록 → vertical=home_services 선택만으로 80% 작동</strong></li>
+  <li>HVAC 회사 추가 → system_prompt에 1-2줄만 수정</li>
+  <li>영업 비용 시간 대폭 감소 → Avoca와 직접 경쟁 가능</li>
+</ul>
+
+<p><strong>더 좋은 방법 (가감없이 솔직히):</strong></p>
+<ol>
+  <li><strong>Layer 5 intake_flow.yaml가 가장 중요</strong> — 이미 PHASE FLOW gate가 system prompt에 있지만 vertical 별로 단계가 다름. 이를 vertical config로 추상화하면 LLM이 vertical 따라 자동으로 흐름 변경.</li>
+  <li><strong>Layer 6 scheduler.yaml — 가장 큰 갭</strong>. 음식점은 table reservation 단순 시간 슬롯이지만 home services는 technician × geo × skill match. ServiceTitan이 잘하는 영역.</li>
+  <li><strong>JM Home Services는 reference + 실제 회사 자료로 가치 검증 필요</strong>. JM Cafe는 실제 카페이고 통화 검증됨. JM Home Services는 데모 매장으로 phone도 routing 미연결 (DB 확인 결과). 실제 영업 1-2 가맹점 확보 후 라이브 검증해야 template 신뢰도 ↑.</li>
+  <li><strong>Avoca의 코드/방식을 따라하지 말 것</strong>. Avoca는 ServiceTitan dependency. JM은 자체 backbone — 단점은 dispatch 약점, 장점은 multi-vertical + SMB 진입 가능. <strong>"Avoca보다 작은 매장, 그러나 multi-vertical, 한국어 + 영어"</strong> 포지션이 가장 강함.</li>
+  <li><strong>1차 출시는 home services 보류 권장</strong>. FSR/QSR (Loyverse + SumUp) 출시로 매출 확보 → home services는 2-3차에 본격. 자원 분산 위험.</li>
+</ol>
+</div>
+
+<div class="pagebreak"></div>
+
+<h2>Part 4 — 필요 기능 전수조사 (Avoca 대비 Gap Analysis)</h2>
+
+<table>
+  <thead><tr><th>#</th><th>기능</th><th>Avoca</th><th>JM 현재</th><th>JM Home Services 필요도</th></tr></thead>
+  <tbody>
+    <tr><td>HS1</td><td>Service category catalog</td><td>✓</td><td>✗</td><td><span class="badge b-p0">P0</span></td></tr>
+    <tr><td>HS2</td><td>Technician scheduling (slot 기반)</td><td>✓ (ST)</td><td>일부 (reservation tool)</td><td><span class="badge b-p0">P0</span></td></tr>
+    <tr><td>HS3</td><td>Emergency triage (severity 분류)</td><td>✓</td><td>일부 (transfer_to_manager)</td><td><span class="badge b-p0">P0</span></td></tr>
+    <tr><td>HS4</td><td>Service area / ZIP code validation</td><td>✓</td><td>✗</td><td><span class="badge b-p0">P0</span></td></tr>
+    <tr><td>HS5</td><td>Quote / estimate 흐름</td><td>✓</td><td>✗</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS6</td><td>Service call fee + hourly/flat pricing</td><td>✓ (ST)</td><td>menu pricing only</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS7</td><td>Technician skill match (HVAC cert, gas)</td><td>✓ (ST)</td><td>✗</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS8</td><td>Multi-trade support (1 회사 = plumbing+HVAC)</td><td>✓</td><td>vertical 1개만</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS9</td><td>Day-of confirmation SMS/voice</td><td>✓</td><td>일부</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS10</td><td>Job completion follow-up (review request)</td><td>✓</td><td>✗</td><td><span class="badge b-p1">P1</span></td></tr>
+    <tr><td>HS11</td><td>Membership / maintenance plan</td><td>✓</td><td>✗</td><td><span class="badge b-p2">P2</span></td></tr>
+    <tr><td>HS12</td><td>Outbound nurture campaigns (드립)</td><td>✓ (Nurture)</td><td>✗</td><td><span class="badge b-p2">P2</span></td></tr>
+    <tr><td>HS13</td><td>Call scoring (Coach pillar)</td><td>✓ (독창적)</td><td>✗</td><td><span class="badge b-p2">P2</span></td></tr>
+    <tr><td>HS14</td><td>ServiceTitan native integration</td><td>✓ (Gold)</td><td>✗</td><td><span class="badge b-p3">P3</span> (FSR 1차 후 검토)</td></tr>
+    <tr><td>HS15</td><td>Housecall Pro integration</td><td>✓</td><td>✗</td><td><span class="badge b-p3">P3</span></td></tr>
+    <tr><td>HS16</td><td>FieldEdge / FieldRoutes integration</td><td>일부</td><td>✗</td><td><span class="badge b-p3">P3</span></td></tr>
+    <tr><td>HS17</td><td>Google LSA direct integration</td><td>✓</td><td>✗</td><td><span class="badge b-p3">P3</span></td></tr>
+    <tr><td>HS18</td><td>License / insurance verbal 안내</td><td>일부</td><td>✗</td><td><span class="badge b-p2">P2</span></td></tr>
+    <tr><td>HS19</td><td>Insurance claim 통화 흐름 (restoration)</td><td>일부</td><td>✗</td><td><span class="badge b-p3">P3</span></td></tr>
+    <tr><td>HS20</td><td>Recurring service scheduling (lawn care 등)</td><td>✓</td><td>✗</td><td><span class="badge b-p2">P2</span></td></tr>
+  </tbody>
+</table>
+
+<h3>P0 필수 4개 — JM Home Services 출시 차단</h3>
+<ol>
+  <li><strong>HS1 Service category catalog</strong> — 음식 메뉴 대신 서비스 항목</li>
+  <li><strong>HS2 Technician scheduling</strong> — slot 기반 (2-4h 윈도우)</li>
+  <li><strong>HS3 Emergency triage</strong> — severity 분류 → 즉시/오늘/내일/일정 분기</li>
+  <li><strong>HS4 Service area validation</strong> — ZIP code lookup, "We don't service that area"</li>
+</ol>
+
+<h2>Part 5 — 코드 재사용률 (JM Cafe 기준)</h2>
+
+<table>
+  <thead><tr><th>Component</th><th>JM Cafe (FSR)</th><th>JM Home Services 적용</th><th>재사용률</th></tr></thead>
+  <tbody>
+    <tr><td>Voice WS / OpenAI Realtime</td><td>core</td><td>그대로 사용</td><td class="num"><strong>100%</strong></td></tr>
+    <tr><td>5lang policy (EN/ES/KO/JA/ZH)</td><td>core</td><td>EN+ES (HVAC 미국 시장)</td><td class="num">100%</td></tr>
+    <tr><td>CRM Wave 1 (returning caller)</td><td>core</td><td>그대로 사용</td><td class="num">100%</td></tr>
+    <tr><td>PHASE FLOW gate</td><td>CART→TOTAL→NAME→EMAIL→RECITAL</td><td>INTAKE→DIAGNOSIS→ESTIMATE→SCHEDULE→CONFIRM</td><td class="num">70%</td></tr>
+    <tr><td>Tool: create_order → create_job</td><td>create_order</td><td>rename + field 일부 추가</td><td class="num">80%</td></tr>
+    <tr><td>Tool: cancel_order → cancel_job</td><td>cancel_order</td><td>거의 동일</td><td class="num">95%</td></tr>
+    <tr><td>Tool: modify_order → modify_job</td><td>modify_order</td><td>거의 동일</td><td class="num">90%</td></tr>
+    <tr><td>Tool: make_reservation → book_appointment</td><td>make_reservation</td><td>technician 필드 추가</td><td class="num">85%</td></tr>
+    <tr><td>Tool: allergen_lookup → service_lookup</td><td>allergen_lookup</td><td>rename + content swap</td><td class="num">60%</td></tr>
+    <tr><td>Tool: recent_orders → recent_jobs</td><td>recent_orders</td><td>거의 동일</td><td class="num">95%</td></tr>
+    <tr><td>Tool: recall_order → recall_job</td><td>recall_order</td><td>그대로</td><td class="num">100%</td></tr>
+    <tr><td>Tool: transfer_to_manager</td><td>core</td><td>그대로</td><td class="num">100%</td></tr>
+    <tr><td>Tool: emergency_triage</td><td><span class="badge b-p0">신규</span></td><td>신규 작성</td><td class="num">0%</td></tr>
+    <tr><td>Tool: service_area_check</td><td><span class="badge b-p0">신규</span></td><td>신규 작성</td><td class="num">0%</td></tr>
+    <tr><td>Tool: get_estimate</td><td><span class="badge b-p1">신규</span></td><td>신규 작성</td><td class="num">0%</td></tr>
+    <tr><td>bridge_transactions → bridge_jobs</td><td>core</td><td>schema rename / 일부 column 추가</td><td class="num">85%</td></tr>
+    <tr><td>menu_items → service_items</td><td>core</td><td>rename + 필드 추가 (service_type, duration_min)</td><td class="num">80%</td></tr>
+    <tr><td>modifier_groups → service_options</td><td>core</td><td>rename only</td><td class="num">90%</td></tr>
+    <tr><td>dietary_tags → service_certifications</td><td>infer_dietary_tags</td><td>infer_service_certs 변형</td><td class="num">70%</td></tr>
+    <tr><td>allergen_rules.yaml → safety_hazard_rules.yaml</td><td>FDA-9 + cafe-specific</td><td>vertical 자료 swap</td><td class="num">60%</td></tr>
+    <tr><td>Loyverse adapter</td><td>core</td><td>✗ (ServiceTitan/HCP P3, 1차는 자체)</td><td class="num">0%</td></tr>
+    <tr><td>SumUp PG</td><td>P0</td><td>그대로 사용 (deposit/estimate 결제)</td><td class="num">95%</td></tr>
+    <tr><td>Frontend wizard</td><td>core</td><td>UI text 차이 (메뉴 → 서비스)</td><td class="num">80%</td></tr>
+    <tr><td>Admin Dashboard</td><td>P1</td><td>KPI 동일 (call/booking/revenue)</td><td class="num">85%</td></tr>
+    <tr><td>Public scripts viewer</td><td>core</td><td>그대로 (test script 자료만 추가)</td><td class="num">100%</td></tr>
+    <tr><td>infer_dietary_tags → infer_service_certs</td><td>새 vertical 추론 패턴</td><td>같은 패턴, content swap</td><td class="num">75%</td></tr>
+    <tr><td>menu_yaml_exporter</td><td>core</td><td>field rename</td><td class="num">85%</td></tr>
+    <tr><td>db_seeder</td><td>core</td><td>schema rename, 거의 동일</td><td class="num">85%</td></tr>
+    <tr><td>Twilio webhook auto-provision</td><td>A5 완성</td><td>그대로 사용</td><td class="num">100%</td></tr>
+    <tr><td>Vertical persona (Rex)</td><td>DEFAULT_PERSONAS</td><td>이미 등록됨</td><td class="num">100%</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>가중평균 재사용률: 약 78% (변경되는 부분은 vertical-specific 자산 + 신규 3 tool)</strong><br>
+  순수 신규 작업: 약 22% (HS1-HS4 + tool 3개 + yaml 4개 추상화)
+</div>
+
+<div class="pagebreak"></div>
+
+<h2>Part 6 — 단계별 작업 목록 (Phase 1-6)</h2>
+
+<h3>Phase 1 — Vertical Template Framework 표준화 (1-2주)</h3>
+<table>
+  <tbody>
+    <tr><td>1.1</td><td>Vertical 9-layer 표준 docs/architecture/vertical-template-spec.md 작성</td><td>2일</td></tr>
+    <tr><td>1.2</td><td>`backend/app/templates/_base/` 기본 스키마 + yaml 검증 함수</td><td>2일</td></tr>
+    <tr><td>1.3</td><td>기존 cafe/pizza/mexican/kbbq template을 9-layer로 마이그레이션 (회귀 안전)</td><td>2-3일</td></tr>
+    <tr><td>1.4</td><td>vertical_template_validator unit test</td><td>1일</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 2 — Schema 추상화 (1-2주)</h3>
+<table>
+  <tbody>
+    <tr><td>2.1</td><td>bridge_transactions → bridge_jobs alias view (backward compat)</td><td>1일</td></tr>
+    <tr><td>2.2</td><td>menu_items → service_items 통합 (단일 테이블, vertical_kind column)</td><td>2-3일</td></tr>
+    <tr><td>2.3</td><td>service_categories table + RLS</td><td>1일</td></tr>
+    <tr><td>2.4</td><td>technician table + RLS + skills column</td><td>1-2일</td></tr>
+    <tr><td>2.5</td><td>service_area (ZIP code list) table</td><td>1일</td></tr>
+    <tr><td>2.6</td><td>회귀 unit test 통과 (기존 150 tests + 신규)</td><td>1일</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 3 — Vertical-specific Tools (1-2주)</h3>
+<table>
+  <tbody>
+    <tr><td>3.1</td><td>emergency_triage tool (severity 5단계: emergency/urgent/today/this_week/scheduled)</td><td>2일</td></tr>
+    <tr><td>3.2</td><td>service_area_check tool (ZIP code + customer phone area)</td><td>1일</td></tr>
+    <tr><td>3.3</td><td>get_estimate tool (service item × duration + service call fee)</td><td>2일</td></tr>
+    <tr><td>3.4</td><td>book_appointment tool (technician slot + skill match)</td><td>2-3일</td></tr>
+    <tr><td>3.5</td><td>realtime_voice.py dispatcher 분기 + system prompt 룰</td><td>1-2일</td></tr>
+    <tr><td>3.6</td><td>Unit tests + 회귀</td><td>1일</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 4 — JM Home Services Template + 실제 매장 등록 (1주)</h3>
+<table>
+  <tbody>
+    <tr><td>4.1</td><td>`backend/app/templates/home_services/` 9-layer 자산 신규</td><td>2-3일</td></tr>
+    <tr><td>4.2</td><td>JM Home Services DB row 보강 (service_items, technicians, service_area, etc)</td><td>1일</td></tr>
+    <tr><td>4.3</td><td>JM Home Services Twilio 번호 활성 + webhook 연결</td><td>4-6h</td></tr>
+    <tr><td>4.4</td><td>라이브 검증 통화 — emergency triage + booking + estimate</td><td>1일</td></tr>
+    <tr><td>4.5</td><td>버그 fix + 회귀 통화</td><td>1일</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 5 — Next Home Services 회사 0-shot 등록 검증 (3-5일)</h3>
+<table>
+  <tbody>
+    <tr><td>5.1</td><td>가상 ABC Plumbing 회사 wizard 등록 → 9-layer 자동 적용 검증</td><td>1일</td></tr>
+    <tr><td>5.2</td><td>가상 HVAC 회사 wizard 등록 → 차이점 (system_prompt 1-2 line만 수정)</td><td>1일</td></tr>
+    <tr><td>5.3</td><td>실제 SMB home services 가맹점 1-2개 영업 → 라이브 등록</td><td>1-3일 (영업 의존)</td></tr>
+    <tr><td>5.4</td><td>0-shot 등록 시간 측정 (목표: 위저드 5분 + 검증 통화 10분)</td><td>0.5일</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 6 — Avoca 격차 좁히기 (2-3주, optional)</h3>
+<table>
+  <tbody>
+    <tr><td>6.1</td><td>HS5 Quote SMS 발송 (estimate 통화 후 자동 SMS)</td><td>1-2일</td></tr>
+    <tr><td>6.2</td><td>HS9 Day-of confirmation SMS/voice</td><td>1일</td></tr>
+    <tr><td>6.3</td><td>HS10 Job completion follow-up + review request</td><td>1-2일</td></tr>
+    <tr><td>6.4</td><td>HS7 Technician skill match 강화 (HVAC certified 등)</td><td>2일</td></tr>
+    <tr><td>6.5</td><td>HS8 Multi-trade 회사 지원 (1 회사 = HVAC + plumbing)</td><td>2-3일</td></tr>
+    <tr><td>6.6</td><td>HS11 Membership / maintenance plan (P2)</td><td>3-4일</td></tr>
+    <tr><td>6.7</td><td>HS12 Outbound nurture campaigns (Avoca Nurture 격차)</td><td>1-2주</td></tr>
+    <tr><td>6.8</td><td>HS13 Call scoring / Coach pillar (Avoca 독창 강점 격차)</td><td>2-3주</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>총 작업량:</strong> Phase 1-5 = <strong>약 6-8주</strong> (JM Home Services 출시 + 0-shot 검증 완료)<br>
+  Phase 6 (Avoca 격차) = 추가 <strong>2-3개월</strong> 점진 출시
+</div>
+
+<h2>Part 7 — 결론 및 권고</h2>
+
+<h3>핵심 인사이트</h3>
+<ol>
+  <li><strong>Avoca는 home services 단일 vertical에서 압도적</strong> — $1B valuation, 1,000+ 매장, ServiceTitan native</li>
+  <li><strong>JM Tech One의 차별 강점</strong> — multi-vertical + SMB + 5lang + Voice/Order/Payment 통합</li>
+  <li><strong>1차 출시는 FSR/QSR 권장</strong> — Loyverse + SumUp 흐름 안정, 매출 확보 후 home services 진입</li>
+  <li><strong>JM Home Services 템플릿화는 valuable, 단 우선순위 조정 필요</strong> — Vertical Template Framework 표준화가 단일 매장 template보다 가치 큼</li>
+</ol>
+
+<h3>최종 권고 (가감없이)</h3>
+<table>
+  <thead><tr><th>시점</th><th>권고 액션</th><th>이유</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>2026-05 ~ 2026-07 (베타 1차)</strong></td>
+      <td>FSR/QSR 매장 영업 + Loyverse + SumUp 안정화. Home services 작업 <strong>보류</strong>.</td>
+      <td>자원 분산 위험. 매출 우선 + voice agent 신뢰도 확보.</td>
+    </tr>
+    <tr>
+      <td><strong>2026-08 ~ 2026-10 (베타 후)</strong></td>
+      <td>Phase 1-2 (Vertical Template Framework 표준화 + Schema 추상화). 코드만 작업, 신규 매장 영업 없음.</td>
+      <td>FSR/QSR 매장에 영향 없음, 백엔드만 정리. 코드 부채 감소.</td>
+    </tr>
+    <tr>
+      <td><strong>2026-11 ~ 2027-01 (2차 출시 준비)</strong></td>
+      <td>Phase 3-4 (Home services tools + JM Home Services 라이브). 실제 영업 1-2 가맹점.</td>
+      <td>FSR/QSR 매출 안정화 후 새 vertical 확장. Avoca와 직접 경쟁 시작.</td>
+    </tr>
+    <tr>
+      <td><strong>2027-02+ (성장기)</strong></td>
+      <td>Phase 5-6 (0-shot 검증 + Avoca 격차 좁히기). Coach pillar는 후순위.</td>
+      <td>Outbound + Coach는 enterprise feature, SMB는 Inbound + Booking 우선.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-success">
+  <strong>한 줄 결론:</strong> JM Home Services 템플릿화는 <strong>전적으로 동의 + 한 단계 추상화 권장 (9-layer Vertical Framework)</strong>. 다만 <strong>1차 출시 후 진행이 자원 효율 최적</strong>. Avoca를 따라하지 말고 multi-vertical + SMB + 5lang 차별점을 강화하는 게 정답.
+</div>
+
+<hr style="margin-top: 24pt; border: 0; border-top: 1px solid #cbd5e1;">
+<p style="font-size: 8.5pt; color: #64748b; text-align: center; margin-top: 12pt;">
+  JM Tech One · 2026-05-17 · 본 문서는 사내 전략 자료 / 외부 공유 금지<br>
+  Sources: avoca.ai · contractortoolstack.com · leapingai.com · prnewswire.com · fortune.com · theaiinsider.tech · marketplace.servicetitan.com
+</p>
+
+</body>
+</html>
