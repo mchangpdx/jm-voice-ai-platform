@@ -29,6 +29,7 @@ from app.api.admin.sync_control import router as admin_sync_router  # Phase 7-A 
 from app.api.admin.onboarding import router as admin_onboarding_router  # 2026-05-12 — menu onboarding wizard endpoints (메뉴 온보딩 마법사)
 from app.api.admin.mock_menu import router as admin_mock_menu_router  # 2026-05-15 TEMP — Mexican validation mock menu (검증용 임시)
 from app.api.admin.platform import router as admin_platform_router  # 2026-05-17 — platform admin read-only (모든 agency·store 조회)
+from app.api.admin.users import router as admin_users_router  # 2026-05-18 — Phase 2-B users & roles management
 from app.api.public.menu_viewer import router as public_menu_router  # 2026-05-15 — public /menu/{slug} viewer (공개 메뉴 뷰어)
 from app.api.public.scripts_viewer import router as public_scripts_router  # 2026-05-15 — public /scripts/{slug} test-call scripts (공개 통화 스크립트 뷰어)
 
@@ -92,6 +93,7 @@ app.include_router(admin_sync_router)    # Phase 7-A — sync freeze toggle (관
 app.include_router(admin_onboarding_router)  # 2026-05-12 — menu onboarding wizard (메뉴 온보딩 마법사 API)
 app.include_router(admin_mock_menu_router)  # 2026-05-15 TEMP — Mexican validation mock menu (검증용 임시, 검증 후 제거)
 app.include_router(admin_platform_router)  # 2026-05-17 — platform admin read-only (모든 agency·store)
+app.include_router(admin_users_router)     # 2026-05-18 — Phase 2-B users & roles (사용자 + 역할 관리)
 app.include_router(public_menu_router)      # 2026-05-15 — public /menu/{slug} viewer (공개 메뉴 뷰어, 모든 매장 자동 지원)
 app.include_router(public_scripts_router)   # 2026-05-15 — public /scripts/{slug} test-call scripts (공개 통화 스크립트 뷰어)
 
