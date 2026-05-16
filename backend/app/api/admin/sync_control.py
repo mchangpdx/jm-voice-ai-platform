@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from app.core.audit import audit_log, get_actor
 from app.services.sync.freeze import (
     freeze_all,
     freeze_store,
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/api/admin/sync", tags=["Admin Sync"], include_in_sch
 async def admin_freeze(
     duration_min: int = Query(30, ge=1, le=240),
     store_id: Optional[str] = Query(None),
+    actor: dict = Depends(get_actor),
 ):
     """Activate sync freeze. If store_id is given, freezes that store only;
     otherwise freezes all stores globally.
@@ -42,17 +44,44 @@ async def admin_freeze(
         result = freeze_store(store_id, duration_min)
     else:
         result = freeze_all(duration_min)
+
+    await audit_log(
+        actor_user_id=actor["user_id"] or "anonymous",
+        actor_email=actor["email"],
+        action="system.sync_freeze",
+        target_type="store" if store_id else "system",
+        target_id=store_id,
+        before=None,
+        after={"duration_min": duration_min, "scope": store_id or "*"},
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
     return {"ok": True, **result, "status": status()}
 
 
 @router.post("/unfreeze")
-async def admin_unfreeze(store_id: Optional[str] = Query(None)):
+async def admin_unfreeze(
+    store_id: Optional[str] = Query(None),
+    actor: dict = Depends(get_actor),
+):
     """Lift the freeze. If store_id is given, unfreezes that store only;
     otherwise lifts the global freeze ('*').
     (sync 차단 해제 — store_id 없으면 전역 해제)
     """
     key = store_id or "*"
     cleared = unfreeze_store(key)
+
+    await audit_log(
+        actor_user_id=actor["user_id"] or "anonymous",
+        actor_email=actor["email"],
+        action="system.sync_unfreeze",
+        target_type="store" if store_id else "system",
+        target_id=store_id,
+        before={"scope": key, "was_frozen": cleared},
+        after=None,
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
     return {"ok": True, "cleared": cleared, "status": status()}
 
 

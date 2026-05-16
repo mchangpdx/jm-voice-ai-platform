@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel, Field
 
+from app.core.audit import audit_log, get_actor
 from app.core.auth import get_tenant_id
 from app.core.config import settings
 from app.adapters.twilio.numbers import update_voice_webhook
@@ -219,6 +220,7 @@ class FinalizeRequest(BaseModel):
 async def post_finalize(
     req: FinalizeRequest,
     tenant_id: Optional[str] = Depends(_maybe_tenant_id),
+    actor: dict = Depends(get_actor),
 ) -> dict[str, Any]:
     """Stage 5 — write the approved yaml into Supabase + return next steps.
 
@@ -322,6 +324,31 @@ async def post_finalize(
                 s for s in (result.get("next_steps") or [])
                 if "Twilio Console" not in s
             ]
+
+    # Tier 2 audit — onboarding finalize is the most consequential mutation
+    # in the platform (new store comes alive). Skip in dry_run.
+    # (Tier 2 감사 — 신규 매장 활성화는 가장 중요한 mutation)
+    if not req.dry_run:
+        await audit_log(
+            actor_user_id=actor["user_id"] or owner_id,
+            actor_email=actor["email"],
+            action="store.onboarded",
+            target_type="store",
+            target_id=result.get("store_id"),
+            before=None,
+            after={
+                "store_name":      req.store_name,
+                "phone_number":    req.phone_number,
+                "vertical":        req.vertical,
+                "owner_id":        owner_id,
+                "agency_id":       agency_id,
+                "pos_provider":    req.pos_provider,
+                "twilio_webhook":  (result.get("twilio_webhook") or {}).get("ok"),
+                "loyverse_pushed": bool(req.push_to_loyverse),
+            },
+            ip_address=actor["ip_address"],
+            user_agent=actor["user_agent"],
+        )
 
     return result
 

@@ -8,6 +8,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.audit import audit_log, get_actor
 from app.core.auth import get_tenant_id
 from app.core.config import settings
 
@@ -164,6 +165,7 @@ async def get_store_settings(tenant_id: str = Depends(get_tenant_id)) -> StoreSe
 async def patch_store_settings(
     body: StoreSettingsPatch,
     tenant_id: str = Depends(get_tenant_id),
+    actor: dict = Depends(get_actor),
 ) -> StoreSettings:
     """Update store_configs fields (hourly_wage, timezone).
     (store_configs 필드 업데이트 — 시급, 타임존)
@@ -227,6 +229,19 @@ async def patch_store_settings(
             cfg_list = post_resp.json() if isinstance(post_resp.json(), list) else []
             cfg = cfg_list[0] if cfg_list else {}
 
+    # Tier 1 audit — store settings (hourly_wage / timezone / order_policy)
+    await audit_log(
+        actor_user_id=actor["user_id"] or tenant_id,
+        actor_email=actor["email"],
+        action="store.settings_update",
+        target_type="store",
+        target_id=store_id,
+        before=None,  # full snapshot would be noisy; field diff is in `after`
+        after=raw_updates | ({"order_policy": updates["order_policy"]} if "order_policy" in updates else {}),
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
+
     return _cfg_to_settings(cfg, [])
 
 
@@ -234,6 +249,7 @@ async def patch_store_settings(
 async def create_busy_schedule(
     body: BusyScheduleCreate,
     tenant_id: str = Depends(get_tenant_id),
+    actor: dict = Depends(get_actor),
 ) -> BusySchedule:
     """Add a weekly busy schedule entry for this store.
     (스토어 주간 바쁜 시간대 스케줄 추가)
@@ -257,6 +273,17 @@ async def create_busy_schedule(
             raise HTTPException(status_code=500, detail="Failed to create schedule")
 
     s = created[0]
+    await audit_log(
+        actor_user_id=actor["user_id"] or tenant_id,
+        actor_email=actor["email"],
+        action="store.busy_schedule_create",
+        target_type="store",
+        target_id=store_id,
+        before=None,
+        after={"id": s["id"], "day_of_week": s["day_of_week"], "start_time": s["start_time"], "end_time": s["end_time"]},
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
     return BusySchedule(
         id=s["id"],
         day_of_week=s["day_of_week"],
@@ -269,6 +296,7 @@ async def create_busy_schedule(
 async def delete_busy_schedule(
     schedule_id: str,
     tenant_id: str = Depends(get_tenant_id),
+    actor: dict = Depends(get_actor),
 ) -> None:
     """Delete a busy schedule entry — verifies ownership before deleting.
     (소유권 확인 후 바쁜 시간대 스케줄 삭제)
@@ -293,11 +321,24 @@ async def delete_busy_schedule(
             params={"id": f"eq.{schedule_id}"},
         )
 
+    await audit_log(
+        actor_user_id=actor["user_id"] or tenant_id,
+        actor_email=actor["email"],
+        action="store.busy_schedule_delete",
+        target_type="store",
+        target_id=store_id,
+        before={"schedule_id": schedule_id},
+        after=None,
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
+
 
 @router.post("/busy-override", response_model=StoreSettings)
 async def set_busy_override(
     body: BusyOverrideRequest,
     tenant_id: str = Depends(get_tenant_id),
+    actor: dict = Depends(get_actor),
 ) -> StoreSettings:
     """Activate or deactivate emergency busy override.
     duration_minutes: if provided, auto-expires; if None, stays until manually turned off.
@@ -340,5 +381,17 @@ async def set_busy_override(
             )
             cfg_list = post_resp.json() if isinstance(post_resp.json(), list) else []
             cfg = cfg_list[0] if cfg_list else {}
+
+    await audit_log(
+        actor_user_id=actor["user_id"] or tenant_id,
+        actor_email=actor["email"],
+        action="store.busy_override_toggle",
+        target_type="store",
+        target_id=store_id,
+        before=None,
+        after=patch_data,
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
 
     return _cfg_to_settings(cfg, [])

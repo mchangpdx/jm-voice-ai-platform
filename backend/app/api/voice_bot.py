@@ -16,6 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.core.audit import audit_log, get_actor
 from app.core.auth import get_tenant_id
 from app.core.config import settings
 
@@ -117,6 +118,7 @@ async def get_voice_bot(owner_id: str = Depends(get_tenant_id)):
 async def patch_voice_bot(
     body: VoiceBotPatch,
     owner_id: str = Depends(get_tenant_id),
+    actor: dict = Depends(get_actor),
 ):
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     if not payload:
@@ -124,6 +126,10 @@ async def patch_voice_bot(
 
     async with httpx.AsyncClient() as client:
         store = await _resolve_store(client, owner_id)
+
+        # Snapshot only the fields being changed (for audit before/after)
+        # (변경되는 필드만 before snapshot — payload 작게 유지)
+        before_snap = {k: store.get(k) for k in payload.keys()}
 
         resp = await client.patch(
             f"{_REST}/stores",
@@ -135,6 +141,28 @@ async def patch_voice_bot(
         if not updated:
             raise HTTPException(status_code=500, detail="Update failed")
         row = updated[0]
+        after_snap = {k: row.get(k) for k in payload.keys()}
+
+    # Tier 1 audit hook — pick the most-specific action for the changed field
+    # (Tier 1 감사 hook — 변경된 필드에 맞춰 action 라벨 선택)
+    if "temporary_prompt" in payload and len(payload) == 1:
+        action = "store.daily_instructions_update"
+    elif "system_prompt" in payload and len(payload) == 1:
+        action = "store.persona_update"
+    else:
+        action = "store.voice_bot_update"
+
+    await audit_log(
+        actor_user_id=actor["user_id"] or owner_id,
+        actor_email=actor["email"],
+        action=action,
+        target_type="store",
+        target_id=store["id"],
+        before=before_snap,
+        after=after_snap,
+        ip_address=actor["ip_address"],
+        user_agent=actor["user_agent"],
+    )
 
     return VoiceBotSettings(
         store_name=row["name"],
