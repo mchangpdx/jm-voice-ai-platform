@@ -1,0 +1,55 @@
+/* Segmented control — Stripe/Linear inspired (세그먼티드 컨트롤 — Stripe/Linear 풍) */
+.toggle {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+}
+
+.btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.btnActive {
+  background: white;
+  color: #4f46e5;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.btnActive:hover {
+  background: white;
+}
+
+.icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.label {
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 480px) {
+  .label { display: none; }
+  .btn   { padding: 6px 9px; }
+  .icon  { font-size: 14px; }
+}

@@ -2,11 +2,14 @@
 JM Voice AI Platform — FastAPI Application Entry Point
 (JM Voice AI 플랫폼 — FastAPI 애플리케이션 진입점)
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.audit import run_retention_loop  # Phase 2-D.2 — 90-day audit retention
 
 
 from app.api.agency import router as agency_router          # Agency multi-store dashboard (에이전시 멀티스토어 대시보드)
@@ -24,6 +27,7 @@ from app.api.realtime_voice import router as realtime_router  # Phase 2-D — Tw
 from app.api.admin.sync_control import router as admin_sync_router  # Phase 7-A — sync freeze toggle (관리 API — sync freeze)
 from app.api.admin.onboarding import router as admin_onboarding_router  # 2026-05-12 — menu onboarding wizard endpoints (메뉴 온보딩 마법사)
 from app.api.admin.mock_menu import router as admin_mock_menu_router  # 2026-05-15 TEMP — Mexican validation mock menu (검증용 임시)
+from app.api.admin.platform import router as admin_platform_router  # 2026-05-17 — platform admin read-only (모든 agency·store 조회)
 from app.api.public.menu_viewer import router as public_menu_router  # 2026-05-15 — public /menu/{slug} viewer (공개 메뉴 뷰어)
 from app.api.public.scripts_viewer import router as public_scripts_router  # 2026-05-15 — public /scripts/{slug} test-call scripts (공개 통화 스크립트 뷰어)
 
@@ -38,7 +42,17 @@ async def lifespan(app: FastAPI):
     for h in uvicorn_handlers:
         if h not in app_log.handlers:
             app_log.addHandler(h)
-    yield
+
+    # Start background retention loop (audit_logs 90-day purge)
+    retention_task = asyncio.create_task(run_retention_loop())
+    try:
+        yield
+    finally:
+        retention_task.cancel()
+        try:
+            await retention_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 app = FastAPI(
@@ -72,6 +86,7 @@ app.include_router(payment_router)       # Pay link mock callback (결제 링크
 app.include_router(admin_sync_router)    # Phase 7-A — sync freeze toggle (관리 API — sync freeze)
 app.include_router(admin_onboarding_router)  # 2026-05-12 — menu onboarding wizard (메뉴 온보딩 마법사 API)
 app.include_router(admin_mock_menu_router)  # 2026-05-15 TEMP — Mexican validation mock menu (검증용 임시, 검증 후 제거)
+app.include_router(admin_platform_router)  # 2026-05-17 — platform admin read-only (모든 agency·store)
 app.include_router(public_menu_router)      # 2026-05-15 — public /menu/{slug} viewer (공개 메뉴 뷰어, 모든 매장 자동 지원)
 app.include_router(public_scripts_router)   # 2026-05-15 — public /scripts/{slug} test-call scripts (공개 통화 스크립트 뷰어)
 

@@ -2,7 +2,15 @@
 import { createContext, useContext, useState, ReactNode } from 'react'
 import api from './api'
 
-export type UserRole = 'STORE' | 'AGENCY'
+// 3-tier role hierarchy: store owner / agency owner / platform admin
+// (3단 권한 — 매장 오너 / 에이전시 오너 / 플랫폼 관리자)
+export type UserRole = 'STORE' | 'AGENCY' | 'ADMIN'
+
+// Platform admin alias — email match in lieu of a backend role flag.
+// When backend admin endpoints + Supabase app_metadata.role land,
+// this becomes a fallback only.
+// (백엔드에 admin role이 정착될 때까지 email 매칭으로 ADMIN 판별)
+const ADMIN_EMAIL = 'admin@test.com'
 
 interface AuthState {
   token: string | null
@@ -43,21 +51,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let role: UserRole = 'STORE'
       let industry: string | null = null
 
-      try {
-        const storeResp = await api.get('/store/me', {
-          headers: { Authorization: `Bearer ${data.access_token}` },
-        })
-        storeName = storeResp.data.name
-        storeId = storeResp.data.id
-        industry = storeResp.data.industry ?? null
-        role = 'STORE'
-      } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } }).response?.status
-        if (status === 404) {
-          // No store for this user — treat as agency account (스토어 없는 에이전시 계정)
-          role = 'AGENCY'
-        } else {
-          throw err
+      // Platform admin shortcut — email match overrides store/agency probing
+      // (관리자 계정은 매장/에이전시 조회 없이 바로 ADMIN으로 결정)
+      const normalizedEmail = email.trim().toLowerCase()
+      if (normalizedEmail === ADMIN_EMAIL) {
+        role = 'ADMIN'
+      } else {
+        try {
+          const storeResp = await api.get('/store/me', {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          })
+          storeName = storeResp.data.name
+          storeId = storeResp.data.id
+          industry = storeResp.data.industry ?? null
+          role = 'STORE'
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } }).response?.status
+          if (status === 404) {
+            // No store for this user — treat as agency account (스토어 없는 에이전시 계정)
+            role = 'AGENCY'
+          } else {
+            throw err
+          }
         }
       }
 

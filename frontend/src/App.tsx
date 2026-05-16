@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from './core/AuthContext'
+import { AuthProvider, useAuth, UserRole } from './core/AuthContext'
 
 const Login         = lazy(() => import('./views/Login'))
 const StoreLayout   = lazy(() => import('./views/fsr/store/Layout'))
@@ -17,7 +17,12 @@ const AgencyLayout      = lazy(() => import('./views/agency/Layout'))
 const AgencyOverview    = lazy(() => import('./views/agency/Overview'))
 const AgencyStoreDetail = lazy(() => import('./views/agency/StoreDetail'))
 
-// Admin / investor demos (관리자 / 투자자 시연용)
+// Admin (platform operator) — separate from Agency (관리자 — 에이전시와 분리)
+const AdminLayout       = lazy(() => import('./views/admin/Layout'))
+const AdminOverview     = lazy(() => import('./views/admin/Overview'))
+const AdminAgencies     = lazy(() => import('./views/admin/Agencies'))
+const AdminStores       = lazy(() => import('./views/admin/Stores'))
+const AdminAuditLog     = lazy(() => import('./views/admin/AuditLog'))
 const ArchitectureProof = lazy(() => import('./views/admin/ArchitectureProof'))
 const OnboardingWizard  = lazy(() => import('./views/admin/onboarding/OnboardingWizard'))
 
@@ -28,23 +33,22 @@ const ComingSoon = ({ title }: { title: string }) => (
   </div>
 )
 
-function RequireAuth({ children }: { children: JSX.Element }) {
-  const { token } = useAuth()
+// Role-scoped guard — kicks user back to their home if role mismatches.
+// (역할 가드 — 권한 불일치 시 home으로 리다이렉트)
+function RequireRole({ allow, children }: { allow: UserRole[]; children: JSX.Element }) {
+  const { token, role, email } = useAuth()
   if (!token) return <Navigate to="/login" replace />
+  if (!role || !allow.includes(role)) {
+    return <Navigate to={homeRedirect(token, role, email)} replace />
+  }
   return children
 }
 
-// Admin investor-demo account lands on /admin/architecture-proof every
-// time (not just first login). Detected by email match against
-// ADMIN_EMAIL in localStorage-persisted AuthContext.
-// (admin@test.com 계정은 매 방문마다 architecture-proof로 — localStorage
-// 의 email 매칭. Login.tsx의 첫 로그인 navigate + 이후 새로고침/직접 URL 둘 다 처리)
-const ADMIN_EMAIL = 'admin@test.com'
-
-function homeRedirect(token: string | null, role: string | null, email: string | null) {
+function homeRedirect(token: string | null, role: UserRole | null, _email: string | null) {
   if (!token) return '/login'
-  if (email === ADMIN_EMAIL) return '/admin/architecture-proof'
-  return role === 'AGENCY' ? '/agency/overview' : '/fsr/store/overview'
+  if (role === 'ADMIN')  return '/admin/overview'
+  if (role === 'AGENCY') return '/agency/overview'
+  return '/fsr/store/overview'
 }
 
 function AppRoutes() {
@@ -61,9 +65,9 @@ function AppRoutes() {
         <Route
           path="/agency"
           element={
-            <RequireAuth>
+            <RequireRole allow={['AGENCY']}>
               <AgencyLayout />
-            </RequireAuth>
+            </RequireRole>
           }
         >
           <Route index element={<Navigate to="overview" replace />} />
@@ -74,27 +78,35 @@ function AppRoutes() {
         {/* Backward compat: old /agency/dashboard → /agency/overview */}
         <Route path="/agency/dashboard" element={<Navigate to="/agency/overview" replace />} />
 
-        {/* Admin — investor demo (AGENCY role only; component self-guards).
-            Nested under AgencyLayout for unified sidebar + top bar + logout. */}
+        {/* Admin (platform operator) routes — separate from Agency */}
         <Route
           path="/admin"
           element={
-            <RequireAuth>
-              <AgencyLayout />
-            </RequireAuth>
+            <RequireRole allow={['ADMIN']}>
+              <AdminLayout />
+            </RequireRole>
           }
         >
-          <Route path="architecture-proof" element={<ArchitectureProof />} />
-          <Route path="onboarding/new"     element={<OnboardingWizard />} />
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview"      element={<AdminOverview />} />
+          <Route path="agencies"      element={<AdminAgencies />} />
+          <Route path="stores"        element={<AdminStores />} />
+          <Route path="users"         element={<ComingSoon title="Users & Roles" />} />
+          <Route path="audit-log"     element={<AdminAuditLog />} />
+          <Route path="system-health" element={<ComingSoon title="System Health" />} />
+          <Route path="onboarding/new" element={<OnboardingWizard />} />
+          <Route path="marketing/architecture-proof" element={<ArchitectureProof />} />
+          {/* Backward compat: old /admin/architecture-proof */}
+          <Route path="architecture-proof" element={<Navigate to="/admin/marketing/architecture-proof" replace />} />
         </Route>
 
         {/* FSR Store (store owner mode — store owner 모드) */}
         <Route
           path="/fsr/store"
           element={
-            <RequireAuth>
+            <RequireRole allow={['STORE']}>
               <StoreLayout />
-            </RequireAuth>
+            </RequireRole>
           }
         >
           <Route index element={<Navigate to="overview" replace />} />

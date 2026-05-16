@@ -12,19 +12,13 @@ interface StoreEntry {
   industry: string
 }
 
-// Admin investor-demo account gets an extra "Architecture Proof" link
-// in the sidebar (only visible to admin@test.com).
-// (admin@test.com만 sidebar에 Architecture Proof 메뉴 추가 노출)
-const ADMIN_EMAIL = 'admin@test.com'
-
 export default function AgencyLayout() {
-  const { logout, email } = useAuth()
+  const { logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [agencyName, setAgencyName] = useState<string>('JM Agency')
   const [stores, setStores] = useState<StoreEntry[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const isAdmin = email === ADMIN_EMAIL
 
   useEffect(() => {
     api.get('/agency/me').then((r) => setAgencyName(r.data.name)).catch(() => {})
@@ -67,33 +61,6 @@ export default function AgencyLayout() {
         {/* Agency name (에이전시 이름) */}
         <div className={styles.sectionLabel}>AGENCY</div>
         <div className={styles.agencyName}>{agencyName}</div>
-
-        {/* Admin-only investor demo link (admin 계정 전용 투자자 시연 링크) */}
-        {isAdmin && (
-          <>
-            <div className={styles.sectionLabel} style={{ marginTop: 12 }}>INVESTOR</div>
-            <nav className={styles.nav}>
-              <NavLink
-                to="/admin/architecture-proof"
-                className={({ isActive }) =>
-                  `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
-                }
-              >
-                <span className={styles.navIcon}>📐</span>
-                Architecture Proof
-              </NavLink>
-              <NavLink
-                to="/admin/onboarding/new"
-                className={({ isActive }) =>
-                  `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
-                }
-              >
-                <span className={styles.navIcon}>＋</span>
-                New Store Onboarding
-              </NavLink>
-            </nav>
-          </>
-        )}
 
         {/* Store navigation (스토어 네비게이션) */}
         <div className={styles.sectionLabel} style={{ marginTop: 12 }}>STORES</div>

@@ -26,10 +26,11 @@ export default function Login() {
     setLoading(true)
     try {
       const normalized = email.trim().toLowerCase()
-      const isAdmin    = normalized === ADMIN_ALIAS || normalized === ADMIN_EMAIL
       const loginEmail = normalized === ADMIN_ALIAS ? ADMIN_EMAIL : email
       await login(loginEmail, password)
-      navigate(isAdmin ? '/admin/architecture-proof' : '/')
+      // Role-based home is computed centrally in App.tsx → just hit '/'
+      // (역할별 home 경로는 App.tsx homeRedirect가 처리 — '/'로 일임)
+      navigate('/')
     } catch {
       setError('Invalid email or password')
     } finally {

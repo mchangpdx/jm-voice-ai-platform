@@ -1,0 +1,153 @@
+/* Admin Overview — shares slate identity with AdminLayout */
+.page {
+  max-width: 1100px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0;
+}
+
+.loading {
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+.errorCard {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 20px 24px;
+}
+
+.errorTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #b91c1c;
+  margin-bottom: 6px;
+}
+
+.errorBody {
+  font-size: 13px;
+  color: #7f1d1d;
+}
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.kpiCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.kpiLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.kpiValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiSub {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.section {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 16px;
+}
+
+.verticalList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.verticalRow {
+  display: grid;
+  grid-template-columns: 28px minmax(140px, 1.2fr) 3fr 110px;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.verticalIcon { font-size: 18px; text-align: center; }
+
+.verticalName {
+  color: #334155;
+  font-weight: 500;
+}
+
+.verticalBarTrack {
+  position: relative;
+  height: 18px;
+  background: #f1f5f9;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.verticalBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #6366f1 0%, #4338ca 100%);
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.verticalCount {
+  text-align: right;
+  font-weight: 600;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.verticalPct {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+  .kpiRow { grid-template-columns: repeat(2, 1fr); }
+  .verticalRow { grid-template-columns: 24px 1fr 90px; }
+  .verticalBarTrack { display: none; }
+}
