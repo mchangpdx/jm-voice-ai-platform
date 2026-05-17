@@ -229,10 +229,123 @@
   font-size: 12px;
 }
 
+/* ── Key-level JSON diff (primary view) ──────────────────────────────────── */
+.jsonDiff {
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.jsonDiffHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--color-bg-50);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.jdStatAdd { color: var(--color-success-dark); font-variant-numeric: tabular-nums; }
+.jdStatDel { color: var(--color-danger-dark);  font-variant-numeric: tabular-nums; }
+.jdStatMod { color: var(--color-warn-dark);    font-variant-numeric: tabular-nums; }
+
+.jdRawToggle {
+  margin-left: auto;
+  background: white;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.jdRawToggle:hover {
+  background: var(--color-bg-100);
+  color: var(--color-text-primary);
+}
+
+.jsonDiffBody {
+  padding: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.jdRowSame, .jdRowAdd, .jdRowDel {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, 200px) 1fr;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.jdRowMod {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, 200px) 1fr 16px 1fr;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.jdRowSame { color: var(--color-text); }
+.jdRowAdd  { background: var(--color-success-soft); color: var(--color-success-deep); }
+.jdRowDel  { background: var(--color-danger-soft);  color: var(--color-danger-deeper); }
+.jdRowMod  { background: var(--color-warn-soft);    color: var(--color-warn-deeper); }
+
+.jdMark {
+  text-align: center;
+  font-weight: 700;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.jdKey {
+  font-weight: 600;
+  color: inherit;
+}
+
+.jdVal, .jdValOld, .jdValNew {
+  min-width: 0;
+}
+
+.jdValOld { text-decoration: line-through; opacity: 0.7; }
+
+.jdArrow {
+  text-align: center;
+  color: var(--color-brand);
+  font-weight: 700;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .jdRowSame, .jdRowAdd, .jdRowDel { grid-template-columns: 16px 1fr; }
+  .jdRowMod                         { grid-template-columns: 16px 1fr; }
+  .jdRowMod .jdKey                  { grid-column: 2; }
+  .jdRowMod .jdValOld,
+  .jdRowMod .jdArrow,
+  .jdRowMod .jdValNew               { grid-column: 2; }
+}
+
+/* ── Raw JSON view (kept for power-users / verification) ─────────────────── */
 .diffGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+  padding: 12px;
+}
+
+@media (max-width: 640px) {
+  .diffGrid { grid-template-columns: 1fr; }
 }
 
 .diffLabel {

@@ -65,6 +65,124 @@ const actionBadge = (action: string) => {
   return styles.badgeUpdate
 }
 
+// ── Key-level JSON diff ──────────────────────────────────────────────────────
+// Top-level keys only — nested objects/arrays are compared by JSON.stringify
+// equality, which is sufficient for audit log payloads (typically a flat row
+// diff). The "RAW" toggle still exposes the full pretty-printed JSON.
+
+type JsonDiffItem =
+  | { type: 'added';    key: string; after: unknown }
+  | { type: 'removed';  key: string; before: unknown }
+  | { type: 'modified'; key: string; before: unknown; after: unknown }
+  | { type: 'unchanged'; key: string; value: unknown }
+
+function computeJsonDiff(
+  before: Record<string, unknown> | null,
+  after:  Record<string, unknown> | null,
+): JsonDiffItem[] {
+  const b = before ?? {}
+  const a = after ?? {}
+  const keys = new Set<string>([...Object.keys(b), ...Object.keys(a)])
+  const out: JsonDiffItem[] = []
+  for (const key of Array.from(keys).sort()) {
+    const inB = key in b, inA = key in a
+    if (!inB && inA)  { out.push({ type: 'added',   key, after: a[key] });   continue }
+    if (inB && !inA)  { out.push({ type: 'removed', key, before: b[key] });  continue }
+    if (JSON.stringify(b[key]) === JSON.stringify(a[key])) {
+      out.push({ type: 'unchanged', key, value: a[key] })
+    } else {
+      out.push({ type: 'modified', key, before: b[key], after: a[key] })
+    }
+  }
+  return out
+}
+
+function fmtVal(v: unknown): string {
+  if (v === null || v === undefined) return 'null'
+  if (typeof v === 'string') return `"${v}"`
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+function JsonDiff({
+  before, after,
+}: {
+  before: Record<string, unknown> | null
+  after:  Record<string, unknown> | null
+}) {
+  const [showRaw, setShowRaw] = useState(false)
+  if (!before && !after) {
+    return <div className={styles.empty}>No payload recorded.</div>
+  }
+  const items = computeJsonDiff(before, after)
+  const adds = items.filter((i) => i.type === 'added').length
+  const dels = items.filter((i) => i.type === 'removed').length
+  const mods = items.filter((i) => i.type === 'modified').length
+
+  return (
+    <div className={styles.jsonDiff}>
+      <div className={styles.jsonDiffHeader}>
+        <span className={styles.jdStatAdd}>+{adds}</span>
+        <span className={styles.jdStatDel}>−{dels}</span>
+        <span className={styles.jdStatMod}>~{mods}</span>
+        <button
+          type="button"
+          className={styles.jdRawToggle}
+          onClick={() => setShowRaw((v) => !v)}
+        >{showRaw ? 'Diff view' : 'Raw JSON'}</button>
+      </div>
+
+      {showRaw ? (
+        <div className={styles.diffGrid}>
+          <div>
+            <div className={styles.diffLabel}>BEFORE</div>
+            <pre className={styles.json}>{before ? JSON.stringify(before, null, 2) : 'null'}</pre>
+          </div>
+          <div>
+            <div className={styles.diffLabel}>AFTER</div>
+            <pre className={styles.json}>{after ? JSON.stringify(after, null, 2) : 'null'}</pre>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.jsonDiffBody}>
+          {items.map((it) => {
+            if (it.type === 'unchanged') return (
+              <div key={it.key} className={styles.jdRowSame}>
+                <span className={styles.jdMark}> </span>
+                <span className={styles.jdKey}>{it.key}:</span>
+                <span className={styles.jdVal}>{fmtVal(it.value)}</span>
+              </div>
+            )
+            if (it.type === 'added') return (
+              <div key={it.key} className={styles.jdRowAdd}>
+                <span className={styles.jdMark}>+</span>
+                <span className={styles.jdKey}>{it.key}:</span>
+                <span className={styles.jdVal}>{fmtVal(it.after)}</span>
+              </div>
+            )
+            if (it.type === 'removed') return (
+              <div key={it.key} className={styles.jdRowDel}>
+                <span className={styles.jdMark}>−</span>
+                <span className={styles.jdKey}>{it.key}:</span>
+                <span className={styles.jdVal}>{fmtVal(it.before)}</span>
+              </div>
+            )
+            return (
+              <div key={it.key} className={styles.jdRowMod}>
+                <span className={styles.jdMark}>~</span>
+                <span className={styles.jdKey}>{it.key}:</span>
+                <span className={styles.jdValOld}>{fmtVal(it.before)}</span>
+                <span className={styles.jdArrow}>→</span>
+                <span className={styles.jdValNew}>{fmtVal(it.after)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AuditLog() {
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -226,20 +344,7 @@ export default function AuditLog() {
                       <div className={styles.kv}>
                         <strong>IP:</strong> <code>{e.ip_address ?? '—'}</code>
                       </div>
-                      <div className={styles.diffGrid}>
-                        <div>
-                          <div className={styles.diffLabel}>BEFORE</div>
-                          <pre className={styles.json}>
-                            {e.before ? JSON.stringify(e.before, null, 2) : 'null'}
-                          </pre>
-                        </div>
-                        <div>
-                          <div className={styles.diffLabel}>AFTER</div>
-                          <pre className={styles.json}>
-                            {e.after ? JSON.stringify(e.after, null, 2) : 'null'}
-                          </pre>
-                        </div>
-                      </div>
+                      <JsonDiff before={e.before} after={e.after} />
                     </div>
                   )}
                 </div>
