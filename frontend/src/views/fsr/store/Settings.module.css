@@ -170,6 +170,92 @@
 .saveBtn:hover:not(:disabled) { background: var(--color-brand-hover); }
 .saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* ── Weekly busy heatmap (visual overview above editable rows) ───────────── */
+.heatmapWrap {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--color-border);
+  overflow-x: auto;
+}
+
+.heatmap {
+  display: grid;
+  grid-template-columns: 36px repeat(24, 1fr);
+  gap: 2px;
+  min-width: 540px;
+}
+
+.heatmapCornerCell { /* top-left empty corner */ }
+
+.heatmapHourLabel {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 2px;
+}
+
+.heatmapDayLabel {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-align: right;
+  padding: 0 6px 0 0;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.heatmapDayLabel:hover { color: var(--color-brand); }
+
+.heatmapCell {
+  height: 18px;
+  background: var(--color-bg-100);
+  border-radius: 2px;
+}
+
+.heatmapCellBusy {
+  background: var(--color-brand);
+}
+
+.heatmapLegend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+}
+
+.heatmapLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.heatmapSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.heatmapSwatchIdle { background: var(--color-bg-100); }
+.heatmapSwatchBusy { background: var(--color-brand); }
+
+.heatmapHint {
+  margin-left: auto;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .heatmapCell { height: 14px; }
+  .heatmap     { min-width: 420px; }
+  .heatmapHint { display: none; }
+}
+
 /* ── Weekly busy schedule ────────────────────────────────────────────────── */
 .scheduleTable {
   display: flex;

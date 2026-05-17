@@ -1,10 +1,23 @@
 // Store Settings page — hourly wage, timezone, busy schedule, emergency override
 // (스토어 설정 페이지 — 시급, 타임존, 바쁜 시간대 스케줄, 긴급 오버라이드)
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import api from '../../../core/api'
 import styles from './Settings.module.css'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const HOURS = Array.from({ length: 24 }, (_, i) => i)
+
+// Schedule [start, end) overlaps hour cell [h, h+1) when both intervals share
+// any minute. Times are stored as 'HH:MM' so we compare decimal hours.
+const hourIsBusy = (dow: number, hour: number, schedules: BusySchedule[]) =>
+  schedules.some((s) => {
+    if (s.day_of_week !== dow) return false
+    const [sh, sm] = s.start_time.split(':').map(Number)
+    const [eh, em] = s.end_time.split(':').map(Number)
+    const startDec = sh + sm / 60
+    const endDec   = eh + em / 60
+    return startDec < hour + 1 && endDec > hour
+  })
 
 interface BusySchedule {
   id?: string
@@ -297,13 +310,57 @@ export default function Settings() {
           </div>
         </div>
 
+        <div className={styles.heatmapWrap}>
+          <div className={styles.heatmap}>
+            <div className={styles.heatmapCornerCell} />
+            {HOURS.map((h) => (
+              <div key={h} className={styles.heatmapHourLabel}>
+                {h % 3 === 0 ? h : ''}
+              </div>
+            ))}
+            {DAYS.map((day, dow) => (
+              <Fragment key={dow}>
+                <button
+                  type="button"
+                  className={styles.heatmapDayLabel}
+                  onClick={() => {
+                    document
+                      .getElementById(`sched-day-${dow}`)
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }}
+                  title={`Jump to ${day} row`}
+                >{day}</button>
+                {HOURS.map((h) => {
+                  const busy = hourIsBusy(dow, h, storeSettings.busy_schedules)
+                  return (
+                    <div
+                      key={h}
+                      className={`${styles.heatmapCell} ${busy ? styles.heatmapCellBusy : ''}`}
+                      title={`${day} ${String(h).padStart(2, '0')}:00 — ${busy ? 'busy' : 'idle'}`}
+                    />
+                  )
+                })}
+              </Fragment>
+            ))}
+          </div>
+          <div className={styles.heatmapLegend}>
+            <span className={styles.heatmapLegendItem}>
+              <span className={`${styles.heatmapSwatch} ${styles.heatmapSwatchIdle}`} /> Idle
+            </span>
+            <span className={styles.heatmapLegendItem}>
+              <span className={`${styles.heatmapSwatch} ${styles.heatmapSwatchBusy}`} /> Busy
+            </span>
+            <span className={styles.heatmapHint}>Tap a day label to jump to its row.</span>
+          </div>
+        </div>
+
         <div className={styles.scheduleTable}>
           {DAYS.map((day, dow) => {
             const daySchedules = storeSettings.busy_schedules.filter((s) => s.day_of_week === dow)
             const isAdding = addingDay === dow
 
             return (
-              <div key={dow} className={styles.scheduleRow}>
+              <div key={dow} id={`sched-day-${dow}`} className={styles.scheduleRow}>
                 <span className={styles.dayName}>{day}</span>
 
                 <div className={styles.timeSlots}>
