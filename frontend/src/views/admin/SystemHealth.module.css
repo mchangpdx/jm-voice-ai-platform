@@ -275,7 +275,7 @@
 .status4xx { background: #fef3c7; color: #92400e; }
 .status5xx { background: #fee2e2; color: #991b1b; }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .kpiRow      { grid-template-columns: 1fr; }
   .summaryRow  { flex-direction: column; gap: 12px; }
   .headerActions { width: 100%; justify-content: flex-end; }

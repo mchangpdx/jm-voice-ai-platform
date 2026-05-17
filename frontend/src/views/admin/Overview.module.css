@@ -146,7 +146,7 @@
   color: #94a3b8;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .kpiRow { grid-template-columns: repeat(2, 1fr); }
   .verticalRow { grid-template-columns: 24px 1fr 90px; }
   .verticalBarTrack { display: none; }

@@ -229,7 +229,7 @@
 }
 
 /* ── Responsive: mobile (모바일 반응형) ───────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .hamburger {
     display: flex;
     align-items: center;

@@ -186,7 +186,7 @@
 .emptyRow td { text-align: center; padding: 48px !important; color: #94a3b8; font-size: 14px; }
 
 /* ── Responsive (반응형) ──────────────────────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .summaryRow { grid-template-columns: repeat(3, 1fr); }
   .filtersRow { gap: 8px; }
   .tableWrap  { overflow-x: auto; }

@@ -496,7 +496,7 @@
   .kpiRowSm { grid-template-columns: repeat(3, 1fr); }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .kpiRow    { grid-template-columns: repeat(2, 1fr); }
   .kpiRowSm  { grid-template-columns: repeat(2, 1fr); }
   .panels    { grid-template-columns: 1fr; }

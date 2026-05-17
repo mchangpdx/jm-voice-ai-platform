@@ -212,7 +212,7 @@
   padding: 24px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .hamburger { display: flex; align-items: center; }
   .sidebar {
     position: fixed;

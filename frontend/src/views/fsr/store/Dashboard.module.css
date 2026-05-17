@@ -75,7 +75,7 @@
 }
 
 /* Responsive: collapse to single column on narrow viewports (좁은 화면에서 단일 컬럼으로 축소) */
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .grid {
     grid-template-columns: 1fr;
   }
