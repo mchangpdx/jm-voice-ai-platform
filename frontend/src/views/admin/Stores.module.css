@@ -303,6 +303,84 @@
   color: var(--color-danger-deeper);
 }
 
+/* ── Multi-select (list view only) ────────────────────────────────────────── */
+.checkCell {
+  width: 32px;
+  text-align: center;
+  padding-right: 0 !important;
+}
+
+.checkCell input[type='checkbox'] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-brand);
+}
+
+.rowSelected td { background: var(--color-brand-bg); }
+
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-brand-bg);
+  border: 1px solid var(--color-brand-soft-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.bulkCount {
+  font-weight: 700;
+  color: var(--color-brand-dark);
+  margin-right: 4px;
+}
+
+.bulkBtn {
+  background: white;
+  border: 1px solid var(--color-brand-soft-border);
+  color: var(--color-brand-dark);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.bulkBtn:hover:not(:disabled) {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: white;
+}
+
+.bulkBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bulkBtnDanger {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-dark);
+}
+
+.bulkBtnDanger:hover:not(:disabled) {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: white;
+}
+
+.bulkBtnGhost {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 5px 8px;
+}
+
+.bulkBtnGhost:hover:not(:disabled) { color: var(--color-text-primary); }
+
 /* ── Toast ────────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;

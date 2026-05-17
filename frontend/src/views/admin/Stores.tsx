@@ -49,11 +49,23 @@ export default function AdminStores() {
   const [view, setView] = useState<StoreViewMode>(() => loadStoreView(VIEW_STORAGE_KEY))
   const [busy, setBusy] = useState<string>('')
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const onViewChange = (next: StoreViewMode) => {
     setView(next)
     saveStoreView(VIEW_STORAGE_KEY, next)
+    if (next !== 'list') setSelected(new Set())   // cards/compact have no checkboxes
   }
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+
+  const clearSelection = () => setSelected(new Set())
 
   const refresh = () =>
     api.get('/admin/stores').then((r) => setRows(r.data)).catch(() => {})
@@ -154,6 +166,43 @@ export default function AdminStores() {
       setBusy('')
     }
   }
+
+  const runBulk = async (
+    action: 'disable' | 'enable' | 'delete',
+    targets: StoreRow[],
+  ) => {
+    const verb =
+      action === 'delete' ? 'Soft-delete' :
+      action === 'disable' ? 'Disable' : 'Enable'
+    const preview = targets.slice(0, 3).map((s) => s.name).join(', ')
+    const more = targets.length > 3 ? ` … +${targets.length - 3} more` : ''
+    if (!window.confirm(`${verb} ${targets.length} store(s)?\n\n${preview}${more}`)) return
+
+    setBulkBusy(true)
+    const results = await Promise.allSettled(
+      targets.map((s) =>
+        action === 'delete'
+          ? api.delete(`/admin/stores/${s.id}`)
+          : api.patch(`/admin/stores/${s.id}`, { is_active: action === 'enable' }),
+      ),
+    )
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    flash(
+      fail === 0
+        ? `${verb}d ${ok} / ${results.length}`
+        : `${verb}d ${ok} / ${results.length} (${fail} failed)`,
+      fail > 0,
+    )
+    setBulkBusy(false)
+    clearSelection()
+    await refresh()
+  }
+
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selected.has(r.id)),
+    [rows, selected],
+  )
 
   const verticals = useMemo(() => {
     const set = new Set(rows.map((r) => r.industry))
@@ -276,10 +325,49 @@ export default function AdminStores() {
           })}
         </div>
       ) : view === 'list' ? (
+        <>
+          {selected.size > 0 && (
+            <div className={styles.bulkBar}>
+              <span className={styles.bulkCount}>{selected.size} selected</span>
+              <button
+                className={styles.bulkBtn}
+                onClick={() => runBulk('enable', selectedRows)}
+                disabled={bulkBusy}
+              >Enable</button>
+              <button
+                className={styles.bulkBtn}
+                onClick={() => runBulk('disable', selectedRows)}
+                disabled={bulkBusy}
+              >Disable</button>
+              <button
+                className={`${styles.bulkBtn} ${styles.bulkBtnDanger}`}
+                onClick={() => runBulk('delete', selectedRows)}
+                disabled={bulkBusy}
+              >Delete</button>
+              <button
+                className={styles.bulkBtnGhost}
+                onClick={clearSelection}
+                disabled={bulkBusy}
+              >Clear</button>
+            </div>
+          )}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
+                <th className={styles.checkCell}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible stores"
+                    checked={visible.length > 0 && visible.every((s) => selected.has(s.id))}
+                    onChange={(e) => {
+                      const next = new Set(selected)
+                      if (e.target.checked) visible.forEach((s) => next.add(s.id))
+                      else                  visible.forEach((s) => next.delete(s.id))
+                      setSelected(next)
+                    }}
+                  />
+                </th>
                 <th>STORE</th>
                 <th>AGENCY</th>
                 <th>VERTICAL</th>
@@ -294,7 +382,15 @@ export default function AdminStores() {
               {visible.map((s) => {
                 const meta = getVerticalMeta(s.industry)
                 return (
-                  <tr key={s.id}>
+                  <tr key={s.id} className={selected.has(s.id) ? styles.rowSelected : ''}>
+                    <td className={styles.checkCell}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${s.name}`}
+                        checked={selected.has(s.id)}
+                        onChange={() => toggleOne(s.id)}
+                      />
+                    </td>
                     <td>
                       <span className={styles.tableIcon}>{meta.icon}</span>
                       <span className={styles.tableName}>{s.name}</span>
@@ -337,6 +433,7 @@ export default function AdminStores() {
             </tbody>
           </table>
         </div>
+        </>
       ) : (
         <div className={styles.compactList}>
           {visible.map((s) => {
