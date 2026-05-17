@@ -2,6 +2,7 @@
 // (관리자 사용자/역할 관리 — Supabase 사용자 + 역할 변경 + 비활성화)
 import { useEffect, useMemo, useState } from 'react'
 import api from '../../core/api'
+import { SkeletonRow } from '../../components/Skeleton/Skeleton'
 import styles from './Users.module.css'
 
 type Role = 'STORE' | 'AGENCY' | 'ADMIN'
@@ -165,7 +166,9 @@ export default function AdminUsers() {
       </div>
 
       {loading ? (
-        <div className={styles.loading}>Loading…</div>
+        <div className={styles.tableWrap}>
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cells={5} />)}
+        </div>
       ) : visible.length === 0 ? (
         <div className={styles.empty}>No users match the current filter.</div>
       ) : (

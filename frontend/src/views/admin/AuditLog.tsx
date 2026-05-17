@@ -2,6 +2,7 @@
 // (감사 로그 — 모든 admin mutation 시간순)
 import { useEffect, useState } from 'react'
 import api from '../../core/api'
+import Skeleton from '../../components/Skeleton/Skeleton'
 import styles from './AuditLog.module.css'
 
 interface AuditEntry {
@@ -314,7 +315,19 @@ export default function AuditLog() {
       </div>
 
       {loading && entries.length === 0 ? (
-        <div className={styles.empty}>Loading…</div>
+        <div className={styles.timeline}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={styles.entry}>
+              <div className={styles.entryHead} style={{ pointerEvents: 'none' }}>
+                <Skeleton w={90}  h={20} radius={4} />
+                <Skeleton w={140} h={12} />
+                <Skeleton w={120} h={12} />
+                <Skeleton w={150} h={12} />
+                <Skeleton w={10}  h={12} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : entries.length === 0 ? (
         <div className={styles.empty}>No audit log entries.</div>
       ) : (

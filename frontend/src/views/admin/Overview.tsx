@@ -7,6 +7,7 @@ import {
 } from 'recharts'
 import api from '../../core/api'
 import { getVerticalMeta } from '../../core/verticalLabels'
+import Skeleton from '../../components/Skeleton/Skeleton'
 import styles from './Overview.module.css'
 
 interface Overview {
@@ -84,7 +85,23 @@ export default function AdminOverview() {
           <div className={styles.errorBody}>This account lacks platform admin permission.</div>
         </div>
       ) : loading ? (
-        <div className={styles.loading}>Loading…</div>
+        <>
+          <div className={styles.kpiRow}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={styles.kpiCard}>
+                <Skeleton w={60} h={11} />
+                <div style={{ height: 12 }} />
+                <Skeleton w={120} h={28} />
+                <div style={{ height: 8 }} />
+                <Skeleton w={160} h={11} />
+              </div>
+            ))}
+          </div>
+          <div className={styles.chartGrid}>
+            <div className={styles.section}><Skeleton h={260} radius={8} /></div>
+            <div className={styles.section}><Skeleton h={260} radius={8} /></div>
+          </div>
+        </>
       ) : (
         <>
           <div className={styles.kpiRow}>
@@ -172,7 +189,7 @@ export default function AdminOverview() {
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Call Volume (Successful vs Failed)</h2>
               {!calls ? (
-                <div className={styles.empty}>Loading…</div>
+                <Skeleton h={240} radius={8} />
               ) : (
                 <div className={styles.chartWrap}>
                   <ResponsiveContainer width="100%" height={240}>

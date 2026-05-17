@@ -8,6 +8,7 @@ import StoreViewToggle, {
   loadStoreView,
   saveStoreView,
 } from '../../components/store-view/StoreViewToggle'
+import { SkeletonRow } from '../../components/Skeleton/Skeleton'
 import styles from './Stores.module.css'
 
 interface StoreRow {
@@ -265,7 +266,9 @@ export default function AdminStores() {
       </div>
 
       {loading ? (
-        <div className={styles.empty}>Loading…</div>
+        <div className={styles.tableWrap}>
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cells={6} />)}
+        </div>
       ) : visible.length === 0 ? (
         <div className={styles.empty}>No stores match these filters.</div>
       ) : view === 'cards' ? (

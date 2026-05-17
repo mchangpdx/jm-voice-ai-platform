@@ -2,6 +2,7 @@
 // (관리자 에이전시 관리 — 모든 에이전시 + 오너 + 산하 매장수)
 import { useEffect, useState } from 'react'
 import api from '../../core/api'
+import { SkeletonRow } from '../../components/Skeleton/Skeleton'
 import styles from './Agencies.module.css'
 
 interface AgencyRow {
@@ -165,7 +166,9 @@ export default function AdminAgencies() {
       </div>
 
       {loading ? (
-        <div className={styles.loading}>Loading…</div>
+        <div className={styles.tableWrap}>
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cells={5} />)}
+        </div>
       ) : visible.length === 0 ? (
         <div className={styles.empty}>No agencies found.</div>
       ) : (
