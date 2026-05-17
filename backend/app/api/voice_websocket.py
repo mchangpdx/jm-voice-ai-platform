@@ -298,6 +298,257 @@ def _render_customer_context_block(
     return "\n".join(lines)
 
 
+# ── C1 fix (2026-05-18) — service-kind prompt builder ─────────────────────
+# Live trigger: 5 JM Beauty Salon calls on 2026-05-18 surfaced order-vertical
+# vocabulary leaking into the appointment surface — 'reservation' (52×),
+# 'party of N' (9×), 'create_order' / 'make_reservation' / 'cancel_order' /
+# 'recent_orders' tool docs (42× combined). The order-vertical builder was
+# the only path, so Beauty inherited every restaurant rule.
+#
+# Compression discipline (per feedback_prompt_length_rule):
+#   * Target ≤ 15K bytes (vs 27K for order verticals)
+#   * Each rule: keyword + action + stop signal
+#   * No live-trigger narrative inside the prompt (lives here as code comments)
+#   * Reuse the Phase 1.6 INTAKE FLOW yaml block instead of duplicating phases
+
+
+def _build_service_prompt(
+    store:            dict,
+    customer_context: Optional[CustomerContext] = None,
+) -> str:
+    """Compact appointment-vertical system prompt.
+    (service vertical 전용 압축 시스템 프롬프트 — C1 fix)
+
+    Sections (in order):
+      1. Persona  (store.system_prompt — Luna / spa default etc.)
+      2. Operations context (business_hours, store services, modifiers,
+         custom_knowledge, temporary_prompt, CURRENT DATE/TIME)
+      3. Customer context (CRM Wave 1 block — same shape as order path)
+      4. Compressed RULES (1-2 sentences each)
+      5. Tool surface (book / modify / cancel appointment, service_lookup,
+         list_stylists, allergen_lookup, transfer_to_manager)
+      6. Multilingual policy (from vertical_kinds.yaml)
+      7. Emergency keyword auto-fire block (transfer_to_manager triggers)
+      8. CORE INVARIANTS (4 lines, appointment vocabulary)
+      9. Phase 1.6 INTAKE FLOW yaml block (reused at the end)
+    """
+    parts: list[str] = []
+
+    if store.get("system_prompt"):
+        parts.append(store["system_prompt"])
+
+    if store.get("business_hours"):
+        parts.append(f"Business hours: {store['business_hours']}")
+
+    if store.get("menu_cache"):
+        parts.append(
+            "Services (only these are bookable, with current price and duration):\n"
+            f"{store['menu_cache']}"
+        )
+
+    if store.get("modifier_section"):
+        parts.append(store["modifier_section"])
+
+    if store.get("custom_knowledge"):
+        parts.append(f"Store knowledge:\n{store['custom_knowledge']}")
+
+    if store.get("temporary_prompt"):
+        parts.append(f"Today's note:\n{store['temporary_prompt']}")
+
+    # CURRENT DATE/TIME — identical helper used by the order path so the
+    # masked-timestamp regression test on this file mirrors the order test.
+    # (시각 라인 — order path와 동일 형식, 테스트의 timestamp mask와 호환)
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime as _dt
+        _now = _dt.now(ZoneInfo("America/Los_Angeles"))
+        parts.append(
+            f"CURRENT DATE/TIME (America/Los_Angeles): "
+            f"{_now.strftime('%A, %B %d, %Y at %-I:%M %p')} "
+            f"(ISO: {_now.strftime('%Y-%m-%d %H:%M %Z')}). "
+            f"Use this as the anchor for relative phrases like 'today', 'tomorrow', 'tonight', "
+            f"'next Friday'. Never guess the date — always derive from this anchor."
+        )
+    except Exception:
+        pass
+
+    # CRM Wave 1 — returning-customer block. Same trigger shape as the
+    # order-vertical builder; appears right before the rule block so the
+    # model uses caller history to personalize the appointment recital.
+    if customer_context and customer_context.get("visit_count", 0) > 0:
+        ctx_lines = ["=== CUSTOMER CONTEXT (returning client) ==="]
+        if customer_context.get("first_name"):
+            ctx_lines.append(f"First name: {customer_context['first_name']}")
+        if customer_context.get("visit_count"):
+            ctx_lines.append(f"Prior visits: {customer_context['visit_count']}")
+        if customer_context.get("last_service_type"):
+            ctx_lines.append(f"Last service: {customer_context['last_service_type']}")
+        if customer_context.get("last_visit_human"):
+            ctx_lines.append(f"Last visit: {customer_context['last_visit_human']}")
+        ctx_lines.append("Greet by first name. Offer their last service "
+                         "as a default; never assume they want to re-book "
+                         "without asking.")
+        parts.append("\n".join(ctx_lines))
+
+    # ── Compressed RULES (appointment vocabulary only) ─────────────────────
+    parts.append(
+        "=== RULES (non-negotiable) ===\n"
+        "1. BREVITY: 1-2 short sentences per reply. Voice only — no markdown.\n"
+        "2. NEVER quote a service duration or price from memory — always call "
+        "service_lookup first.\n"
+        "3. NEVER promise a specific stylist without calling list_stylists.\n"
+        "4. NEVER call book_appointment / modify_appointment / cancel_appointment "
+        "without an explicit verbal 'yes' to the full recital.\n"
+        "5. Phone number = caller ID (server-injected). Never ask the caller "
+        "for their phone number.\n"
+        "6. Service name + date + time + duration + price MUST come from this "
+        "call's transcript — no placeholders, no defaults.\n"
+        "7. If the client asks a question mid-recital, ANSWER it first, then "
+        "re-recite. Do not fire the tool while a question is open.\n"
+        "8. STT noise on a single turn is OK — wait for the next utterance "
+        "instead of guessing."
+    )
+
+    # ── Tool surface (concise — names + when-to-use, no parameter docs) ───
+    parts.append(
+        "=== TOOLS ===\n"
+        "book_appointment    — only after explicit 'yes' to the full recital.\n"
+        "modify_appointment  — caller ID locates the most recent confirmed "
+        "appointment; send ALL fields as a full snapshot (resend unchanged "
+        "values).\n"
+        "cancel_appointment  — caller ID only; never pass appointment_id or "
+        "phone. < 24h before the slot triggers a late-cancel fee notice.\n"
+        "service_lookup      — ONE service per call. Speak the result verbatim.\n"
+        "list_stylists       — optional specialty filter. Read names verbatim.\n"
+        "allergen_lookup     — chemical sensitivity / dye allergy. NEVER answer "
+        "allergen questions from your own knowledge.\n"
+        "transfer_to_manager — see EMERGENCY block below."
+    )
+
+    # ── Multilingual policy (from templates/_base/vertical_kinds.yaml) ────
+    # Lookup is lenient — missing entry / unknown vertical → English only.
+    # (vertical_kinds.yaml multilingual 배열 read — 누락 시 EN only)
+    try:
+        from app.templates._base.validator import _resolve_kind_and_meta
+        vertical_name = (store.get("industry") or "").strip().lower()
+        _kind, _persona, langs = _resolve_kind_and_meta(vertical_name)
+    except Exception:
+        langs = []
+    if langs:
+        lang_map = {
+            "en": "English",   "es": "Spanish",   "ko": "Korean",
+            "ja": "Japanese",  "zh": "Mandarin Chinese",
+        }
+        label_list = ", ".join(lang_map.get(c, c.upper()) for c in langs)
+        code_list  = ", ".join(c.lower() for c in langs)
+        parts.append(
+            "=== LANGUAGES ===\n"
+            f"Supported langs: {label_list} ({code_list}). "
+            "Reply in the language of the client's CURRENT message. "
+            "Greet in English; mirror the client's language from turn 1 onward "
+            "without asking permission. Short fillers ('yes', '네', 'sí', 'はい', "
+            "'好的') do NOT count as a language switch — wait for a full "
+            "sentence before switching."
+        )
+
+    # ── Emergency keyword auto-fire (C6 piggyback) ────────────────────────
+    # Pulled from templates/<vertical>/emergency_rules.yaml at runtime so
+    # operator yaml edits propagate without code change. Lenient — failure
+    # to load yields a generic transfer-on-explicit-request fallback.
+    # (emergency_rules.yaml에서 trigger keyword 추출 — 압축 inject)
+    try:
+        from app.templates._base.validator import load_template
+        vertical_name = (store.get("industry") or "").strip().lower()
+        _vt = load_template(vertical_name)
+        rules = ((_vt or {}).get("emergency_rules") or {}).get("rules") or []
+    except Exception:
+        rules = []
+    severe_keywords: list[str] = []
+    for r in rules:
+        if not isinstance(r, dict):
+            continue
+        if (r.get("action") or {}).get("type") != "handoff_human":
+            continue
+        for lang_block in (r.get("trigger") or {}).get("patterns") or []:
+            if isinstance(lang_block, dict):
+                for words in lang_block.values():
+                    if isinstance(words, list):
+                        severe_keywords.extend(str(w) for w in words)
+    if severe_keywords:
+        # De-dup while preserving order, cap at 10 to keep the prompt tight.
+        seen: set[str] = set()
+        dedup = []
+        for k in severe_keywords:
+            kl = k.lower()
+            if kl in seen:
+                continue
+            seen.add(kl)
+            dedup.append(k)
+            if len(dedup) >= 10:
+                break
+        kw_csv = " / ".join(dedup)
+        parts.append(
+            "=== EMERGENCY (auto-fire transfer_to_manager) ===\n"
+            f"IMMEDIATELY call transfer_to_manager when the caller mentions "
+            f"any of: {kw_csv}. "
+            "Do NOT offer to help further. Do NOT promise the salon can handle "
+            "it. Apologize once, fire the tool, read the manager phone number."
+        )
+    else:
+        parts.append(
+            "=== EMERGENCY (transfer_to_manager) ===\n"
+            "Call transfer_to_manager when the client requests a manager or "
+            "reports a safety-critical condition. Apologize once, fire the "
+            "tool, read the manager phone number."
+        )
+
+    # ── CORE INVARIANTS (recency zone — last block before the yaml flow) ─
+    parts.append(
+        "=== CORE INVARIANTS ===\n"
+        "I1 HONEST-UNKNOWN: when a tool returns service_not_found / "
+        "service_unknown_duration / service_unknown_price, say so plainly "
+        "('I don't see that on our menu — let me check with the salon') and "
+        "either offer transfer or ask the client to rephrase. NEVER guess.\n"
+        "I2 ARGS = THIS CALL'S TRANSCRIPT: every field passed to a tool must "
+        "come verbatim from THIS conversation. No placeholder names, no "
+        "defaulted dates.\n"
+        "I3 ONE APPOINTMENT PER CALL: book the primary service. If the client "
+        "asks about a second service, finish the first book_appointment call "
+        "BEFORE starting the second flow.\n"
+        "I4 TOOL-CALL-AFTER-YES: once the client says yes to the recital, "
+        "fire the matching tool IMMEDIATELY — never insert another re-prompt "
+        "turn between the confirm and the tool call."
+    )
+
+    # ── Phase 1.6 INTAKE FLOW (yaml-driven, ends the prompt) ──────────────
+    # Same loader the order-vertical path uses. Lenient — yaml absent → no block.
+    vertical_name = (store.get("industry") or "").strip().lower()
+    if vertical_name:
+        try:
+            from app.templates._base.validator import load_template as _lt
+            _vt = _lt(vertical_name)
+        except Exception:
+            _vt = None
+        if _vt and _vt.get("kind") in ("service", "service_with_dispatch"):
+            flow = _vt.get("intake_flow") or {}
+            phases = flow.get("phases") or []
+            if phases:
+                block = [
+                    f"=== INTAKE FLOW ({_vt['kind']} vertical) ===",
+                    "Follow these phases in order. Backtrack to an earlier "
+                    "phase if the client changes their mind mid-flow.",
+                ]
+                for ph in phases:
+                    pid   = ph.get("id", "?")
+                    label = ph.get("label", pid)
+                    desc  = (ph.get("description") or "").strip().replace("\n", " ")
+                    block.append(f"  PHASE {pid} ({label}): {desc}")
+                block.append("=" * 40)
+                parts.append("\n".join(block))
+
+    return "\n\n".join(parts)
+
+
 def build_system_prompt(
     store:            dict,
     customer_context: Optional[CustomerContext] = None,
@@ -310,7 +561,19 @@ def build_system_prompt(
     pre-CRM build (verified by tests/unit/.../P1, P2). Returning caller →
     block sits right before the CORE TRUTHFULNESS INVARIANTS to ride the
     same recency boost (Cat 2.6 / Q6 of the design).
+
+    C1 fix (2026-05-18) — vertical-aware branch. Service-kind stores
+    (beauty / spa / barber / home / auto) route to _build_service_prompt
+    so the appointment surface gets a focused prompt instead of the
+    order-vertical text load. Order-kind stores (cafe / pizza / mexican /
+    kbbq / sushi / chinese / generic) keep the historical code path with
+    ZERO byte-level changes — anchored by test_service_prompt_builder.py.
+    (vertical_kind=service* → 별도 builder, ORDER 경로는 절대 변경 없음)
     """
+    vertical_kind = (store.get("vertical_kind") or "").strip().lower()
+    if vertical_kind.startswith("service"):
+        return _build_service_prompt(store, customer_context)
+
     parts: list[str] = []
 
     if store.get("system_prompt"):
