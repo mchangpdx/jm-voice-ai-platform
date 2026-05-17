@@ -101,6 +101,30 @@ export default function MyDimension({ stores, loading }: ProofSectionProps) {
 }
 ```
 
+## Design tokens (2026-05-18+)
+
+Global CSS variables live at `src/styles/tokens.css` and load before any
+component CSS via `main.tsx`. Use them for new code:
+
+```css
+.myCard {
+  background: var(--color-bg-0);
+  color:      var(--color-text-primary);
+  border:     1px solid var(--color-border);
+  padding:    var(--space-5);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+```
+
+Token families: `--color-*` (semantic — bg, text, brand, success, warn,
+danger, info), `--space-*` (4px scale 1–16), `--radius-*` (sm/md/lg/xl/pill),
+`--font-*` (xs/sm/base/md/lg/xl/2xl/3xl), `--shadow-*` (sm/md/lg/brand).
+
+Existing CSS keeps its hardcoded hex values for now — migration is
+opportunistic (when you touch a file, swap to tokens). A future Cat E2
+will sweep the rest.
+
 ## Shared CSS classes worth knowing
 
 | Class | Use |

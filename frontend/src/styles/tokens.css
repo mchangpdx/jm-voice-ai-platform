@@ -1,0 +1,116 @@
+/* JM Voice — Design Tokens
+   (디자인 토큰 — 색상/간격/타이포 스케일 — 모든 컴포넌트가 이 값들을 참조)
+
+   Usage in CSS modules:
+     color: var(--color-text-primary);
+     background: var(--color-bg-50);
+     padding: var(--space-3);
+
+   Naming convention:
+     --color-{role}[-{variant}]   e.g. --color-text-primary, --color-brand-hover
+     --space-{step}               1=4px, 2=8px, 3=12px, 4=16px, 5=20px, 6=24px, 8=32px
+     --radius-{size}              sm=6px, md=8px, lg=12px, pill=999px
+     --font-{size}                xs/sm/base/md/lg/xl/2xl/3xl
+     --shadow-{level}             sm/md/lg
+
+   Migration policy (2026-05-18 PM):
+     - New components MUST use these variables.
+     - Existing components are migrated opportunistically when touched.
+     - A future Cat E2 pass will sweep the entire codebase. Until then,
+       hardcoded hex values remain valid but discouraged.
+
+   Inherits the existing visual palette — adopting these does not change
+   how anything looks today; it only renames the colors so a future theme
+   change (dark mode, white-label) is a single-file edit.
+*/
+
+:root {
+  /* ── Neutral / Slate scale ──────────────────────────────────────────── */
+  --color-bg-0:           #ffffff;      /* card surface, modal */
+  --color-bg-50:          #f8fafc;      /* page bg / row hover */
+  --color-bg-100:         #f1f5f9;      /* subtle bg / muted hover */
+  --color-border:         #e2e8f0;      /* default border */
+  --color-border-strong:  #cbd5e1;      /* emphasized border */
+  --color-text-muted:     #94a3b8;      /* hint, placeholder */
+  --color-text-secondary: #64748b;      /* body secondary */
+  --color-text:           #475569;      /* body default */
+  --color-text-strong:    #334155;      /* emphasized body */
+  --color-text-primary:   #0f172a;      /* headings, key text */
+  --color-text-darker:    #1e293b;      /* extra contrast */
+
+  /* ── Brand (indigo) ──────────────────────────────────────────────────── */
+  --color-brand:          #6366f1;      /* primary action */
+  --color-brand-hover:    #4f46e5;      /* primary action hover */
+  --color-brand-dark:     #4338ca;      /* emphasized brand */
+  --color-brand-deep:     #1e40af;      /* deep accent (onboarding) */
+  --color-brand-bg:       #eef2ff;      /* tinted bg */
+
+  /* ── Success (green) ─────────────────────────────────────────────────── */
+  --color-success:        #16a34a;
+  --color-success-dark:   #15803d;
+  --color-success-deep:   #166534;
+  --color-success-bg:     #dcfce7;
+  --color-success-border: #86efac;
+
+  /* ── Warning (amber) ─────────────────────────────────────────────────── */
+  --color-warn:           #f59e0b;
+  --color-warn-dark:      #b45309;
+  --color-warn-deeper:    #92400e;
+  --color-warn-bg:        #fef3c7;
+  --color-warn-border:    #fcd34d;
+
+  /* ── Danger (red) ────────────────────────────────────────────────────── */
+  --color-danger:         #dc2626;
+  --color-danger-dark:    #b91c1c;
+  --color-danger-deeper:  #991b1b;
+  --color-danger-bg:      #fef2f2;
+  --color-danger-soft:    #fee2e2;
+  --color-danger-border:  #fca5a5;
+  --color-danger-edge:    #fecaca;
+
+  /* ── Info (sky/blue, used in audit log + persona) ────────────────────── */
+  --color-info:           #0369a1;
+  --color-info-bg:        #f0f9ff;
+  --color-info-border:    #bae6fd;
+  --color-info-fg:        #1d4ed8;
+
+  /* ── Spacing scale (4px base) ────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Border radii ────────────────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   14px;
+  --radius-pill: 999px;
+
+  /* ── Font sizes ──────────────────────────────────────────────────────── */
+  --font-xs:    11px;
+  --font-sm:    12px;
+  --font-base:  13px;
+  --font-md:    14px;
+  --font-lg:    16px;
+  --font-xl:    18px;
+  --font-2xl:   22px;
+  --font-3xl:   28px;
+
+  /* ── Shadows ─────────────────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 3px rgba(15, 23, 42, 0.04);
+  --shadow-md:  0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg:  0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-brand: 0 8px 24px rgba(67, 56, 202, 0.18);
+
+  /* ── Breakpoints (reference only — @media doesn't read CSS vars) ─────── */
+  /* --bp-phone:   640px;   memory rule [[feedback-mobile-responsive-mandatory]] */
+  /* --bp-tablet:  1024px;  use these values directly in @media queries */
+}
