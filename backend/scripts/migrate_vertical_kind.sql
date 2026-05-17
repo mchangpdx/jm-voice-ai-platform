@@ -92,6 +92,10 @@ COMMENT ON VIEW bridge_jobs IS
   ' service-kind verticals (beauty/home/auto) read appointments via this view.'
   ' Phase 2.3.';
 
+-- PostgREST exposes views only when the API roles can SELECT from them.
+-- (PostgREST는 view에 SELECT 권한이 grant되어야 expose함 — 2026-05-18 추가)
+GRANT SELECT ON bridge_jobs TO anon, authenticated, service_role;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- Phase 2.4 — menu_items.service_kind + duration_min.
 -- (service-kind 매장의 menu_items에 서비스 분류 + 소요시간 nullable column.
