@@ -28,3 +28,9 @@
   color: #991b1b;
   border-color: #fca5a5;
 }
+
+/* Responsive — inline badge stays inline; just tighten on phones */
+@media (max-width: 640px) {
+  .badge { padding: 2px 7px; font-size: 11px; gap: 3px; }
+  .icon  { font-size: 11px; }
+}

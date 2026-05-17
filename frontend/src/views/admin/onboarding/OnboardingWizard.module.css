@@ -72,3 +72,18 @@
   padding: 28px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
+
+/* ── Responsive (640 phone / 1024 tablet) ─────────────────────────────── */
+@media (max-width: 1024px) {
+  .stepBody    { padding: 22px; }
+}
+
+@media (max-width: 640px) {
+  .page        { padding: 4px 0 28px; gap: 14px; }
+  .pageHeader  { flex-direction: column; gap: 12px; align-items: stretch; }
+  .title       { font-size: 1.35rem; }
+  .subtitle    { font-size: 0.875rem; }
+  .timeHint    { display: block; margin: 4px 0 0; font-size: 0.8rem; }
+  .exitBtn     { align-self: flex-start; }
+  .stepBody    { padding: 16px 14px; border-radius: 0.75rem; }
+}

@@ -321,7 +321,7 @@
   .roiOutputsRow { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .insightRow { grid-template-columns: repeat(2, 1fr); }
   .periodRow  { flex-wrap: wrap; gap: 6px; }
 }

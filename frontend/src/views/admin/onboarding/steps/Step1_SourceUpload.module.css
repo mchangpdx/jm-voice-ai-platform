@@ -282,5 +282,25 @@
 }
 
 @media (max-width: 640px) {
-  .inputArea { padding-left: 0; }
+  .inputArea   { padding-left: 0; gap: 10px; }
+  .sectionHead { gap: 10px; }
+  .stepNum     { width: 24px; height: 24px; font-size: 12px; }
+  .heading     { font-size: 1rem; }
+  .row         { flex-direction: column; align-items: stretch; }
+  .input       { height: 44px; font-size: 16px; }   /* iOS no-zoom + 44px touch */
+  .secondary   { height: 44px; width: 100%; }
+  .dropzone    { padding: 24px 12px; }
+  .dropIcon    { font-size: 24px; }
+  .dropLabel   { font-size: 13px; }
+  .fileList li { padding: 10px 12px; font-size: 12.5px; flex-wrap: wrap; }
+  .fileName    { flex: 1 1 100%; }
+
+  /* Manual menu grid → horizontally scrollable on small phones */
+  .gridTable   { font-size: 12.5px; min-width: 460px; }
+  .gridTable th, .gridTable td { padding: 6px 8px; }
+  .cellInput   { height: 38px; font-size: 14px; }
+
+  .actions     { flex-direction: column-reverse; gap: 10px; align-items: stretch; padding-top: 14px; }
+  .primary     { width: 100%; padding: 13px 22px; font-size: 14px; }
+  .actionHint  { text-align: center; }
 }

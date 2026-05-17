@@ -504,7 +504,7 @@
   .kpiValueLarge { font-size: 28px; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .kpiRow   { grid-template-columns: 1fr; }
   .kpiRowSm { grid-template-columns: repeat(2, 1fr); }
 }

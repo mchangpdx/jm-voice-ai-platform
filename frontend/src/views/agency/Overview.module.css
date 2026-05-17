@@ -459,7 +459,7 @@
   .periodTabs { align-self: stretch; justify-content: center; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .summaryRow { grid-template-columns: repeat(2, 1fr); }
   .cardGrid   { grid-template-columns: 1fr; }
 }

@@ -64,3 +64,19 @@
   border-radius: 999px;
   line-height: 1.4;
 }
+
+/* ── Responsive (640 phone / 1024 tablet) ─────────────────────────────── */
+@media (max-width: 640px) {
+  /* Force a clean 2-column grid on phones (auto-fit gives uneven sizing) */
+  .grid    { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .option  { padding: 12px 10px 10px; gap: 4px; }
+  .icon    { font-size: 18px; }
+  .label   { font-size: 13px; }
+  .hint    { font-size: 11.5px; }
+  .recommendedTag { font-size: 9px; padding: 2px 6px; right: 6px; }
+}
+
+/* Very narrow (≤360) — single column */
+@media (max-width: 360px) {
+  .grid    { grid-template-columns: 1fr; }
+}

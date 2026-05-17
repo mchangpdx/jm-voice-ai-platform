@@ -374,7 +374,7 @@
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .grid {
     grid-template-columns: 1fr;
   }
@@ -383,7 +383,7 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .section { padding: 16px; }
   .actions { flex-wrap: wrap; }
 }

@@ -195,3 +195,24 @@
   text-align: center;
   padding: 1.5rem 0;
 }
+
+/* ── Responsive (640 phone / 1024 tablet) ─────────────────────────────── */
+@media (max-width: 640px) {
+  /* Tighter camera grid on phones — 2 cols guaranteed */
+  .grid           { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .card           { padding: 0.6rem; gap: 0.35rem; }
+  .cameraName     { font-size: 0.8rem; }
+  .statusBadge    { font-size: 0.7rem; padding: 0.12rem 0.4rem; }
+
+  /* Video section gets a full-width tap target */
+  .videoSection   { padding: 0.85rem; gap: 0.6rem; }
+  .videoLink      { width: 100%; text-align: center; padding: 0.7rem 0.85rem; font-size: 0.9rem; }
+
+  .error          { flex-wrap: wrap; }
+  .errorText      { flex: 1 1 100%; font-size: 0.8rem; }
+}
+
+/* Very narrow (≤360) — single column */
+@media (max-width: 360px) {
+  .grid           { grid-template-columns: 1fr; }
+}

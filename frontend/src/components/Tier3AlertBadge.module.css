@@ -28,6 +28,15 @@
 
 .label {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* Responsive — tighten on phones so the badge fits a single line */
+@media (max-width: 640px) {
+  .badge { padding: 5px 11px; font-size: 12px; gap: 6px; }
+  .label { max-width: 140px; font-size: 12px; }
 }
 
 .arrow {

@@ -166,3 +166,19 @@
   font-size: 13px;
   font-weight: 500;
 }
+
+/* ── Responsive (640 phone / 1024 tablet) ─────────────────────────────── */
+@media (max-width: 640px) {
+  .heading       { font-size: 1.1rem; }
+  .toolbar       { flex-direction: column; align-items: stretch; gap: 10px; }
+  .stats         { justify-content: space-between; }
+  .statPill      { flex: 1; min-width: calc(50% - 4px); text-align: center; padding: 6px 8px; }
+  .bulkActions   { flex-direction: column; align-items: stretch; gap: 6px; }
+  .linkBtn       { text-align: left; padding: 8px 6px; }
+  .tableWrap     { max-height: 420px; overflow-x: auto; }
+  .table         { font-size: 12.5px; min-width: 540px; }
+  .table thead th { padding: 8px 10px; }
+  .cell          { height: 36px; font-size: 14px; }   /* ≥44 combined w/ padding */
+  .actions       { flex-direction: column-reverse; gap: 10px; align-items: stretch; }
+  .primary, .ghost { width: 100%; padding: 13px 22px; }
+}
