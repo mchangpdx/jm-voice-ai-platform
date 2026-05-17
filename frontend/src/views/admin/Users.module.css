@@ -12,13 +12,13 @@
 .title {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .subtitle {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
   max-width: 620px;
 }
@@ -32,31 +32,31 @@
 .search {
   width: 260px;
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 13px;
-  color: #0f172a;
+  color: var(--color-text-primary);
   outline: none;
   transition: border-color 0.1s, box-shadow 0.1s;
 }
 
 .search:focus {
-  border-color: #6366f1;
+  border-color: var(--color-brand);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
 .roleSelect {
   padding: 8px 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 13px;
-  color: #0f172a;
+  color: var(--color-text-primary);
   background: white;
   cursor: pointer;
 }
 
 .loading, .empty {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
   padding: 32px 0;
   text-align: center;
@@ -64,7 +64,7 @@
 
 .tableWrap {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -79,37 +79,37 @@
   text-align: left;
   font-size: 10.5px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-text-secondary);
   letter-spacing: 0.06em;
   padding: 12px 14px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--color-bg-50);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .table td {
   padding: 13px 14px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid var(--color-bg-100);
+  color: var(--color-text-strong);
   vertical-align: middle;
 }
 
 .table tr:last-child td { border-bottom: none; }
-.table tbody tr:hover   { background: #f8fafc; }
+.table tbody tr:hover   { background: var(--color-bg-50); }
 
 .cellEmail {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12.5px;
-  color: #0f172a;
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
 .cellOwned {
   font-size: 12.5px;
-  color: #475569;
+  color: var(--color-text);
 }
 
 .cellDate {
-  color: #64748b;
+  color: var(--color-text-secondary);
   font-size: 12.5px;
   white-space: nowrap;
 }
@@ -149,7 +149,7 @@
 .roleSelectInline:hover:not(:disabled)      { filter: brightness(0.97); }
 .roleSelectInline:disabled { opacity: 0.55; cursor: not-allowed; }
 /* Options inherit native styling — keep readable */
-.roleSelectInline option { color: #0f172a; background: #ffffff; }
+.roleSelectInline option { color: var(--color-text-primary); background: var(--color-bg-0); }
 
 .roleSTORE {
   background: #ecfdf5;
@@ -158,15 +158,15 @@
 }
 
 .roleAGENCY {
-  background: #eef2ff;
-  color: #4338ca;
-  border-color: #c7d2fe;
+  background: var(--color-brand-bg);
+  color: var(--color-brand-dark);
+  border-color: var(--color-brand-soft-border);
 }
 
 .roleADMIN {
-  background: #fef2f2;
-  color: #b91c1c;
-  border-color: #fecaca;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-dark);
+  border-color: var(--color-danger-edge);
 }
 
 .disabledBadge {
@@ -176,9 +176,9 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #64748b;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-100);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
 }
 
@@ -190,8 +190,8 @@
 
 .actionBtn {
   background: white;
-  border: 1px solid #e2e8f0;
-  color: #475569;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
   font-size: 11.5px;
   font-weight: 600;
   padding: 5px 10px;
@@ -201,35 +201,35 @@
 }
 
 .actionBtn:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background: var(--color-bg-100);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
 .actionBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .actionDanger {
-  color: #b91c1c;
-  border-color: #fecaca;
+  color: var(--color-danger-dark);
+  border-color: var(--color-danger-edge);
 }
 
 .actionDanger:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #991b1b;
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-deeper);
 }
 
 /* Two-stage confirm — second click within 4s commits */
 .actionConfirm {
-  background: #b91c1c !important;
-  color: #ffffff !important;
-  border-color: #b91c1c !important;
+  background: var(--color-danger-dark) !important;
+  color: var(--color-bg-0) !important;
+  border-color: var(--color-danger-dark) !important;
   animation: confirmPulse 1s ease-in-out infinite;
 }
 .actionConfirm:hover:not(:disabled) {
-  background: #991b1b !important;
-  border-color: #991b1b !important;
-  color: #ffffff !important;
+  background: var(--color-danger-deeper) !important;
+  border-color: var(--color-danger-deeper) !important;
+  color: var(--color-bg-0) !important;
 }
 @keyframes confirmPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.55); }
@@ -243,7 +243,7 @@
   position: fixed;
   top: 70px;
   right: 24px;
-  background: #16a34a;
+  background: var(--color-success);
   color: white;
   padding: 10px 16px;
   border-radius: 8px;
@@ -254,7 +254,7 @@
   animation: toastIn 0.18s ease;
 }
 
-.toastErr { background: #dc2626; }
+.toastErr { background: var(--color-danger); }
 
 @keyframes toastIn {
   from { transform: translateY(-8px); opacity: 0; }

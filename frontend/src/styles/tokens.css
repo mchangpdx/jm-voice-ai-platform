@@ -39,25 +39,31 @@
   --color-text-darker:    #1e293b;      /* extra contrast */
 
   /* ── Brand (indigo) ──────────────────────────────────────────────────── */
-  --color-brand:          #6366f1;      /* primary action */
-  --color-brand-hover:    #4f46e5;      /* primary action hover */
-  --color-brand-dark:     #4338ca;      /* emphasized brand */
-  --color-brand-deep:     #1e40af;      /* deep accent (onboarding) */
-  --color-brand-bg:       #eef2ff;      /* tinted bg */
+  --color-brand:             #6366f1;   /* primary action */
+  --color-brand-hover:       #4f46e5;   /* primary action hover */
+  --color-brand-dark:        #4338ca;   /* emphasized brand */
+  --color-brand-deep:        #1e40af;   /* deep accent (onboarding) */
+  --color-brand-darker:      #1e3a8a;   /* link/btn hover deep */
+  --color-brand-bg:          #eef2ff;   /* tinted bg */
+  --color-brand-soft:        #ede9fe;   /* soft tint (badge bg) */
+  --color-brand-soft-border: #c7d2fe;   /* soft border */
 
   /* ── Success (green) ─────────────────────────────────────────────────── */
   --color-success:        #16a34a;
   --color-success-dark:   #15803d;
   --color-success-deep:   #166534;
   --color-success-bg:     #dcfce7;
+  --color-success-soft:   #f0fdf4;
   --color-success-border: #86efac;
 
   /* ── Warning (amber) ─────────────────────────────────────────────────── */
-  --color-warn:           #f59e0b;
-  --color-warn-dark:      #b45309;
-  --color-warn-deeper:    #92400e;
-  --color-warn-bg:        #fef3c7;
-  --color-warn-border:    #fcd34d;
+  --color-warn:             #f59e0b;
+  --color-warn-dark:        #b45309;
+  --color-warn-deeper:      #92400e;
+  --color-warn-bg:          #fef3c7;
+  --color-warn-soft:        #fffbeb;
+  --color-warn-soft-border: #fde68a;
+  --color-warn-border:      #fcd34d;
 
   /* ── Danger (red) ────────────────────────────────────────────────────── */
   --color-danger:         #dc2626;
@@ -71,6 +77,7 @@
   /* ── Info (sky/blue, used in audit log + persona) ────────────────────── */
   --color-info:           #0369a1;
   --color-info-bg:        #f0f9ff;
+  --color-info-soft:      #dbeafe;
   --color-info-border:    #bae6fd;
   --color-info-fg:        #1d4ed8;
 

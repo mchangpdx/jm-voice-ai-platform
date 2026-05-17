@@ -15,20 +15,20 @@
 .title {
   font-size: 20px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .subtitle {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .periodTabs {
   display: flex;
   gap: 4px;
-  background: #f1f5f9;
+  background: var(--color-bg-100);
   border-radius: 8px;
   padding: 3px;
 }
@@ -39,24 +39,24 @@
   background: transparent;
   border-radius: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
 
 .periodBtn:hover {
-  background: #e2e8f0;
+  background: var(--color-border);
 }
 
 .periodBtnActive {
   background: white;
-  color: #4f46e5;
+  color: var(--color-brand-hover);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .loading {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
   padding: 40px 0;
 }
@@ -100,7 +100,7 @@
 
 .badge {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 16px 20px;
 }
@@ -108,13 +108,13 @@
 .badgeValue {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin-bottom: 2px;
 }
 
 .badgeLabel {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
@@ -123,7 +123,7 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 0;
 }
 
@@ -139,7 +139,7 @@
 /* ── List view (table) ───────────────────────────────────────────────────── */
 .listWrap {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 28px;
@@ -155,22 +155,22 @@
   text-align: left;
   font-size: 10.5px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-text-secondary);
   letter-spacing: 0.06em;
   padding: 12px 14px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--color-bg-50);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .listTable td {
   padding: 12px 14px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid var(--color-bg-100);
+  color: var(--color-text-strong);
   vertical-align: middle;
 }
 
 .listRow:last-child td { border-bottom: none; }
-.listRow:hover         { background: #f8fafc; }
+.listRow:hover         { background: var(--color-bg-50); }
 
 .numCol {
   text-align: right;
@@ -185,24 +185,24 @@
 
 .listName {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text-primary);
 }
 
 .listIndustry {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin-left: 4px;
   font-size: 12px;
 }
 
 .listImpact {
-  color: #4f46e5;
+  color: var(--color-brand-hover);
   font-weight: 700;
 }
 
 .listBtn {
   background: transparent;
-  border: 1px solid #c7d2fe;
-  color: #4338ca;
+  border: 1px solid var(--color-brand-soft-border);
+  color: var(--color-brand-dark);
   font-size: 12px;
   font-weight: 600;
   padding: 5px 10px;
@@ -212,7 +212,7 @@
 }
 
 .listBtn:hover {
-  background: #eef2ff;
+  background: var(--color-brand-bg);
   border-color: #818cf8;
 }
 
@@ -221,7 +221,7 @@
   display: flex;
   flex-direction: column;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 28px;
@@ -234,16 +234,16 @@
   padding: 10px 16px;
   background: white;
   border: none;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-bg-100);
   cursor: pointer;
   text-align: left;
   font-size: 13px;
-  color: #334155;
+  color: var(--color-text-strong);
   transition: background 0.08s;
 }
 
 .compactRow:last-child { border-bottom: none; }
-.compactRow:hover      { background: #f8fafc; }
+.compactRow:hover      { background: var(--color-bg-50); }
 
 .compactDot {
   width: 8px;
@@ -252,14 +252,14 @@
   flex-shrink: 0;
 }
 
-.dotOk   { background: #16a34a; }
-.dotWarn { background: #f59e0b; }
+.dotOk   { background: var(--color-success); }
+.dotWarn { background: var(--color-warn); }
 
 .compactIcon { font-size: 16px; }
 
 .compactName {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text-primary);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,13 +267,13 @@
 }
 
 .compactMeta {
-  color: #4f46e5;
+  color: var(--color-brand-hover);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .compactCallsMeta {
-  color: #64748b;
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   min-width: 130px;
@@ -281,7 +281,7 @@
 }
 
 .compactArrow {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 
@@ -300,7 +300,7 @@
 
 .storeCard {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 20px;
   display: flex;
@@ -323,8 +323,8 @@
   flex-shrink: 0;
   padding: 3px 10px;
   border-radius: 999px;
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--color-success-bg);
+  color: var(--color-success-dark);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -334,8 +334,8 @@
   flex-shrink: 0;
   padding: 3px 10px;
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--color-bg-100);
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -348,12 +348,12 @@
 .cardStoreName {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
 }
 
 .cardIndustry {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin-top: 2px;
 }
 
@@ -361,7 +361,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--color-bg-100);
   padding-top: 12px;
 }
 
@@ -373,24 +373,24 @@
 
 .kpiLabel {
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
 }
 
 .kpiValue {
   font-size: 13px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text-primary);
 }
 
 .kpiWarn {
-  color: #dc2626;
+  color: var(--color-danger);
 }
 
 .cardImpact {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f8fafc;
+  background: var(--color-bg-50);
   border-radius: 8px;
   padding: 10px 14px;
 }
@@ -398,17 +398,17 @@
 .impactLabel {
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--color-text);
 }
 
 .impactValue {
   font-size: 18px;
   font-weight: 700;
-  color: #4f46e5;
+  color: var(--color-brand-hover);
 }
 
 .viewBtn {
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   border: none;
   border-radius: 8px;
@@ -421,7 +421,7 @@
 }
 
 .viewBtn:hover {
-  background: #4f46e5;
+  background: var(--color-brand-hover);
 }
 
 /* ── Needs attention (주의 필요 스토어) ──────────────────────────────────── */

@@ -11,8 +11,8 @@
   align-items: flex-start;
   gap: 6px;
   padding: 16px 14px 14px;
-  background: #ffffff;
-  border: 1.5px solid #e2e8f0;
+  background: var(--color-bg-0);
+  border: 1.5px solid var(--color-border);
   border-radius: 0.75rem;
   cursor: pointer;
   text-align: left;
@@ -21,16 +21,16 @@
 }
 
 .option:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-50);
 }
 .option:active {
   transform: translateY(1px);
 }
 
 .active {
-  border-color: #1e40af;
-  background: #eef2ff;
+  border-color: var(--color-brand-deep);
+  background: var(--color-brand-bg);
   box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12);
 }
 
@@ -39,13 +39,13 @@
 .label {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   letter-spacing: -0.005em;
 }
 
 .hint {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   font-weight: 500;
   line-height: 1.35;
 }
@@ -54,8 +54,8 @@
   position: absolute;
   top: -7px;
   right: 10px;
-  background: #1e40af;
-  color: #ffffff;
+  background: var(--color-brand-deep);
+  color: var(--color-bg-0);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.05em;

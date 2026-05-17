@@ -10,20 +10,20 @@
 .pageTitle {
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .pageDesc {
   font-size: 13.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .loading {
   padding: 60px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 /* ── Toast notification ──────────────────────────────────────────────────── */
@@ -50,7 +50,7 @@
 /* ── Sections ────────────────────────────────────────────────────────────── */
 .section {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 20px;
@@ -71,13 +71,13 @@
 .sectionTitle {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin-bottom: 3px;
 }
 
 .sectionDesc {
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
@@ -98,7 +98,7 @@
 .fieldLabel {
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--color-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -106,17 +106,17 @@
 .inputPrefix {
   display: flex;
   align-items: center;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 7px;
   overflow: hidden;
 }
 
 .prefix {
   padding: 8px 10px;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+  background: var(--color-bg-50);
+  border-right: 1px solid var(--color-border);
   font-size: 13px;
-  color: #475569;
+  color: var(--color-text);
   font-weight: 600;
 }
 
@@ -125,7 +125,7 @@
   border: none;
   padding: 8px 12px;
   font-size: 14px;
-  color: #0f172a;
+  color: var(--color-text-primary);
   outline: none;
   background: white;
 }
@@ -135,28 +135,28 @@
 }
 
 .select {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 7px;
   padding: 8px 12px;
   font-size: 13px;
-  color: #334155;
+  color: var(--color-text-strong);
   background: white;
   cursor: pointer;
   outline: none;
 }
 
 .select:focus {
-  border-color: #6366f1;
+  border-color: var(--color-brand);
 }
 
 .fieldHint {
   font-size: 11.5px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 0;
 }
 
 .saveBtn {
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   border: none;
   border-radius: 8px;
@@ -167,7 +167,7 @@
   transition: background 0.12s;
 }
 
-.saveBtn:hover:not(:disabled) { background: #4f46e5; }
+.saveBtn:hover:not(:disabled) { background: var(--color-brand-hover); }
 .saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── Weekly busy schedule ────────────────────────────────────────────────── */
@@ -182,7 +182,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-bg-100);
 }
 
 .scheduleRow:last-child {
@@ -193,7 +193,7 @@
   width: 36px;
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
+  color: var(--color-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   flex-shrink: 0;
@@ -211,9 +211,9 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background: var(--color-warn-bg);
+  color: var(--color-warn-deeper);
+  border: 1px solid var(--color-warn-soft-border);
   border-radius: 20px;
   padding: 3px 10px;
   font-size: 12px;
@@ -223,7 +223,7 @@
 .slotDelete {
   background: none;
   border: none;
-  color: #b45309;
+  color: var(--color-warn-dark);
   cursor: pointer;
   font-size: 11px;
   padding: 0;
@@ -236,18 +236,18 @@
 
 .addSlotBtn {
   background: none;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--color-border-strong);
   border-radius: 20px;
   padding: 3px 12px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   cursor: pointer;
   transition: all 0.12s;
 }
 
 .addSlotBtn:hover {
-  border-color: #6366f1;
-  color: #6366f1;
+  border-color: var(--color-brand);
+  color: var(--color-brand);
   background: #f8f9ff;
 }
 
@@ -258,23 +258,23 @@
 }
 
 .timeInput {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
-  color: #334155;
+  color: var(--color-text-strong);
   outline: none;
 }
 
-.timeInput:focus { border-color: #6366f1; }
+.timeInput:focus { border-color: var(--color-brand); }
 
 .timeSep {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
 .addConfirm {
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   border: none;
   border-radius: 6px;
@@ -286,17 +286,17 @@
 
 .addCancel {
   background: none;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .errorMsg {
   font-size: 12px;
-  color: #dc2626;
+  color: var(--color-danger);
   margin: 8px 0 0;
 }
 
@@ -319,13 +319,13 @@
 }
 
 .overrideOff {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--color-bg-100);
+  color: var(--color-text);
 }
 
 .overrideOn {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
   animation: pulse 2s infinite;
 }
 
@@ -355,26 +355,26 @@
 
 .durationPill {
   padding: 5px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 20px;
   background: white;
   font-size: 12px;
-  color: #475569;
+  color: var(--color-text);
   cursor: pointer;
   transition: all 0.12s;
 }
 
-.durationPill:hover { border-color: #6366f1; color: #6366f1; }
+.durationPill:hover { border-color: var(--color-brand); color: var(--color-brand); }
 
 .durationPillActive {
-  background: #eef2ff;
-  border-color: #6366f1;
-  color: #4f46e5;
+  background: var(--color-brand-bg);
+  border-color: var(--color-brand);
+  color: var(--color-brand-hover);
   font-weight: 600;
 }
 
 .overrideStartBtn {
-  background: #dc2626;
+  background: var(--color-danger);
   color: white;
   border: none;
   border-radius: 8px;
@@ -385,11 +385,11 @@
   transition: background 0.12s;
 }
 
-.overrideStartBtn:hover:not(:disabled) { background: #b91c1c; }
+.overrideStartBtn:hover:not(:disabled) { background: var(--color-danger-dark); }
 .overrideStartBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .overrideEndBtn {
-  background: #16a34a;
+  background: var(--color-success);
   color: white;
   border: none;
   border-radius: 8px;
@@ -400,7 +400,7 @@
   transition: background 0.12s;
 }
 
-.overrideEndBtn:hover:not(:disabled) { background: #15803d; }
+.overrideEndBtn:hover:not(:disabled) { background: var(--color-success-dark); }
 .overrideEndBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── Responsive (per memory rule: 640 phone / 1024 tablet) ─────────────── */

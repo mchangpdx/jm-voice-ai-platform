@@ -14,19 +14,19 @@
 .pct { letter-spacing: 0.02em; }
 
 .high {
-  background: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
+  background: var(--color-success-bg);
+  color: var(--color-success-deep);
+  border-color: var(--color-success-border);
 }
 .mid {
-  background: #fef3c7;
-  color: #92400e;
-  border-color: #fcd34d;
+  background: var(--color-warn-bg);
+  color: var(--color-warn-deeper);
+  border-color: var(--color-warn-border);
 }
 .low {
-  background: #fee2e2;
-  color: #991b1b;
-  border-color: #fca5a5;
+  background: var(--color-danger-soft);
+  color: var(--color-danger-deeper);
+  border-color: var(--color-danger-border);
 }
 
 /* Responsive — inline badge stays inline; just tighten on phones */

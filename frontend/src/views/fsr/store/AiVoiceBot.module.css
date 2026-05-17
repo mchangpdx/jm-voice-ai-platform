@@ -7,7 +7,7 @@
 .loading {
   padding: 80px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 
@@ -17,13 +17,13 @@
 .pageTitle {
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .pageDesc {
   font-size: 13.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
@@ -67,7 +67,7 @@
 /* ── Section card ────────────────────────────────────────────────────────── */
 .section {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 20px 24px;
 }
@@ -88,7 +88,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 2px;
   display: flex;
   align-items: center;
@@ -97,14 +97,14 @@
 
 .sectionDesc {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 0;
 }
 
 /* ── Agent status card ───────────────────────────────────────────────────── */
 .agentCard {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-bg-50);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 14px 16px;
 }
@@ -119,12 +119,12 @@
 .agentName {
   font-size: 14px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text-primary);
   flex: 1;
 }
 
 .agentBadge {
-  background: #ede9fe;
+  background: var(--color-brand-soft);
   color: #6d28d9;
   font-size: 11px;
   font-weight: 600;
@@ -146,7 +146,7 @@
 
 .metaLabel {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   width: 70px;
@@ -156,20 +156,20 @@
 .metaCode {
   font-size: 11.5px;
   font-family: monospace;
-  color: #475569;
-  background: #f1f5f9;
+  color: var(--color-text);
+  background: var(--color-bg-100);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
-.wsConnected { font-size: 12px; color: #15803d; font-weight: 500; }
-.wsNotSet    { font-size: 12px; color: #b45309; font-weight: 500; }
+.wsConnected { font-size: 12px; color: var(--color-success-dark); font-weight: 500; }
+.wsNotSet    { font-size: 12px; color: var(--color-warn-dark); font-weight: 500; }
 
-.agentLoading { font-size: 13px; color: #94a3b8; margin: 0; }
+.agentLoading { font-size: 13px; color: var(--color-text-muted); margin: 0; }
 
 .agentEmpty { text-align: center; padding: 16px 0; }
-.agentEmpty p { font-size: 13px; color: #64748b; margin: 0 0 4px; }
-.agentEmptyHint { font-size: 12px; color: #94a3b8 !important; }
+.agentEmpty p { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 4px; }
+.agentEmptyHint { font-size: 12px; color: var(--color-text-muted) !important; }
 
 /* ── Status dots ─────────────────────────────────────────────────────────── */
 .dotGreen {
@@ -177,14 +177,14 @@
   width: 8px; height: 8px;
   border-radius: 50%;
   background: #22c55e;
-  box-shadow: 0 0 0 2px #dcfce7;
+  box-shadow: 0 0 0 2px var(--color-success-bg);
   flex-shrink: 0;
 }
 .dotGray {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: var(--color-text-muted);
   flex-shrink: 0;
 }
 
@@ -198,8 +198,8 @@
   color: #374151;
 }
 .voiceProvider {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--color-info-soft);
+  color: var(--color-info-fg);
   font-size: 10px;
   font-weight: 700;
   padding: 1px 5px;
@@ -210,7 +210,7 @@
 
 /* ── Badges ──────────────────────────────────────────────────────────────── */
 .badgeEssential {
-  background: #ede9fe;
+  background: var(--color-brand-soft);
   color: #6d28d9;
   font-size: 10px;
   font-weight: 600;
@@ -220,8 +220,8 @@
 }
 
 .badgeTemp {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--color-warn-bg);
+  color: var(--color-warn-dark);
   font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
@@ -234,30 +234,30 @@
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px 14px;
   font-size: 13px;
   font-family: monospace;
   line-height: 1.65;
-  color: #334155;
-  background: #f8fafc;
+  color: var(--color-text-strong);
+  background: var(--color-bg-50);
   transition: border-color 0.12s;
   outline: none;
 }
 
-.textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 2px #ede9fe; }
+.textarea:focus { border-color: var(--color-brand); box-shadow: 0 0 0 2px var(--color-brand-soft); }
 
 .textareaAmber {
-  border-color: #fde68a;
-  background: #fffbeb;
+  border-color: var(--color-warn-soft-border);
+  background: var(--color-warn-soft);
 }
-.textareaAmber:focus { border-color: #f59e0b; box-shadow: 0 0 0 2px #fef3c7; }
+.textareaAmber:focus { border-color: var(--color-warn); box-shadow: 0 0 0 2px var(--color-warn-bg); }
 
 .charCount {
   text-align: right;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 4px 0 0;
 }
 
@@ -271,7 +271,7 @@
 
 .btnSave {
   padding: 8px 20px;
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   border: none;
   border-radius: 8px;
@@ -280,24 +280,24 @@
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnSave:hover:not(:disabled) { background: #4f46e5; }
+.btnSave:hover:not(:disabled) { background: var(--color-brand-hover); }
 .btnSave:disabled { opacity: 0.45; cursor: default; }
 
 .btnRevert {
   padding: 8px 16px;
   background: white;
-  color: #475569;
-  border: 1px solid #e2e8f0;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnRevert:hover:not(:disabled) { background: #f8fafc; }
+.btnRevert:hover:not(:disabled) { background: var(--color-bg-50); }
 .btnRevert:disabled { opacity: 0.45; cursor: default; }
 
-.unsaved { font-size: 12px; color: #b45309; }
+.unsaved { font-size: 12px; color: var(--color-warn-dark); }
 
 /* ── How It Works flow ───────────────────────────────────────────────────── */
 .flowList { display: flex; flex-direction: column; gap: 10px; }
@@ -311,7 +311,7 @@
 .flowStep {
   width: 24px; height: 24px;
   border-radius: 50%;
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   font-size: 11px;
   font-weight: 700;
@@ -323,7 +323,7 @@
 
 .flowLabel {
   font-size: 13px;
-  color: #475569;
+  color: var(--color-text);
 }
 
 /* ── Prompt Priority ─────────────────────────────────────────────────────── */
@@ -342,19 +342,19 @@
   flex-shrink: 0;
   margin-top: 2px;
 }
-.priorityHigh { background: #f59e0b; }
-.priorityMed  { background: #6366f1; }
-.priorityLow  { background: #94a3b8; }
+.priorityHigh { background: var(--color-warn); }
+.priorityMed  { background: var(--color-brand); }
+.priorityLow  { background: var(--color-text-muted); }
 
 .priorityTitle {
   font-size: 12.5px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-strong);
   margin: 0 0 2px;
 }
 .priorityDesc {
   font-size: 11.5px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 0;
 }
 
@@ -369,7 +369,7 @@
 
 .tipList li {
   font-size: 13px;
-  color: #475569;
+  color: var(--color-text);
   line-height: 1.5;
 }
 

@@ -14,13 +14,13 @@
 .storeName {
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .pageDesc {
   font-size: 13.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
@@ -34,28 +34,28 @@
 
 .periodLabel {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin-right: 4px;
 }
 
 .periodBtn {
   padding: 5px 14px;
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   background: white;
   font-size: 13px;
-  color: #475569;
+  color: var(--color-text);
   cursor: pointer;
   transition: all 0.12s;
 }
 
 .periodBtn:hover {
-  background: #f8fafc;
+  background: var(--color-bg-50);
 }
 
 .periodBtnActive {
-  background: #6366f1;
-  border-color: #6366f1;
+  background: var(--color-brand);
+  border-color: var(--color-brand);
   color: white;
   font-weight: 600;
 }
@@ -71,24 +71,24 @@
 .kpiCard {
   background: white;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   padding: 18px 20px;
 }
 
 /* KPI color variants */
 .kpiGreen {
-  border-left: 4px solid #16a34a;
-  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 60%);
+  border-left: 4px solid var(--color-success);
+  background: linear-gradient(135deg, var(--color-success-soft) 0%, var(--color-bg-0) 60%);
 }
 
 .kpiBlue {
-  border-left: 4px solid #0369a1;
-  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 60%);
+  border-left: 4px solid var(--color-info);
+  background: linear-gradient(135deg, var(--color-info-bg) 0%, var(--color-bg-0) 60%);
 }
 
 .kpiImpact {
-  border-left: 4px solid #6366f1;
-  background: linear-gradient(135deg, #eef2ff 0%, #ffffff 60%);
+  border-left: 4px solid var(--color-brand);
+  background: linear-gradient(135deg, var(--color-brand-bg) 0%, var(--color-bg-0) 60%);
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.10);
 }
 
@@ -102,7 +102,7 @@
 .kpiLabel {
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -110,8 +110,8 @@
 .kpiBadge {
   font-size: 10px;
   font-weight: 700;
-  color: #6366f1;
-  background: #eef2ff;
+  color: var(--color-brand);
+  background: var(--color-brand-bg);
   padding: 2px 8px;
   border-radius: 20px;
   letter-spacing: 0.04em;
@@ -124,18 +124,18 @@
 .kpiValue {
   font-size: 30px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin-bottom: 6px;
 }
 
 .kpiValueLarge {
   font-size: 36px;
-  color: #4338ca;
+  color: var(--color-brand-dark);
 }
 
 .kpiSub {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 /* ── Supporting KPI row (smaller cards) ─────────────────────────────────── */
@@ -149,14 +149,14 @@
 .kpiCardSm {
   background: white;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   padding: 14px 16px;
 }
 
 .kpiSmLabel {
   font-size: 11px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 8px;
@@ -165,14 +165,14 @@
 .kpiSmValue {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin-bottom: 4px;
   line-height: 1.1;
 }
 
 .kpiSmSub {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   line-height: 1.4;
 }
 
@@ -188,7 +188,7 @@
 .ordersPanel {
   background: white;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   padding: 20px;
 }
 
@@ -207,13 +207,13 @@
 .panelTitle {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin-bottom: 2px;
 }
 
 .panelDesc {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
 }
 
 /* ── AI Persona ──────────────────────────────────────────────────────────── */
@@ -231,14 +231,14 @@
 .personaLabel {
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-strong);
 }
 
 .essentialBadge {
   font-size: 10px;
   font-weight: 700;
-  color: #6366f1;
-  background: #eef2ff;
+  color: var(--color-brand);
+  background: var(--color-brand-bg);
   padding: 2px 7px;
   border-radius: 20px;
   letter-spacing: 0.03em;
@@ -248,25 +248,25 @@
   font-size: 10px;
   font-weight: 700;
   color: #d97706;
-  background: #fef3c7;
+  background: var(--color-warn-bg);
   padding: 2px 7px;
   border-radius: 20px;
 }
 
 .personaNote {
   font-size: 11.5px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin: 0 0 8px;
   line-height: 1.5;
 }
 
 .personaTextarea {
   width: 100%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 7px;
   padding: 10px 12px;
   font-size: 13px;
-  color: #334155;
+  color: var(--color-text-strong);
   resize: vertical;
   font-family: inherit;
   line-height: 1.55;
@@ -276,19 +276,19 @@
 
 .personaTextarea:focus {
   outline: none;
-  border-color: #6366f1;
+  border-color: var(--color-brand);
   background: white;
 }
 
 .personaTextarea[readonly] {
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--color-bg-50);
+  color: var(--color-text-secondary);
   cursor: default;
 }
 
 .charCount {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   text-align: right;
   margin-top: 4px;
 }
@@ -297,7 +297,7 @@
   text-align: center;
   font-size: 10px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   letter-spacing: 0.1em;
   margin: 14px 0 12px;
   position: relative;
@@ -310,7 +310,7 @@
   top: 50%;
   width: 36%;
   height: 1px;
-  background: #e2e8f0;
+  background: var(--color-border);
 }
 
 .divider::before { left: 0; }
@@ -323,7 +323,7 @@
 }
 
 .saveBtn {
-  background: #6366f1;
+  background: var(--color-brand);
   color: white;
   border: none;
   border-radius: 7px;
@@ -334,29 +334,29 @@
   transition: background 0.12s;
 }
 
-.saveBtn:hover:not(:disabled) { background: #4f46e5; }
+.saveBtn:hover:not(:disabled) { background: var(--color-brand-hover); }
 .saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .revertBtn {
   background: none;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 7px;
   padding: 7px 14px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: background 0.12s;
 }
 
-.revertBtn:hover { background: #f8fafc; }
+.revertBtn:hover { background: var(--color-bg-50); }
 
 /* ── Orders table ────────────────────────────────────────────────────────── */
 .pendingBadge {
   align-self: center;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--color-warn-bg);
+  color: var(--color-warn-dark);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -365,20 +365,20 @@
 .refreshBtn {
   margin-left: auto;
   background: none;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 5px 10px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
-.refreshBtn:hover { background: #f8fafc; }
+.refreshBtn:hover { background: var(--color-bg-50); }
 
 .loading, .empty {
   padding: 32px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
 }
 
@@ -393,23 +393,23 @@
   padding: 8px 10px;
   font-size: 11px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-bg-100);
 }
 
 .ordersTable td {
   padding: 9px 10px;
-  border-bottom: 1px solid #f8fafc;
-  color: #334155;
+  border-bottom: 1px solid var(--color-bg-50);
+  color: var(--color-text-strong);
 }
 
 .ordersTable tr:last-child td { border-bottom: none; }
 
-.orderId { font-weight: 600; color: #64748b; }
-.orderAmount { font-weight: 600; color: #0f172a; }
-.orderAmountPaid { color: #15803d; }
-.orderDate { color: #94a3b8; font-size: 12px; }
+.orderId { font-weight: 600; color: var(--color-text-secondary); }
+.orderAmount { font-weight: 600; color: var(--color-text-primary); }
+.orderAmountPaid { color: var(--color-success-dark); }
+.orderDate { color: var(--color-text-muted); font-size: 12px; }
 
 .statusBadge {
   display: inline-block;
@@ -420,14 +420,14 @@
   text-transform: capitalize;
 }
 
-.statusPaid { background: #dcfce7; color: #15803d; }
+.statusPaid { background: var(--color-success-bg); color: var(--color-success-dark); }
 .statusPending { background: #fef9c3; color: #a16207; }
 
 /* ── Recent Calls panel (최근 5통화 패널) ───────────────────────────────── */
 .recentCallsPanel {
   margin-top: 24px;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 18px 20px;
 }
@@ -435,7 +435,7 @@
 .viewAllLink {
   margin-left: auto;
   font-size: 12px;
-  color: #6366f1;
+  color: var(--color-brand);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -455,16 +455,16 @@
   text-align: left;
   font-size: 11px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-text-secondary);
   letter-spacing: 0.06em;
   padding: 8px 10px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .recentTable td {
   padding: 10px 10px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid var(--color-bg-100);
+  color: var(--color-text-strong);
   vertical-align: middle;
 }
 
@@ -478,8 +478,8 @@
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--color-bg-100);
+  color: var(--color-text);
   text-transform: lowercase;
 }
 
@@ -488,7 +488,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #64748b;
+  color: var(--color-text-secondary);
 }
 
 /* ── Responsive (반응형) ──────────────────────────────────────────────────── */

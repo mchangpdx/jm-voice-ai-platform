@@ -10,25 +10,25 @@
 .title {
   font-size: 22px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
 }
 
 .subtitle {
   font-size: 13.5px;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .loading {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 14px;
   padding: 40px 0;
 }
 
 .errorCard {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-edge);
   border-radius: 10px;
   padding: 20px 24px;
 }
@@ -36,7 +36,7 @@
 .errorTitle {
   font-size: 15px;
   font-weight: 700;
-  color: #b91c1c;
+  color: var(--color-danger-dark);
   margin-bottom: 6px;
 }
 
@@ -54,7 +54,7 @@
 
 .kpiCard {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 18px 20px;
 }
@@ -64,14 +64,14 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
 .kpiValue {
   font-size: 28px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   line-height: 1.1;
   margin-bottom: 4px;
   font-variant-numeric: tabular-nums;
@@ -79,12 +79,12 @@
 
 .kpiSub {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .section {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
@@ -93,7 +93,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
   margin: 0 0 16px;
 }
 
@@ -114,14 +114,14 @@
 .verticalIcon { font-size: 18px; text-align: center; }
 
 .verticalName {
-  color: #334155;
+  color: var(--color-text-strong);
   font-weight: 500;
 }
 
 .verticalBarTrack {
   position: relative;
   height: 18px;
-  background: #f1f5f9;
+  background: var(--color-bg-100);
   border-radius: 5px;
   overflow: hidden;
 }
@@ -129,7 +129,7 @@
 .verticalBarFill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, #6366f1 0%, #4338ca 100%);
+  background: linear-gradient(90deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
   border-radius: 5px;
   transition: width 0.4s ease;
 }
@@ -137,13 +137,13 @@
 .verticalCount {
   text-align: right;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
 }
 
 .verticalPct {
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 1024px) {
