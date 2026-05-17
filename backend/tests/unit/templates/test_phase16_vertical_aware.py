@@ -61,14 +61,19 @@ def test_empty_industry_does_not_crash():
 # ── Service-kind: block injected only when intake_flow has phases ───────────
 
 
-def test_beauty_today_no_block_until_phase4_writes_yaml():
-    """Beauty resolves to service kind but intake_flow.yaml is empty
-    until Phase 4 writes it. Until then the additive block stays dormant.
-    (Phase 4 전까지 Beauty는 intake_flow.yaml 미존재 → block dormant)
+def test_beauty_receives_intake_flow_block_after_phase4():
+    """Phase 4 (2026-05-19) shipped templates/beauty/intake_flow.yaml with
+    SERVICE_SELECT / STYLIST / TIME_SLOT / CONFIRM phases. The additive
+    Phase 1.6 wiring must now inject that block into the beauty store
+    system prompt — order-kind verticals stay untouched (anchored above).
+    (Phase 4 후 — beauty intake_flow가 prompt에 주입되는지 회귀 가드)
     """
     store = _basic_store("beauty")
     prompt = build_system_prompt(store)
-    assert "=== INTAKE FLOW (" not in prompt
+    assert "=== INTAKE FLOW (" in prompt
+    # The four service-vertical phases must surface in the injected block.
+    for phase_id in ("SERVICE_SELECT", "STYLIST", "TIME_SLOT", "CONFIRM"):
+        assert phase_id in prompt, f"phase {phase_id} missing from injected block"
 
 
 @pytest.fixture

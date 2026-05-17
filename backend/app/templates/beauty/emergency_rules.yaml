@@ -1,0 +1,92 @@
+# Beauty vertical — Phase 7 layer (emergency rules).
+# (Beauty — chemical reaction / 응급 / 단시간 예약 변경 룰.)
+#
+# Surfaces handoff signals to staff rather than letting the LLM make
+# consequential decisions about chemical safety, late-notice changes, or
+# stylist double-bookings.
+
+rules:
+  - id: severe_chemical_reaction
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["anaphylaxis", "anaphylactic", "swelling", "trouble breathing",
+               "severe reaction", "burn", "chemical burn", "scalp burn",
+               "allergic reaction", "epipen"]
+        - es: ["anafilaxis", "reacción alérgica severa", "quemadura química",
+               "no puedo respirar"]
+        - ko: ["아나필락시스", "심한 알레르기", "두피 화상", "숨이 안 쉬어져"]
+        - ja: ["アナフィラキシー", "重度のアレルギー", "やけど"]
+        - zh: ["过敏性休克", "严重过敏", "化学灼伤"]
+    action:
+      type: handoff_human
+      message_en: >
+        I'm so sorry to hear that. Your safety comes first — let me get
+        you to our salon manager right away.
+      message_es: >
+        Lo siento mucho. Su seguridad es lo primero — déjeme transferirla
+        con nuestra gerente del salón ahora mismo.
+      message_ko: >
+        정말 죄송합니다. 안전이 최우선입니다 — 매장 매니저에게 바로
+        연결해 드리겠습니다.
+      log_severity: critical
+      do_not_promise: "any chemical service safety guarantee"
+      fires_tool: transfer_to_manager
+
+  - id: previous_reaction_to_dye
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["allergic to dye", "PPD allergy", "reacted to color",
+               "scalp irritation last time", "patch test"]
+        - es: ["alérgica al tinte", "alergia al PPD", "reacción al color"]
+        - ko: ["염색 알레르기", "PPD 알레르기", "두피 자극"]
+    action:
+      type: apology_policy
+      message_en: >
+        Thank you for telling me. For color services with a prior
+        reaction, we require a patch test 48 hours before — let me have
+        our colorist call you back today to schedule that.
+      log_severity: warn
+      do_not_promise: "color service without patch test"
+
+  - id: late_cancel_attempt
+    trigger:
+      type: time_window
+      time_before_appt_hours: 24
+      patterns:
+        - en: ["cancel", "can't make it", "need to cancel", "won't be able"]
+    action:
+      type: apology_policy
+      message_en: >
+        I understand. Since this is within our 24-hour window, our late-
+        cancel policy applies — that's outlined in pricing_policy. I'll
+        still go ahead and cancel so the slot opens up for someone else.
+        Want me to confirm?
+      log_severity: info
+      fires_tool: cancel_appointment
+
+  - id: same_day_walk_in_request
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["right now", "today", "in an hour", "next 30 minutes"]
+    action:
+      type: offer_alternatives
+      message_en: >
+        Let me check the schedule. If we're booked solid today, can I
+        offer you the earliest opening tomorrow or later this week?
+      log_severity: info
+
+  - id: double_booking_request
+    trigger:
+      type: keyword
+      patterns:
+        - en: ["color and cut", "manicure and pedicure", "facial and waxing"]
+    action:
+      type: apology_policy
+      message_en: >
+        Of course — let me book the first service now and then we'll
+        add the second so each gets its full time. Which would you like
+        to schedule first?
+      log_severity: info

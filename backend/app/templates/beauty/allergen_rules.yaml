@@ -1,0 +1,71 @@
+# Beauty vertical — chemical sensitivity inference rules.
+# (Beauty — 화학물질 민감도 자동 추론 규칙. allergen_lookup + onboarding AI helper용.)
+#
+# Beauty "allergens" are chemical sensitivities common in salon products:
+# PPD (hair dye), ammonia (lift), persulfate (bleach), formaldehyde
+# (keratin / nail products), toluene (nail polish), acrylate (gel nails),
+# glycolic acid (peels), latex (gloves).
+#
+# Operator reviews and confirms during onboarding. Pattern matching is
+# case-insensitive substring against the service name OR ingredient list.
+
+# ── Pattern → chemical-add rules ────────────────────────────────────────────
+patterns:
+  # PPD = paraphenylenediamine — primary hair-dye allergen, FDA-recognized
+  - keywords: [dye, color, tint, balayage, highlights, ombre, "root touch-up",
+               "single process", "double process", "lash tint", "brow tint"]
+    add_allergens: [ppd]
+    confidence: 0.95
+    reason: "Hair / lash / brow dye routinely contains PPD or PPD analog"
+
+  # Ammonia + persulfate — bleach lift agents
+  - keywords: [bleach, lift, lighten, blonde, platinum, highlights, balayage]
+    add_allergens: [ammonia, persulfate]
+    confidence: 0.92
+    reason: "Bleach lifting chemistry uses ammonia + persulfate"
+
+  # Formaldehyde — keratin smoothing + some nail products
+  - keywords: [keratin, "brazilian blowout", smoothing, straightening]
+    add_allergens: [formaldehyde]
+    confidence: 0.95
+    reason: "Keratin smoothing systems release formaldehyde during heat-set"
+
+  # Toluene — solvent in regular nail polish (10-free polishes omit)
+  - keywords: [manicure, pedicure, polish, "nail color"]
+    add_allergens: [toluene]
+    confidence: 0.85
+    reason: "Standard nail polish contains toluene unless 10-free"
+
+  # Acrylate — gel polish photoinitiator
+  - keywords: [gel, shellac, "gel polish", dip, acrylic]
+    add_allergens: [acrylate]
+    confidence: 0.95
+    reason: "Gel and acrylic systems polymerize via acrylate chemistry"
+
+  # Glycolic / salicylic — chemical peels
+  - keywords: [peel, "chemical peel", "glycolic peel", "salicylic peel"]
+    add_allergens: [glycolic_acid]
+    confidence: 0.90
+    reason: "Chemical peel solutions"
+
+  # Latex — gloves + some waxing strips
+  - keywords: [waxing, "brazilian wax", "leg wax"]
+    add_allergens: [latex]
+    confidence: 0.55
+    reason: "Latex exposure possible from gloves / wax strips — confirm with client"
+
+# ── Operator overrides ─────────────────────────────────────────────────────
+# These are stripped from any service the operator marks as
+# "vegan / 10-free / formaldehyde-free / hypoallergenic line".
+# (운영자가 'vegan / 10-free' 라벨 시 자동 제거)
+operator_safe_labels:
+  - label: vegan
+    removes: [latex]
+  - label: "10-free"
+    removes: [toluene, formaldehyde]
+  - label: "formaldehyde-free"
+    removes: [formaldehyde]
+  - label: "ppd-free"
+    removes: [ppd]
+  - label: hypoallergenic
+    removes: [ppd, ammonia, formaldehyde, toluene]

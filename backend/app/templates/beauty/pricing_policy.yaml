@@ -1,0 +1,61 @@
+# Beauty vertical — Phase 9 layer (pricing policy).
+# (Beauty — service-priced, 24h late-cancel fee, deposit on high-ticket.)
+#
+# Beauty pricing is per-service from menu.yaml + modifier deltas. Tip is
+# customary at 18-22% and collected in person, not on the phone-quoted
+# total. Late-cancel fee is industry-standard 50% inside the 24-hour
+# window; the agent surfaces this via cancel_appointment's
+# ai_script_hint=cancel_appointment_late_cancel.
+
+model: per_service
+
+gratuity:
+  enabled: true
+  default_pct: 20         # for client mental anchoring only — phone agent
+  required_for: []
+  notes: >
+    Tip is collected in person or via the post-service payment link, not
+    on the phone-quoted total. Default 20% is industry-standard for full-
+    service beauty and is what the voice agent should mention if asked.
+
+surcharges:
+  - id: extra_long_hair
+    label: Extra long hair surcharge
+    type: flat
+    amount: 35.00
+    applies_when: hair_length_extra_long
+    enabled: true
+    notes: Already in modifier_groups.hair_length deltas — this is for KPI tracking.
+
+  - id: weekend_premium
+    label: Saturday premium
+    type: flat
+    amount: 10.00
+    applies_when: appointment_day_saturday
+    enabled: false
+    notes: Off by default — many salons run flat pricing. Operator opts in.
+
+deposit:
+  enabled: true
+  required_for_services: [balayage, highlights, treatment_keratin, color_single]
+  amount_pct: 0.30         # 30% non-refundable deposit on high-ticket
+  notes: >
+    Deposit policy surfaces during book_appointment via a future
+    ai_script_hint=deposit_required. Phase 4 ships the policy here; the
+    voice handler will wire it in Phase 5 alongside the live cutover.
+
+late_cancel_fee:
+  enabled: true
+  pct_of_service: 0.50       # 50% inside the late-cancel window
+  free_window_hours: 24      # ≥24h notice = no fee
+  no_show_pct: 1.00          # full service price for no-show
+  notes: >
+    cancel_appointment's hours_until_appointment + is_late_cancel flags
+    feed the voice handler's late-fee phrasing. Free-cancel boundary
+    matches _LATE_CANCEL_WINDOW_HOURS=24 in skills/appointment/cancel.py.
+
+tax_rate: 0.0                # Oregon default (no sales tax). CA/WA/NY override per-store.
+notes: >
+  Beauty services in Oregon are not sales-taxed. Some states tax certain
+  services (e.g. Connecticut taxes facials) — operator overrides this at
+  the store level.

@@ -1,0 +1,258 @@
+# Beauty vertical — default service catalog (18 services).
+# (Beauty vertical default 서비스 카탈로그 — 18 services across 5 categories)
+#
+# Source: composite of mid-tier salon menus across PDX / LA / NYC.
+# Operator adjusts prices + adds house specials via Admin UI Wizard.
+# Each item carries duration_min so book_appointment can hold the slot
+# and service_lookup can quote both price and time.
+#
+# Schema notes:
+# - service_kind is set on every row (this is a service vertical).
+# - duration_min is REQUIRED — Phase 1 catalog validator warns when null.
+# - base_price is a starting quote; final price may shift for hair length
+#   (handled in modifier_groups.yaml).
+
+vertical: beauty
+default_lang: en
+supported_langs: [en, es, ko, ja, zh]
+
+categories:
+  - id: haircut
+    en: Haircut & Style
+    es: Corte y Peinado
+    ko: 커트 & 스타일
+    ja: カット＆スタイル
+    zh: 剪发与造型
+  - id: color
+    en: Color Services
+    es: Servicios de Color
+    ko: 컬러 서비스
+    ja: カラーサービス
+    zh: 染色服务
+  - id: treatment
+    en: Treatments
+    es: Tratamientos
+    ko: 트리트먼트
+    ja: トリートメント
+    zh: 护理
+  - id: nails
+    en: Nail Services
+    es: Servicios de Uñas
+    ko: 네일 서비스
+    ja: ネイルサービス
+    zh: 美甲服务
+  - id: spa
+    en: Facial & Waxing
+    es: Facial y Depilación
+    ko: 페이셜 & 왁싱
+    ja: フェイシャル＆ワックス
+    zh: 面部护理与脱毛
+
+items:
+  # ─────────── Haircut (4) ───────────
+  - id: haircut_women
+    en: Women's Haircut
+    es: Corte de Mujer
+    ko: 여성 커트
+    ja: レディースカット
+    zh: 女士剪发
+    category: haircut
+    service_kind: haircut
+    base_price: 65.00
+    duration_min: 60
+    base_allergens: []
+  - id: haircut_men
+    en: Men's Haircut
+    es: Corte de Hombre
+    ko: 남성 커트
+    ja: メンズカット
+    zh: 男士剪发
+    category: haircut
+    service_kind: haircut
+    base_price: 45.00
+    duration_min: 30
+    base_allergens: []
+  - id: haircut_kids
+    en: Kids' Haircut
+    es: Corte Infantil
+    ko: 어린이 커트
+    ja: キッズカット
+    zh: 儿童剪发
+    category: haircut
+    service_kind: haircut
+    base_price: 30.00
+    duration_min: 30
+    base_allergens: []
+  - id: blowout
+    en: Blowout & Style
+    es: Brushing
+    ko: 블로우드라이
+    ja: ブローセット
+    zh: 吹整造型
+    category: haircut
+    service_kind: style
+    base_price: 50.00
+    duration_min: 45
+    base_allergens: []
+
+  # ─────────── Color (4) ───────────
+  - id: color_single
+    en: Single Process Color
+    es: Color Único
+    ko: 싱글 컬러
+    ja: シングルカラー
+    zh: 单色染发
+    category: color
+    service_kind: color
+    base_price: 95.00
+    duration_min: 90
+    base_allergens: [ppd, ammonia]
+  - id: root_touchup
+    en: Root Touch-Up
+    es: Retoque de Raíces
+    ko: 뿌리 염색
+    ja: リタッチカラー
+    zh: 补染发根
+    category: color
+    service_kind: color
+    base_price: 75.00
+    duration_min: 60
+    base_allergens: [ppd, ammonia]
+  - id: highlights
+    en: Highlights
+    es: Mechas
+    ko: 하이라이트
+    ja: ハイライト
+    zh: 挑染
+    category: color
+    service_kind: color
+    base_price: 160.00
+    duration_min: 150
+    base_allergens: [ppd, ammonia, persulfate]
+  - id: balayage
+    en: Balayage
+    es: Balayage
+    ko: 발레아쥬
+    ja: バレイヤージュ
+    zh: 染挑发
+    category: color
+    service_kind: color
+    base_price: 220.00
+    duration_min: 180
+    base_allergens: [ppd, ammonia, persulfate]
+
+  # ─────────── Treatment (3) ───────────
+  - id: treatment_deep_condition
+    en: Deep Conditioning Treatment
+    es: Tratamiento de Acondicionado Profundo
+    ko: 딥 컨디셔닝
+    ja: ディープコンディショニング
+    zh: 深层护发
+    category: treatment
+    service_kind: treatment
+    base_price: 45.00
+    duration_min: 30
+    base_allergens: []
+  - id: treatment_keratin
+    en: Keratin Smoothing Treatment
+    es: Tratamiento de Keratina
+    ko: 케라틴 트리트먼트
+    ja: ケラチントリートメント
+    zh: 角蛋白护理
+    category: treatment
+    service_kind: treatment
+    base_price: 250.00
+    duration_min: 150
+    base_allergens: [formaldehyde]
+  - id: treatment_scalp
+    en: Scalp Treatment
+    es: Tratamiento de Cuero Cabelludo
+    ko: 두피 트리트먼트
+    ja: スカルプトリートメント
+    zh: 头皮护理
+    category: treatment
+    service_kind: treatment
+    base_price: 55.00
+    duration_min: 45
+    base_allergens: []
+
+  # ─────────── Nails (4) ───────────
+  - id: manicure_classic
+    en: Classic Manicure
+    es: Manicura Clásica
+    ko: 클래식 매니큐어
+    ja: クラシックマニキュア
+    zh: 经典美甲
+    category: nails
+    service_kind: manicure
+    base_price: 35.00
+    duration_min: 30
+    base_allergens: [toluene, formaldehyde]
+  - id: manicure_gel
+    en: Gel Manicure
+    es: Manicura en Gel
+    ko: 젤 매니큐어
+    ja: ジェルマニキュア
+    zh: 凝胶美甲
+    category: nails
+    service_kind: manicure
+    base_price: 50.00
+    duration_min: 45
+    base_allergens: [acrylate, toluene]
+  - id: pedicure_classic
+    en: Classic Pedicure
+    es: Pedicura Clásica
+    ko: 클래식 페디큐어
+    ja: クラシックペディキュア
+    zh: 经典足部护理
+    category: nails
+    service_kind: pedicure
+    base_price: 45.00
+    duration_min: 45
+    base_allergens: [toluene]
+  - id: pedicure_spa
+    en: Spa Pedicure
+    es: Pedicura Spa
+    ko: 스파 페디큐어
+    ja: スパペディキュア
+    zh: 水疗足部护理
+    category: nails
+    service_kind: pedicure
+    base_price: 70.00
+    duration_min: 60
+    base_allergens: [toluene]
+
+  # ─────────── Spa (3) ───────────
+  - id: facial_signature
+    en: Signature Facial
+    es: Facial Exclusivo
+    ko: 시그니처 페이셜
+    ja: シグネチャーフェイシャル
+    zh: 招牌面部护理
+    category: spa
+    service_kind: facial
+    base_price: 120.00
+    duration_min: 60
+    base_allergens: []
+  - id: facial_express
+    en: Express Facial
+    es: Facial Express
+    ko: 익스프레스 페이셜
+    ja: エクスプレスフェイシャル
+    zh: 快速面部护理
+    category: spa
+    service_kind: facial
+    base_price: 75.00
+    duration_min: 30
+    base_allergens: []
+  - id: waxing_brow
+    en: Brow Wax
+    es: Depilación de Cejas
+    ko: 눈썹 왁싱
+    ja: 眉ワックス
+    zh: 修眉
+    category: spa
+    service_kind: waxing
+    base_price: 25.00
+    duration_min: 15
+    base_allergens: []

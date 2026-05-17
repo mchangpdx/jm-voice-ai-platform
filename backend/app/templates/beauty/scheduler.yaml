@@ -1,0 +1,57 @@
+# Beauty vertical — Phase 6 layer (scheduler model).
+# (Beauty — stylist-bound slot 모델. 9-layer spec §6 schema.)
+#
+# Slot binding is per-stylist (capacity=1 per chair). list_stylists tool
+# reads `resources` directly. menu_items.duration_min on each service row
+# decides how long a slot is held.
+#
+# Resources are seed defaults — a real salon overrides via Admin UI
+# Wizard after onboarding. specialties values match menu.yaml item ids.
+
+slot_kind: stylist
+default_duration_min: 45
+duration_buckets: [30, 45, 60, 90, 120, 180]
+opening_block_min: 15
+buffer_min: 10
+advance_booking_limit_days: 60
+
+resources:
+  - id: maria
+    en: Maria
+    es: María
+    ko: 마리아
+    ja: マリア
+    zh: 玛丽亚
+    capacity: 1
+    specialties: [color_single, balayage, highlights, root_touchup, treatment_keratin]
+    notes: Senior colorist. 12 years experience. Books ~3 weeks out for balayage.
+
+  - id: yuna
+    en: Yuna
+    es: Yuna
+    ko: 유나
+    ja: ユナ
+    zh: 优娜
+    capacity: 1
+    specialties: [haircut_women, haircut_men, haircut_kids, blowout, treatment_deep_condition]
+    notes: Cut + style specialist. Speaks Korean + English.
+
+  - id: sophia
+    en: Sophia
+    es: Sofía
+    ko: 소피아
+    ja: ソフィア
+    zh: 苏菲娅
+    capacity: 1
+    specialties: [manicure_classic, manicure_gel, pedicure_classic, pedicure_spa, nail_art]
+    notes: Nail technician. Vegan polish line on request.
+
+  - id: aria
+    en: Aria
+    es: Aria
+    ko: 아리아
+    ja: アリア
+    zh: 艾莉雅
+    capacity: 1
+    specialties: [facial_signature, facial_express, waxing_brow, waxing_lip, waxing_full]
+    notes: Licensed esthetician. Sensitive-skin protocols.

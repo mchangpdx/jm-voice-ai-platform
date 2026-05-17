@@ -116,8 +116,11 @@ verticals:
   beauty:
     kind: service
     persona_name: Luna
-    multilingual: [en, ko, es]
-    notes: 24h cancellation policy. Stylist-bound slots. ⭐ Beauty MVP target.
+    multilingual: [en, es, ko, ja, zh]
+    notes: >
+      24h cancellation policy. Stylist-bound slots. 5-language coverage
+      (upgraded 2026-05-19 per session decision — diverse urban clientele
+      similar to cafe). ⭐ Beauty MVP target.
   home_services:
     kind: service_with_dispatch
     persona_name: Rex

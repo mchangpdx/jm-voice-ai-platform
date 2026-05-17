@@ -1,0 +1,118 @@
+# Beauty vertical — Phase 5 layer (intake flow).
+# (Beauty — PHASE FLOW yaml. service vertical은 SERVICE_SELECT → STYLIST → TIME → CONFIRM 흐름.)
+#
+# Mirrors the STRICT PHASE FLOW for service appointments. Differs from
+# order vertical: no CART (single service per call), no EMAIL (caller ID
+# + SMS confirmation), and adds STYLIST + TIME_SLOT phases.
+#
+# Designed for client-of-record retention: returning callers reach
+# CONFIRM in 3-4 turns; first-time clients go through full 5 phases.
+
+kind: service
+
+phases:
+  - id: INTAKE
+    label: Intake & Identification
+    description: >
+      Greet warmly with store name + Luna persona. If caller ID matched
+      a returning client, acknowledge by first name once ("Welcome back,
+      Sarah!"). Ask what they're looking for today. Stay until service
+      intent is clear.
+    requires: [service_intent]
+    backtrack_allowed: false
+    guardrails:
+      - rule: NO_PRICE_QUOTE_IN_INTAKE
+        message: >
+          Never quote a price before SERVICE_SELECT — duration + price
+          MUST come from service_lookup, not memory.
+
+  - id: SERVICE_SELECT
+    label: Service Selection
+    description: >
+      Call service_lookup with the spoken service name. Confirm matched
+      service + duration + price to the client in ONE short sentence
+      ("A signature facial — about an hour, one twenty"). If the lookup
+      returns service_unknown_duration / price, ask the client to hold
+      while you check with the salon (transfer_to_manager).
+    requires: [matched_service, quoted_price]
+    fires_tool: service_lookup
+    backtrack_allowed: true
+    guardrails:
+      - rule: VERBATIM_QUOTE
+        message: >
+          Speak the service_lookup result verbatim — do NOT round, do NOT
+          combine with a different service's duration.
+
+  - id: STYLIST
+    label: Stylist Preference
+    description: >
+      Ask if they have a preferred stylist. If yes, call list_stylists
+      with specialty_filter=<matched service id>; confirm the name is on
+      the roster. If "no preference" or "anyone", proceed without binding
+      to a specific resource. NEVER promise a specific stylist without
+      checking list_stylists.
+    requires: [stylist_decision]
+    fires_tool: list_stylists
+    backtrack_allowed: true
+    guardrails:
+      - rule: STYLIST_VERIFY
+        message: >
+          A name spoken by the client MUST match list_stylists output. If
+          not, say "I don't have a stylist by that name on the schedule —
+          would you like to go with [first roster name] or hear who's
+          available?".
+
+  - id: TIME_SLOT
+    label: Time Slot Selection
+    description: >
+      Propose 1-2 concrete time slots within business hours (e.g.
+      "Tomorrow at 2 or Thursday at 10 — which works better?"). Use
+      business_hours to filter. Confirm a single slot the client picks.
+      Validate slot is at least 30 minutes from now (Option β too-late
+      guard mirrors modify_appointment).
+    requires: [appointment_date, appointment_time]
+    backtrack_allowed: true
+    guardrails:
+      - rule: NO_PAST_SLOT
+        message: Never offer a slot in the past.
+      - rule: NO_OUT_OF_HOURS
+        message: Never offer a slot outside business_hours.
+
+  - id: CONFIRM
+    label: Recital + book_appointment
+    description: >
+      Recite the FULL summary once: service + stylist (if any) + date +
+      time + duration + price. Wait for explicit verbal "yes". Then call
+      book_appointment with user_explicit_confirmation=true. Never call
+      the tool without verbal confirmation.
+    requires: [explicit_confirm]
+    fires_tool: book_appointment
+    guardrails:
+      - rule: RECITAL_DEDUP_8S
+        message: Within 8s of prior recital → silent skip (no duplicate).
+      - rule: ONE_APPOINTMENT_PER_CALL
+        message: >
+          Book the primary service only. If client mentions a second
+          service, confirm whether to book separately AFTER the first
+          fire_tool completes.
+
+# Cross-phase rules
+backtrack:
+  enabled: true
+  signal_keywords: [wait, actually, "change to", "different stylist", "another time"]
+  applies_in_phases: [SERVICE_SELECT, STYLIST, TIME_SLOT, CONFIRM]
+  on_trigger: RETURN_TO_TRIGGERED_PHASE
+  side_effect: re-ack the change + re-recite the affected fields
+
+# Completion signals per language (CONFIRM "yes" detection)
+completion_signals:
+  - language: en
+    patterns: ["yes", "yeah", "yep", "yes please", "that's right", "that works", "book it"]
+  - language: es
+    patterns: ["sí", "claro", "perfecto", "está bien", "resérvalo"]
+  - language: ko
+    patterns: ["네", "예", "맞아요", "좋아요", "예약해 주세요"]
+  - language: ja
+    patterns: ["はい", "そうです", "お願いします", "予約してください"]
+  - language: zh
+    patterns: ["好的", "对", "可以", "预约吧", "没问题"]

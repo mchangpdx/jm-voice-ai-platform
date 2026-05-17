@@ -1,0 +1,68 @@
+# Beauty vertical — modifier groups (5 groups).
+# (Beauty — service add-on 그룹. 가격/시간 delta + chemical add 트리거.)
+#
+# Schema mirrors cafe/modifier_groups.yaml. Beauty additions:
+#   duration_delta_min — minutes added to the parent service when this
+#                        modifier is selected (used by book_appointment
+#                        slot reservation, not yet wired Phase 4).
+#   allergen_add       — chemical sensitivity layered onto the service
+#                        for allergen_lookup composition.
+
+groups:
+  # ── Group 1: Hair Length (Required for haircut + color + treatment) ───────
+  hair_length:
+    required: true
+    min: 1
+    max: 1
+    applies_to: [haircut, color, treatment]
+    options:
+      - {id: short,  en: "Short (above chin)",      es: "Corto",       ko: "짧은 머리",   ja: "ショート",  zh: "短发", price_delta: 0.00, duration_delta_min: 0}
+      - {id: medium, en: "Medium (chin to shoulder)", es: "Medio",     ko: "중간 길이",   ja: "ミディアム", zh: "中长发", price_delta: 15.00, duration_delta_min: 15}
+      - {id: long,   en: "Long (past shoulder)",    es: "Largo",       ko: "긴 머리",     ja: "ロング",    zh: "长发", price_delta: 35.00, duration_delta_min: 30}
+      - {id: extra_long, en: "Extra long (past mid-back)", es: "Extra largo", ko: "엑스트라 롱", ja: "エクストラロング", zh: "超长发", price_delta: 60.00, duration_delta_min: 45}
+
+  # ── Group 2: Toner Add-On (color services) ────────────────────────────────
+  toner:
+    required: false
+    min: 0
+    max: 1
+    applies_to: [color]
+    options:
+      - {id: none,     en: "No toner",       es: "Sin tonalizador", ko: "토너 없음",  ja: "トナーなし",  zh: "无调色剂", price_delta: 0.00, duration_delta_min: 0}
+      - {id: gloss,    en: "Glaze / Gloss",  es: "Glaze",           ko: "글로스",     ja: "グロス",     zh: "亮色", price_delta: 30.00, duration_delta_min: 20}
+      - {id: purple,   en: "Purple toner (brassiness)", es: "Tonalizador morado", ko: "보라 토너", ja: "パープルトナー", zh: "紫色调色", price_delta: 25.00, duration_delta_min: 15, allergen_add: [ppd]}
+
+  # ── Group 3: Blow Dry Add-On (treatments + standalone) ────────────────────
+  blow_dry:
+    required: false
+    min: 0
+    max: 1
+    applies_to: [haircut, color, treatment]
+    options:
+      - {id: none,        en: "No blowout",        es: "Sin brushing",  ko: "블로우 없음",   ja: "ブローなし",  zh: "不吹整",   price_delta: 0.00, duration_delta_min: 0}
+      - {id: smooth,      en: "Smooth blowout",    es: "Brushing liso", ko: "스무스 블로우",  ja: "ストレートブロー", zh: "顺直吹整", price_delta: 25.00, duration_delta_min: 20}
+      - {id: curls,       en: "Curl set blowout",  es: "Brushing rizado", ko: "컬 세팅",     ja: "カール仕上げ", zh: "卷发造型", price_delta: 35.00, duration_delta_min: 30}
+
+  # ── Group 4: Polish Type (nails) ──────────────────────────────────────────
+  polish:
+    required: true
+    min: 1
+    max: 1
+    applies_to: [manicure, pedicure]
+    options:
+      - {id: regular,  en: "Regular polish",     es: "Esmalte regular",  ko: "일반 폴리시",  ja: "通常ポリッシュ", zh: "普通指甲油", price_delta: 0.00, duration_delta_min: 0, allergen_add: [toluene]}
+      - {id: gel,      en: "Gel polish",         es: "Esmalte en gel",   ko: "젤 폴리시",    ja: "ジェルポリッシュ", zh: "凝胶指甲油", price_delta: 15.00, duration_delta_min: 15, allergen_add: [acrylate]}
+      - {id: vegan,    en: "Vegan / 10-free",    es: "Vegano",           ko: "비건 폴리시",  ja: "ビーガンポリッシュ", zh: "纯素指甲油", price_delta: 5.00, duration_delta_min: 0, allergen_remove: [toluene, formaldehyde]}
+      - {id: none,     en: "No polish",          es: "Sin esmalte",       ko: "폴리시 없음",  ja: "ポリッシュなし", zh: "不上色", price_delta: -5.00, duration_delta_min: -5}
+
+  # ── Group 5: Facial Add-On (spa) ──────────────────────────────────────────
+  facial_addon:
+    required: false
+    min: 0
+    max: 2
+    applies_to: [facial]
+    options:
+      - {id: lash_tint, en: "Lash tint",     es: "Tinte de pestañas", ko: "속눈썹 틴트",  ja: "まつ毛ティント", zh: "睫毛染色", price_delta: 20.00, duration_delta_min: 15, allergen_add: [ppd]}
+      - {id: brow_tint, en: "Brow tint",     es: "Tinte de cejas",    ko: "눈썹 틴트",    ja: "眉ティント",    zh: "眉毛染色", price_delta: 18.00, duration_delta_min: 15, allergen_add: [ppd]}
+      - {id: peel,      en: "Chemical peel", es: "Peeling químico",   ko: "케미컬 필링",  ja: "ピーリング",    zh: "化学换肤", price_delta: 35.00, duration_delta_min: 20, allergen_add: [glycolic_acid]}
+      - {id: mask,      en: "Hydrating mask", es: "Mascarilla hidratante", ko: "보습 마스크", ja: "保湿マスク", zh: "保湿面膜", price_delta: 15.00, duration_delta_min: 10}

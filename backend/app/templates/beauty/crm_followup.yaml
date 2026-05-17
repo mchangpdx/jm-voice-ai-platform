@@ -1,0 +1,82 @@
+# Beauty vertical — Phase 8 layer (CRM follow-up).
+# (Beauty — service-cadence 기반 outbound CRM. 헤어/네일 reorder 주기 차별화.)
+#
+# Beauty clients have low frequency but high absolute spend per visit.
+# CRM strategy is cadence-based: nudge a few days before the typical
+# re-book window for each service type.
+
+triggers:
+  - id: haircut_refresh_reminder
+    when:
+      type: post_appointment
+      delay_days: 42        # ~6 weeks — common cadence for cuts
+      filter:
+        service_kind: haircut
+        appointment_status: completed
+    channel: sms
+    template_id: beauty_haircut_refresh_v1
+    enabled: false          # post-launch — wait for CRM Wave 2 to deploy
+    notes: >
+      6 weeks after a completed haircut, nudge for re-book. Skip if a
+      newer appointment exists.
+
+  - id: color_root_reminder
+    when:
+      type: post_appointment
+      delay_days: 28        # ~4 weeks — color roots show
+      filter:
+        service_kind: color
+        appointment_status: completed
+    channel: sms
+    template_id: beauty_color_refresh_v1
+    enabled: false
+    notes: >
+      4 weeks after color, nudge for root touch-up. Higher conversion
+      than haircut nudge — color clients are price-anchored to their
+      shade.
+
+  - id: balayage_seasonal_reminder
+    when:
+      type: post_appointment
+      delay_days: 90        # ~3 months — balayage holds longer
+      filter:
+        service_kind: color
+        appointment_status: completed
+        last_service_id: balayage
+    channel: sms
+    template_id: beauty_balayage_refresh_v1
+    enabled: false
+    notes: Balayage and highlights cadence is seasonal — quarterly nudge.
+
+  - id: manicure_refresh_reminder
+    when:
+      type: post_appointment
+      delay_days: 14        # ~2 weeks — gel polish growth-out
+      filter:
+        service_kind: manicure
+        appointment_status: completed
+    channel: sms
+    template_id: beauty_manicure_refresh_v1
+    enabled: false
+
+  - id: no_show_followup
+    when:
+      type: post_appointment
+      delay_hours: 2
+      filter:
+        appointment_status: no_show
+    channel: sms
+    template_id: beauty_no_show_v1
+    enabled: false
+    notes: >
+      Soft outreach 2 hours after a no-show — offer to re-book without
+      a fee on the first occurrence. Operator override after second.
+
+  - id: birthday_treat
+    when:
+      type: customer_birthday
+      delay_days: -7        # 7 days before
+    channel: sms
+    template_id: beauty_birthday_v1
+    enabled: false
+    notes: Optional — operator opts in during onboarding.
