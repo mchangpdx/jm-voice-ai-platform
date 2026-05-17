@@ -79,6 +79,96 @@
   margin-bottom: 16px;
 }
 
+.sectionHeaderText {
+  flex: 1;
+  min-width: 0;
+}
+
+.diffToggle {
+  flex-shrink: 0;
+  background: var(--color-brand-bg);
+  border: 1px solid var(--color-brand-soft-border);
+  color: var(--color-brand-dark);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.diffToggle:hover {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: white;
+}
+
+/* ── Inline diff viewer ──────────────────────────────────────────────────── */
+.diff {
+  margin-top: 12px;
+  background: var(--color-bg-50);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.diffHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--color-bg-100);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.diffStatAdd { color: var(--color-success-dark); font-variant-numeric: tabular-nums; }
+.diffStatDel { color: var(--color-danger-dark);  font-variant-numeric: tabular-nums; }
+
+.diffHeaderHint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-style: italic;
+}
+
+.diffBody {
+  margin: 0;
+  padding: 6px 0;
+  max-height: 280px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diffAdd  { background: var(--color-success-soft); color: var(--color-success-deep); }
+.diffDel  { background: var(--color-danger-soft);  color: var(--color-danger-deeper); }
+.diffSame { color: var(--color-text); }
+
+.diffAdd, .diffDel, .diffSame {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  padding: 0 8px;
+}
+
+.diffMark {
+  text-align: center;
+  font-weight: 700;
+  user-select: none;
+  opacity: 0.7;
+}
+
+.diffLine {
+  min-width: 0;
+}
+
 .sectionIcon {
   font-size: 18px;
   line-height: 1;

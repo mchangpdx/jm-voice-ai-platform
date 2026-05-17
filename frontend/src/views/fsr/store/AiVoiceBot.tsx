@@ -55,6 +55,62 @@ function StatusDot({ active }: { active: boolean }) {
   return <span className={active ? styles.dotGreen : styles.dotGray} />
 }
 
+// LCS-based line diff — small (≤ a few hundred lines) so an O(N*M) table is fine.
+type DiffLine = { type: 'same' | 'add' | 'del'; line: string }
+
+function computeLineDiff(saved: string, draft: string): DiffLine[] {
+  const a = saved.split('\n')
+  const b = draft.split('\n')
+  const m = a.length, n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0))
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const out: DiffLine[] = []
+  let i = 0, j = 0
+  while (i < m && j < n) {
+    if (a[i] === b[j])              { out.push({ type: 'same', line: a[i] }); i++; j++ }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: 'del',  line: a[i] }); i++ }
+    else                            { out.push({ type: 'add',  line: b[j] }); j++ }
+  }
+  while (i < m) out.push({ type: 'del', line: a[i++] })
+  while (j < n) out.push({ type: 'add', line: b[j++] })
+  return out
+}
+
+function InlineDiff({ saved, draft }: { saved: string; draft: string }) {
+  const lines = computeLineDiff(saved, draft)
+  const adds = lines.filter((l) => l.type === 'add').length
+  const dels = lines.filter((l) => l.type === 'del').length
+  return (
+    <div className={styles.diff}>
+      <div className={styles.diffHeader}>
+        <span className={styles.diffStatAdd}>+{adds}</span>
+        <span className={styles.diffStatDel}>−{dels}</span>
+        <span className={styles.diffHeaderHint}>Saved → Draft</span>
+      </div>
+      <pre className={styles.diffBody}>
+        {lines.map((l, i) => (
+          <div
+            key={i}
+            className={
+              l.type === 'add' ? styles.diffAdd :
+              l.type === 'del' ? styles.diffDel : styles.diffSame
+            }
+          >
+            <span className={styles.diffMark}>
+              {l.type === 'add' ? '+' : l.type === 'del' ? '−' : ' '}
+            </span>
+            <span className={styles.diffLine}>{l.line || ' '}</span>
+          </div>
+        ))}
+      </pre>
+    </div>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function AiVoiceBot() {
@@ -72,6 +128,8 @@ export default function AiVoiceBot() {
   const [saving,  setSaving ] = useState(false)
   const [toast,   setToast  ] = useState('')
   const [isError, setIsError] = useState(false)
+  const [showSystemDiff, setShowSystemDiff] = useState(false)
+  const [showTempDiff,   setShowTempDiff  ] = useState(false)
 
   const systemDirty = systemDraft !== systemSaved
   const tempDirty   = tempDraft   !== tempSaved
@@ -245,7 +303,7 @@ export default function AiVoiceBot() {
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.sectionIcon}>🔒</span>
-              <div>
+              <div className={styles.sectionHeaderText}>
                 <h2 className={styles.sectionTitle}>
                   Core AI Persona
                   <span className={styles.badgeEssential}>Essential</span>
@@ -254,6 +312,15 @@ export default function AiVoiceBot() {
                   The foundational AI identity. Edit with care — affects every call.
                 </p>
               </div>
+              {systemDirty && (
+                <button
+                  type="button"
+                  className={styles.diffToggle}
+                  onClick={() => setShowSystemDiff((v) => !v)}
+                >
+                  {showSystemDiff ? 'Hide diff' : 'Show diff'}
+                </button>
+              )}
             </div>
             <textarea
               className={styles.textarea}
@@ -263,13 +330,16 @@ export default function AiVoiceBot() {
               placeholder="e.g. You are Aria, the friendly AI voice assistant for JM Cafe…"
             />
             <p className={styles.charCount}>{systemDraft.length.toLocaleString()} characters</p>
+            {systemDirty && showSystemDiff && (
+              <InlineDiff saved={systemSaved} draft={systemDraft} />
+            )}
           </div>
 
           {/* Daily Instructions */}
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.sectionIcon}>⚡</span>
-              <div>
+              <div className={styles.sectionHeaderText}>
                 <h2 className={styles.sectionTitle}>
                   Daily Instructions
                   <span className={styles.badgeTemp}>Temporary</span>
@@ -278,6 +348,15 @@ export default function AiVoiceBot() {
                   Today's specials, sold-out items, or event notes. Highest priority during live calls.
                 </p>
               </div>
+              {tempDirty && (
+                <button
+                  type="button"
+                  className={styles.diffToggle}
+                  onClick={() => setShowTempDiff((v) => !v)}
+                >
+                  {showTempDiff ? 'Hide diff' : 'Show diff'}
+                </button>
+              )}
             </div>
             <textarea
               className={`${styles.textarea} ${styles.textareaAmber}`}
@@ -287,6 +366,9 @@ export default function AiVoiceBot() {
               placeholder="e.g. Matcha latte is sold out today. Happy hour 50% off drinks before 6 PM."
             />
             <p className={styles.charCount}>{tempDraft.length.toLocaleString()} characters</p>
+            {tempDirty && showTempDiff && (
+              <InlineDiff saved={tempSaved} draft={tempDraft} />
+            )}
           </div>
 
           {/* Save / Revert buttons */}
