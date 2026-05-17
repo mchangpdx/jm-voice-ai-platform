@@ -44,11 +44,15 @@ groups:
       - {id: curls,       en: "Curl set blowout",  es: "Brushing rizado", ko: "컬 세팅",     ja: "カール仕上げ", zh: "卷发造型", price_delta: 35.00, duration_delta_min: 30}
 
   # ── Group 4: Polish Type (nails) ──────────────────────────────────────────
+  # applies_to references menu.yaml CATEGORY ids (not service_kind) so
+  # the wire_items_to_modifier_groups derivation matches. Nails category
+  # holds the 4 manicure / pedicure rows.
+  # (applies_to는 menu.yaml category id 기준)
   polish:
     required: true
     min: 1
     max: 1
-    applies_to: [manicure, pedicure]
+    applies_to: [nails]
     options:
       - {id: regular,  en: "Regular polish",     es: "Esmalte regular",  ko: "일반 폴리시",  ja: "通常ポリッシュ", zh: "普通指甲油", price_delta: 0.00, duration_delta_min: 0, allergen_add: [toluene]}
       - {id: gel,      en: "Gel polish",         es: "Esmalte en gel",   ko: "젤 폴리시",    ja: "ジェルポリッシュ", zh: "凝胶指甲油", price_delta: 15.00, duration_delta_min: 15, allergen_add: [acrylate]}
@@ -56,11 +60,15 @@ groups:
       - {id: none,     en: "No polish",          es: "Sin esmalte",       ko: "폴리시 없음",  ja: "ポリッシュなし", zh: "不上色", price_delta: -5.00, duration_delta_min: -5}
 
   # ── Group 5: Facial Add-On (spa) ──────────────────────────────────────────
+  # spa category holds facial + waxing rows; the add-ons apply naturally
+  # to both (a brow-tint pairs with brow-wax just as a hydrating mask
+  # pairs with a facial).
+  # (applies_to는 menu.yaml category id 기준 — spa)
   facial_addon:
     required: false
     min: 0
     max: 2
-    applies_to: [facial]
+    applies_to: [spa]
     options:
       - {id: lash_tint, en: "Lash tint",     es: "Tinte de pestañas", ko: "속눈썹 틴트",  ja: "まつ毛ティント", zh: "睫毛染色", price_delta: 20.00, duration_delta_min: 15, allergen_add: [ppd]}
       - {id: brow_tint, en: "Brow tint",     es: "Tinte de cejas",    ko: "눈썹 틴트",    ja: "眉ティント",    zh: "眉毛染色", price_delta: 18.00, duration_delta_min: 15, allergen_add: [ppd]}

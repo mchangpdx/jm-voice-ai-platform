@@ -266,8 +266,18 @@ async def wire_items_to_modifier_groups(
         if not item_cat:
             continue
         for sort_idx, (group_code, g) in enumerate(groups.items(), start=1):
-            applies = g.get("applies_to_categories")
-            # No applies_to_categories means the group is universal.
+            # N1 fix (2026-05-18) — accept both yaml key spellings.
+            # Cafe / pizza / kbbq / mexican modifier_groups.yaml use
+            # `applies_to_categories`; the newer Beauty template uses the
+            # shorter `applies_to`. Without this fallback, Beauty wired
+            # all 5 modifier groups against all 18 services (90 universal
+            # rows) and Manicure callers got asked about hair_length /
+            # toner / blow_dry (live regression Calls CA012751f7 +
+            # CA664fb622 — Korean Manicure went through 5 extraneous
+            # modifier turns before reaching CONFIRM).
+            # (yaml 키 양쪽 모두 인식 — applies_to / applies_to_categories)
+            applies = g.get("applies_to_categories") or g.get("applies_to")
+            # No applies-to value means the group is universal.
             if applies and item_cat not in applies:
                 continue
             gid = group_ids.get(group_code)
