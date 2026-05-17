@@ -223,7 +223,54 @@ async def insert_appointment(
     BEFORE calling this. Caller is also responsible for fuzzy-matching
     service_name against the menu_items catalog (passes the resolved
     service_type here).
+
+    C4 fix (2026-05-18) — price / duration_min fallback. The LLM
+    sometimes drops the numeric `price` field on non-English calls
+    (live regression: JM Beauty Salon Call CA97a9ff7a, Korean booking
+    persisted with price=$0 despite a verbal $50 quote). When `price`
+    arrives as 0 / missing — or when `duration_min` is missing — we
+    re-fetch the service from the menu_items catalog and use the
+    operator-curated values. This is the same source of truth the bot's
+    earlier service_lookup call read from, so the fallback can't introduce
+    a price the customer didn't already hear quoted.
+    (price=0 시 service_lookup으로 보강 — Korean 라이브 회귀 가드)
     """
+    # Defer the import to avoid an import cycle at module load.
+    # (지연 import — booking ↔ service_lookup 순환 회피)
+    from app.skills.appointment.service_lookup import service_lookup
+
+    needs_price_fallback    = (not args.get("price"))      # 0 / None / missing
+    needs_duration_fallback = (not args.get("duration_min"))
+
+    if needs_price_fallback or needs_duration_fallback:
+        try:
+            lookup = await service_lookup(
+                store_id     = store_id,
+                service_name = args.get("service_name") or "",
+            )
+        except Exception as exc:
+            log.warning(
+                "insert_appointment service_lookup fallback failed "
+                "store=%s service=%r err=%r",
+                store_id, args.get("service_name"), exc,
+            )
+            lookup = None
+        if lookup and lookup.get("ai_script_hint") in (
+            "service_found", "service_unknown_price", "service_unknown_duration"
+        ):
+            if needs_price_fallback and lookup.get("price"):
+                log.info(
+                    "insert_appointment price fallback: arg=%r catalog=%r service=%r",
+                    args.get("price"), lookup.get("price"), args.get("service_name"),
+                )
+                args["price"] = lookup["price"]
+            if needs_duration_fallback and lookup.get("duration_min"):
+                log.info(
+                    "insert_appointment duration_min fallback: arg=%r catalog=%r",
+                    args.get("duration_min"), lookup.get("duration_min"),
+                )
+                args["duration_min"] = lookup["duration_min"]
+
     scheduled_at = combine_date_time(
         args["appointment_date"],
         args["appointment_time"],
@@ -235,7 +282,7 @@ async def insert_appointment(
         "call_log_id":    call_log_id,
         "service_type":   args["service_name"],
         "scheduled_at":   scheduled_at,
-        "duration_min":   int(args["duration_min"]),
+        "duration_min":   int(args["duration_min"]) if args.get("duration_min") else 0,
         "price":          float(args.get("price") or 0),
         "customer_name":  args["customer_name"],
         "customer_phone": args["customer_phone"],

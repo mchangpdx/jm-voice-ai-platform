@@ -214,6 +214,144 @@ async def test_insert_appointment_empty_response_raises():
             )
 
 
+# ── C4 fix (2026-05-18) — price / duration fallback via service_lookup ──
+
+
+@pytest.mark.asyncio
+async def test_insert_appointment_falls_back_to_service_lookup_when_price_zero():
+    """Live regression Call CA97a9ff7a (Korean booking) — LLM passed
+    price=0 despite a verbal $50 quote. The fallback re-reads the menu_items
+    catalog via service_lookup and writes the operator-curated price so the
+    DB row matches what the customer heard.
+    (price=0 시 service_lookup 보강 — Korean 통화 회귀 가드)"""
+    captured: dict = {}
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 201
+    mock_resp.json = lambda: [{"id": 99, "price": 50.0}]
+
+    async def fake_post(url, headers=None, json=None):
+        captured["json"] = json
+        return mock_resp
+
+    with patch("app.skills.appointment.booking.httpx.AsyncClient") as ac_cls, \
+         patch("app.skills.appointment.service_lookup.service_lookup",
+               new=AsyncMock(return_value={
+                   "ai_script_hint": "service_found",
+                   "matched_name":   "Gel Manicure",
+                   "duration_min":   45,
+                   "price":          50.0,
+                   "service_kind":   "manicure",
+               })) as lookup_spy:
+        client = AsyncMock()
+        client.post = fake_post
+        ac_cls.return_value.__aenter__.return_value = client
+        await insert_appointment(
+            store_id    = "s1",
+            call_log_id = "CL1",
+            args        = _good_args(price=0),   # ← LLM dropped the price
+        )
+    lookup_spy.assert_awaited_once()
+    persisted_row = captured["json"][0]
+    assert persisted_row["price"] == 50.0, "fallback failed to overwrite price=0"
+
+
+@pytest.mark.asyncio
+async def test_insert_appointment_falls_back_when_duration_missing():
+    """Same flow as the price fallback, but for duration_min — operator may
+    have curated only one or the other, so each side falls back independently.
+    (duration_min 누락 시도 같은 fallback)"""
+    captured: dict = {}
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 201
+    mock_resp.json = lambda: [{"id": 100}]
+
+    async def fake_post(url, headers=None, json=None):
+        captured["json"] = json
+        return mock_resp
+
+    bad_args = _good_args()
+    bad_args["duration_min"] = 0     # missing
+    with patch("app.skills.appointment.booking.httpx.AsyncClient") as ac_cls, \
+         patch("app.skills.appointment.service_lookup.service_lookup",
+               new=AsyncMock(return_value={
+                   "ai_script_hint": "service_found",
+                   "matched_name":   "Women's Haircut",
+                   "duration_min":   60,
+                   "price":          65.0,
+                   "service_kind":   "haircut",
+               })):
+        client = AsyncMock()
+        client.post = fake_post
+        ac_cls.return_value.__aenter__.return_value = client
+        await insert_appointment(
+            store_id    = "s1",
+            call_log_id = "CL1",
+            args        = bad_args,
+        )
+    persisted_row = captured["json"][0]
+    assert persisted_row["duration_min"] == 60
+
+
+@pytest.mark.asyncio
+async def test_insert_appointment_no_fallback_when_price_present():
+    """Happy path — args.price is set, service_lookup must NOT be called.
+    Defends against a future regression where every booking pays a
+    service_lookup REST round-trip even when the LLM passed the price.
+    (price 있을 땐 fallback skip — 불필요한 REST 호출 차단)"""
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 201
+    mock_resp.json = lambda: [{"id": 101}]
+
+    with patch("app.skills.appointment.booking.httpx.AsyncClient") as ac_cls, \
+         patch("app.skills.appointment.service_lookup.service_lookup",
+               new=AsyncMock(return_value={})) as lookup_spy:
+        client = AsyncMock()
+        client.post = AsyncMock(return_value=mock_resp)
+        ac_cls.return_value.__aenter__.return_value = client
+        await insert_appointment(
+            store_id    = "s1",
+            call_log_id = "CL1",
+            args        = _good_args(),   # has price=55.0
+        )
+    lookup_spy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_insert_appointment_fallback_safe_when_lookup_unknown():
+    """If service_lookup returns service_not_found, do NOT overwrite the
+    missing price with junk — keep 0 so downstream knows the DB row was
+    captured incompletely (the salon staff can patch on follow-up).
+    (lookup이 not_found면 0 그대로 — 잘못된 값 안 씀)"""
+    captured: dict = {}
+    mock_resp = AsyncMock()
+    mock_resp.status_code = 201
+    mock_resp.json = lambda: [{"id": 102}]
+
+    async def fake_post(url, headers=None, json=None):
+        captured["json"] = json
+        return mock_resp
+
+    with patch("app.skills.appointment.booking.httpx.AsyncClient") as ac_cls, \
+         patch("app.skills.appointment.service_lookup.service_lookup",
+               new=AsyncMock(return_value={
+                   "ai_script_hint": "service_not_found",
+                   "matched_name":   "",
+                   "duration_min":   None,
+                   "price":          None,
+                   "service_kind":   None,
+               })):
+        client = AsyncMock()
+        client.post = fake_post
+        ac_cls.return_value.__aenter__.return_value = client
+        await insert_appointment(
+            store_id    = "s1",
+            call_log_id = "CL1",
+            args        = _good_args(price=0),
+        )
+    persisted_row = captured["json"][0]
+    assert persisted_row["price"] == 0.0
+
+
 @pytest.mark.asyncio
 async def test_insert_appointment_uses_resolved_scheduled_at():
     """The async insert uses combine_date_time on the supplied date+time."""
