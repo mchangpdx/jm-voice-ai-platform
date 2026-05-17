@@ -52,6 +52,7 @@ export default function AdminUsers() {
   const [filter, setFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState<'ALL' | Role>('ALL')
   const [busy, setBusy] = useState<string>('')
+  const [confirmingDisable, setConfirmingDisable] = useState<string>('')   // user_id awaiting 2nd click
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null)
 
   const refresh = () =>
@@ -69,23 +70,15 @@ export default function AdminUsers() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const handleChangeRole = async (u: UserRow) => {
-    const choice = window
-      .prompt(
-        `Change role for ${u.email ?? u.id}.\nCurrent: ${u.role}\nEnter STORE, AGENCY, or ADMIN:`,
-        u.role,
-      )
-      ?.trim()
-      .toUpperCase()
-    if (!choice || choice === u.role) return
-    if (!ROLE_OPTIONS.includes(choice as Role)) {
-      flash(`Invalid role "${choice}"`, true)
-      return
-    }
+  // Inline role change — fired by the row's <select> onChange.
+  // Backend's last-admin-demotion guard returns 409; we surface it via toast.
+  // (인라인 select 변경 — backend의 마지막 admin 강등 차단을 토스트로 노출)
+  const handleChangeRole = async (u: UserRow, next: Role) => {
+    if (next === u.role) return
     setBusy(u.id)
     try {
-      await api.patch(`/admin/users/${u.id}/role`, { role: choice })
-      flash(`Role updated to ${choice}`)
+      await api.patch(`/admin/users/${u.id}/role`, { role: next })
+      flash(`Role updated to ${next}`)
       await refresh()
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })
@@ -96,15 +89,22 @@ export default function AdminUsers() {
     }
   }
 
-  const handleDisable = async (u: UserRow) => {
-    const owned = u.owned_agencies.length + u.owned_stores.length
-    if (owned > 0) {
-      window.alert(
-        `Cannot disable ${u.email ?? u.id} — still owns ${u.owned_agencies.length} agencies and ${u.owned_stores.length} stores.\nTransfer them first.`,
-      )
+  // Two-stage disable — first click arms confirm state, second click within 4s
+  // commits. Owned-resource rows are pre-disabled with a tooltip; no need to
+  // post-hoc alert. (2단계 확인 — 첫 클릭 arm, 두 번째 클릭 commit)
+  const handleDisableClick = (u: UserRow) => {
+    if (confirmingDisable === u.id) {
+      void actuallyDisable(u)
+      setConfirmingDisable('')
       return
     }
-    if (!window.confirm(`Disable ${u.email ?? u.id}? They will be blocked from logging in.`)) return
+    setConfirmingDisable(u.id)
+    setTimeout(() => {
+      setConfirmingDisable((prev) => (prev === u.id ? '' : prev))
+    }, 4000)
+  }
+
+  const actuallyDisable = async (u: UserRow) => {
     setBusy(u.id)
     try {
       await api.delete(`/admin/users/${u.id}`)
@@ -184,13 +184,23 @@ export default function AdminUsers() {
             <tbody>
               {visible.map((u) => {
                 const isBusy = busy === u.id
+                const ownedCount = u.owned_agencies.length + u.owned_stores.length
                 const ownedSummary =
-                  u.owned_agencies.length === 0 && u.owned_stores.length === 0
+                  ownedCount === 0
                     ? '—'
                     : [
                         u.owned_agencies.length ? `${u.owned_agencies.length} agency` : null,
                         u.owned_stores.length   ? `${u.owned_stores.length} store`   : null,
                       ].filter(Boolean).join(' · ')
+                const isConfirmingDisable = confirmingDisable === u.id
+                const disableLocked = isBusy || u.is_disabled || ownedCount > 0
+                const disableTooltip = u.is_disabled
+                  ? 'User is already disabled'
+                  : ownedCount > 0
+                    ? `Transfer ${u.owned_agencies.length} agency / ${u.owned_stores.length} store first`
+                    : isConfirmingDisable
+                      ? 'Click again within 4s to confirm'
+                      : 'Disable user — they will be blocked from logging in'
                 return (
                   <tr key={u.id} className={isBusy ? styles.rowBusy : ''}>
                     <td className={styles.cellEmail}>
@@ -198,27 +208,29 @@ export default function AdminUsers() {
                       {u.is_disabled && <span className={styles.disabledBadge}>DISABLED</span>}
                     </td>
                     <td>
-                      <span className={`${styles.roleBadge} ${styles[`role${u.role}`]}`}>
-                        {u.role}
-                      </span>
+                      <select
+                        className={`${styles.roleSelectInline} ${styles[`role${u.role}`]}`}
+                        value={u.role}
+                        disabled={isBusy || u.is_disabled}
+                        onChange={(e) => handleChangeRole(u, e.target.value as Role)}
+                        aria-label={`Change role for ${u.email ?? u.id}`}
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className={styles.cellOwned}>{ownedSummary}</td>
                     <td className={styles.cellDate}>{fmtRelative(u.last_sign_in_at)}</td>
                     <td className={styles.cellDate}>{fmtDate(u.created_at)}</td>
                     <td className={styles.actionCell}>
                       <button
-                        className={styles.actionBtn}
-                        disabled={isBusy}
-                        onClick={() => handleChangeRole(u)}
+                        className={`${styles.actionBtn} ${styles.actionDanger} ${isConfirmingDisable ? styles.actionConfirm : ''}`}
+                        disabled={disableLocked}
+                        onClick={() => handleDisableClick(u)}
+                        title={disableTooltip}
                       >
-                        Role
-                      </button>
-                      <button
-                        className={`${styles.actionBtn} ${styles.actionDanger}`}
-                        disabled={isBusy || u.is_disabled}
-                        onClick={() => handleDisable(u)}
-                      >
-                        Disable
+                        {isConfirmingDisable ? 'Click to confirm' : 'Disable'}
                       </button>
                     </td>
                   </tr>

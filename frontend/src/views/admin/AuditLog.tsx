@@ -19,6 +19,36 @@ interface AuditEntry {
 
 const PAGE_SIZE = 50
 
+type ActionScope = '' | 'agency.' | 'store.' | 'user.'
+type TargetType  = '' | 'agency' | 'store' | 'user'
+type RangeKey    = 'all' | '24h' | '7d' | '30d'
+
+const ACTION_CHIPS: { key: ActionScope; label: string }[] = [
+  { key: '',         label: 'All actions' },
+  { key: 'agency.',  label: 'agency.*' },
+  { key: 'store.',   label: 'store.*' },
+  { key: 'user.',    label: 'user.*' },
+]
+
+const TARGET_CHIPS: { key: TargetType; label: string }[] = [
+  { key: '',         label: 'All targets' },
+  { key: 'agency',   label: 'agency' },
+  { key: 'store',    label: 'store' },
+  { key: 'user',     label: 'user' },
+]
+
+const RANGE_CHIPS: { key: RangeKey; label: string; hours: number | null }[] = [
+  { key: 'all', label: 'All time', hours: null },
+  { key: '24h', label: 'Last 24h', hours: 24 },
+  { key: '7d',  label: 'Last 7d',  hours: 24 * 7 },
+  { key: '30d', label: 'Last 30d', hours: 24 * 30 },
+]
+
+const sinceIso = (hours: number | null): string | null =>
+  hours == null
+    ? null
+    : new Date(Date.now() - hours * 3600_000).toISOString()
+
 const fmtTime = (iso: string) => {
   try {
     return new Date(iso).toLocaleString('en-US', {
@@ -39,21 +69,29 @@ export default function AuditLog() {
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
-  const [actionFilter, setActionFilter] = useState('')
-  const [targetTypeFilter, setTargetTypeFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState<ActionScope>('')
+  const [targetTypeFilter, setTargetTypeFilter] = useState<TargetType>('')
+  const [rangeFilter, setRangeFilter] = useState<RangeKey>('all')
   const [expanded, setExpanded] = useState<string>('')
   const [hasMore, setHasMore] = useState(false)
+
+  const buildParams = (forOffset: number): string => {
+    const params = new URLSearchParams()
+    params.set('limit', String(PAGE_SIZE))
+    params.set('offset', String(forOffset))
+    if (actionFilter) params.set('action', actionFilter)
+    if (targetTypeFilter) params.set('target_type', targetTypeFilter)
+    const rangeMeta = RANGE_CHIPS.find((c) => c.key === rangeFilter)
+    const since = sinceIso(rangeMeta?.hours ?? null)
+    if (since) params.set('since', since)
+    return params.toString()
+  }
 
   const load = (resetOffset = false) => {
     setLoading(true)
     const nextOffset = resetOffset ? 0 : offset
-    const params = new URLSearchParams()
-    params.set('limit', String(PAGE_SIZE))
-    params.set('offset', String(nextOffset))
-    if (actionFilter) params.set('action', actionFilter)
-    if (targetTypeFilter) params.set('target_type', targetTypeFilter)
     api
-      .get(`/admin/audit-logs?${params.toString()}`)
+      .get(`/admin/audit-logs?${buildParams(nextOffset)}`)
       .then((r) => {
         const data = r.data as AuditEntry[]
         if (resetOffset) {
@@ -71,7 +109,7 @@ export default function AuditLog() {
   useEffect(() => {
     load(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionFilter, targetTypeFilter])
+  }, [actionFilter, targetTypeFilter, rangeFilter])
 
   return (
     <div className={styles.page}>
@@ -93,35 +131,66 @@ export default function AuditLog() {
       </div>
 
       <div className={styles.filters}>
-        <label className={styles.filterLabel}>
-          Action
-          <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className={styles.select}
-          >
-            <option value="">All</option>
-            <option value="agency.">agency.*</option>
-            <option value="store.">store.*</option>
-            <option value="user.">user.*</option>
-          </select>
-        </label>
+        <div className={styles.filterGroup}>
+          <div className={styles.filterGroupLabel}>Action</div>
+          <div className={styles.chipRow} role="radiogroup" aria-label="Action filter">
+            {ACTION_CHIPS.map((c) => (
+              <button
+                key={c.key || 'all'}
+                type="button"
+                role="radio"
+                aria-checked={actionFilter === c.key}
+                className={`${styles.chip} ${actionFilter === c.key ? styles.chipActive : ''}`}
+                onClick={() => setActionFilter(c.key)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <label className={styles.filterLabel}>
-          Target
-          <select
-            value={targetTypeFilter}
-            onChange={(e) => setTargetTypeFilter(e.target.value)}
-            className={styles.select}
-          >
-            <option value="">All</option>
-            <option value="agency">agency</option>
-            <option value="store">store</option>
-            <option value="user">user</option>
-          </select>
-        </label>
+        <div className={styles.filterGroup}>
+          <div className={styles.filterGroupLabel}>Target</div>
+          <div className={styles.chipRow} role="radiogroup" aria-label="Target filter">
+            {TARGET_CHIPS.map((c) => (
+              <button
+                key={c.key || 'all'}
+                type="button"
+                role="radio"
+                aria-checked={targetTypeFilter === c.key}
+                className={`${styles.chip} ${targetTypeFilter === c.key ? styles.chipActive : ''}`}
+                onClick={() => setTargetTypeFilter(c.key)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <button className={styles.refreshBtn} onClick={() => load(true)} disabled={loading}>
+        <div className={styles.filterGroup}>
+          <div className={styles.filterGroupLabel}>Range</div>
+          <div className={styles.chipRow} role="radiogroup" aria-label="Time range filter">
+            {RANGE_CHIPS.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                role="radio"
+                aria-checked={rangeFilter === c.key}
+                className={`${styles.chip} ${rangeFilter === c.key ? styles.chipActive : ''}`}
+                onClick={() => setRangeFilter(c.key)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          className={styles.refreshBtn}
+          onClick={() => load(true)}
+          disabled={loading}
+          aria-label="Refresh"
+        >
           {loading ? '…' : '↺ Refresh'}
         </button>
       </div>
@@ -187,13 +256,8 @@ export default function AuditLog() {
                   const next = offset + PAGE_SIZE
                   setOffset(next)
                   setLoading(true)
-                  const params = new URLSearchParams()
-                  params.set('limit', String(PAGE_SIZE))
-                  params.set('offset', String(next))
-                  if (actionFilter) params.set('action', actionFilter)
-                  if (targetTypeFilter) params.set('target_type', targetTypeFilter)
                   api
-                    .get(`/admin/audit-logs?${params.toString()}`)
+                    .get(`/admin/audit-logs?${buildParams(next)}`)
                     .then((r) => {
                       const data = r.data as AuditEntry[]
                       setEntries((prev) => [...prev, ...data])
