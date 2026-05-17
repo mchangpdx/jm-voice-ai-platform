@@ -2,6 +2,7 @@
 // (필터 + 페이징 + 상세 확장 통화 내역 페이지)
 import { useEffect, useState } from 'react'
 import api from '../../../core/api'
+import Skeleton from '../../../components/Skeleton/Skeleton'
 import styles from './CallHistory.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -313,9 +314,13 @@ export default function CallHistory() {
           </thead>
           <tbody>
             {loading ? (
-              <tr className={styles.emptyRow}>
-                <td colSpan={8}>Loading call history...</td>
-              </tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  {Array.from({ length: 8 }).map((_, j) => (
+                    <td key={j}><Skeleton h={14} /></td>
+                  ))}
+                </tr>
+              ))
             ) : items.length === 0 ? (
               <tr className={styles.emptyRow}>
                 <td colSpan={8}>No calls found for this period</td>

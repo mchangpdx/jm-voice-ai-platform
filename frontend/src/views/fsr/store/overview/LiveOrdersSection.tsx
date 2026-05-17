@@ -2,6 +2,7 @@
 // (실시간 통화 주문 — 최근 10건 + 미결제 badge + 수동 새로고침)
 import { useEffect, useState } from 'react'
 import api from '../../../../core/api'
+import Skeleton from '../../../../components/Skeleton/Skeleton'
 import styles from '../Overview.module.css'
 
 interface Order {
@@ -58,7 +59,9 @@ export default function LiveOrdersSection() {
       </div>
 
       {loading ? (
-        <div className={styles.loading}>Loading orders...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={36} radius={6} />)}
+        </div>
       ) : orders.length === 0 ? (
         <div className={styles.empty}>No orders yet</div>
       ) : (

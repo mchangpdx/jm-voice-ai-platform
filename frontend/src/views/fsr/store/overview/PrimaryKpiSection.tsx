@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import api from '../../../../core/api'
 import { getVerticalMeta } from '../../../../core/verticalLabels'
+import Skeleton from '../../../../components/Skeleton/Skeleton'
 import styles from '../Overview.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -56,7 +57,7 @@ export default function PrimaryKpiSection({
           <span className={styles.kpiLabel}>{meta.primaryRevenueLabel}</span>
           <span className={styles.kpiBadge}>MCRR</span>
         </div>
-        <div className={styles.kpiValue}>{loading ? '—' : fmt(m?.mcrr ?? 0)}</div>
+        <div className={styles.kpiValue}>{loading ? <Skeleton w={130} h={28} /> : fmt(m?.mcrr ?? 0)}</div>
         <div className={styles.kpiSub}>
           {m?.using_real_busy_data
             ? 'Busy-hour calls answered by AI × success rate × avg ticket'
@@ -69,7 +70,7 @@ export default function PrimaryKpiSection({
           <span className={styles.kpiLabel}>Labor Cost Savings</span>
           <span className={styles.kpiBadge}>LCS</span>
         </div>
-        <div className={styles.kpiValue}>{loading ? '—' : fmt(m?.lcs ?? 0)}</div>
+        <div className={styles.kpiValue}>{loading ? <Skeleton w={130} h={28} /> : fmt(m?.lcs ?? 0)}</div>
         <div className={styles.kpiSub}>
           AI call hours × $20/hr — staff freed for floor service
         </div>
@@ -81,7 +82,7 @@ export default function PrimaryKpiSection({
           <span className={styles.kpiBadge}>PHRC + LCS + UV</span>
         </div>
         <div className={`${styles.kpiValue} ${styles.kpiValueLarge}`}>
-          {loading ? '—' : fmt(m?.monthly_impact ?? 0)}
+          {loading ? <Skeleton w={170} h={36} /> : fmt(m?.monthly_impact ?? 0)}
         </div>
         <div className={styles.kpiSub}>
           {m && m.total_ai_revenue > 0

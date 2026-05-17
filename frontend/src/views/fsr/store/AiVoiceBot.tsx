@@ -2,6 +2,7 @@
 // (AI Voice Bot 관리 페이지 — 페르소나 편집, 에이전트 상태, 지식 베이스)
 import { useEffect, useState } from 'react'
 import api from '../../../core/api'
+import Skeleton from '../../../components/Skeleton/Skeleton'
 import styles from './AiVoiceBot.module.css'
 
 interface VoiceBotSettings {
@@ -226,7 +227,17 @@ export default function AiVoiceBot() {
   }
 
   if (loading) {
-    return <div className={styles.loading}>Loading AI Voice Bot settings…</div>
+    return (
+      <div className={styles.page}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className={styles.section}>
+            <Skeleton w={220} h={16} />
+            <div style={{ height: 14 }} />
+            <Skeleton h={i === 1 ? 160 : 100} radius={8} />
+          </div>
+        ))}
+      </div>
+    )
   }
 
   return (
@@ -264,7 +275,11 @@ export default function AiVoiceBot() {
             </div>
 
             {agentLoading ? (
-              <p className={styles.agentLoading}>Loading voice agent…</p>
+              <div className={styles.agentCard}>
+                <Skeleton w={180} h={14} />
+                <div style={{ height: 12 }} />
+                <Skeleton h={70} radius={6} />
+              </div>
             ) : agentStatus ? (
               <div className={styles.agentCard}>
                 <div className={styles.agentRow}>

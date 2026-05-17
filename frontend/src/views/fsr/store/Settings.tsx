@@ -2,6 +2,7 @@
 // (스토어 설정 페이지 — 시급, 타임존, 바쁜 시간대 스케줄, 긴급 오버라이드)
 import { Fragment, useEffect, useState } from 'react'
 import api from '../../../core/api'
+import Skeleton from '../../../components/Skeleton/Skeleton'
 import styles from './Settings.module.css'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -175,7 +176,19 @@ export default function Settings() {
     }
   }
 
-  if (loading) return <div className={styles.loading}>Loading settings…</div>
+  if (loading) {
+    return (
+      <div className={styles.page}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className={styles.section}>
+            <Skeleton w={220} h={16} />
+            <div style={{ height: 14 }} />
+            <Skeleton h={120} radius={8} />
+          </div>
+        ))}
+      </div>
+    )
+  }
   if (!storeSettings) return null
 
   const isOverrideActive = storeSettings.is_override_busy

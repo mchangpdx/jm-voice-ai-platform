@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../../../core/api'
+import Skeleton from '../../../../components/Skeleton/Skeleton'
 import styles from '../Overview.module.css'
 
 interface CallLogItem {
@@ -60,7 +61,9 @@ export default function RecentCallsSection() {
       </div>
 
       {loading ? (
-        <div className={styles.loading}>Loading recent calls…</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={36} radius={6} />)}
+        </div>
       ) : recentCalls.length === 0 ? (
         <div className={styles.empty}>No calls yet</div>
       ) : (

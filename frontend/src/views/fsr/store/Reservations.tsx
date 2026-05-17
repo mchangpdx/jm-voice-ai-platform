@@ -2,6 +2,7 @@
 // (AI가 수집한 예약 관리 페이지 — 상태 워크플로우 포함)
 import { useEffect, useState, useCallback } from 'react'
 import api from '../../../core/api'
+import Skeleton from '../../../components/Skeleton/Skeleton'
 import styles from './Reservations.module.css'
 
 type Period       = 'today' | 'week' | 'month' | 'all'
@@ -190,7 +191,13 @@ export default function Reservations() {
           </thead>
           <tbody>
             {loading ? (
-              <tr className={styles.emptyRow}><td colSpan={7}>Loading reservations...</td></tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  {Array.from({ length: 7 }).map((_, j) => (
+                    <td key={j}><Skeleton h={14} /></td>
+                  ))}
+                </tr>
+              ))
             ) : items.length === 0 ? (
               <tr className={styles.emptyRow}><td colSpan={7}>No reservations found for this period</td></tr>
             ) : items.map((r) => (
