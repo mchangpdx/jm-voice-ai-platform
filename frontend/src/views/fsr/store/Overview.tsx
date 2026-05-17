@@ -7,7 +7,7 @@
 //   2. Add an entry to OVERVIEW_SECTIONS
 // No changes to this file needed unless you change the period / data contract.
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useAuth } from '../../../core/AuthContext'
 import Tier3AlertBadge from '../../../components/Tier3AlertBadge'
 import styles from './Overview.module.css'
@@ -27,10 +27,12 @@ export default function Overview() {
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [loadingMetrics, setLoadingMetrics] = useState(true)
 
-  const handleMetrics = (m: Metrics | null) => {
+  // Stable reference — PrimaryKpiSection's useEffect depends on this callback,
+  // so an unstable reference triggers a fetch loop that keeps loading=true.
+  const handleMetrics = useCallback((m: Metrics | null) => {
     setMetrics(m)
     setLoadingMetrics(false)
-  }
+  }, [])
 
   const props = {
     period, industry, storeName, metrics, loadingMetrics, onMetrics: handleMetrics,
