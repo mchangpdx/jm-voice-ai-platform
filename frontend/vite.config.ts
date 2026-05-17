@@ -12,6 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: true,                  // bind 0.0.0.0 so phones/tablets on same Wi-Fi can connect
     allowedHosts: true,
     proxy: {
       // Proxy API calls to FastAPI backend (FastAPI 백엔드로 API 호출 프록시)

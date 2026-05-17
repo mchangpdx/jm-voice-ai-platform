@@ -398,3 +398,37 @@
   font-style: italic;
   margin: 0;
 }
+
+/* ── Responsive (per memory rule: 640 phone / 1024 tablet) ─────────────── */
+@media (max-width: 1024px) {
+  .statsStrip      { flex-wrap: wrap; gap: 14px; }
+  .stat            { min-width: calc(50% - 7px); }
+  .drawerStatsRow  { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .pageTitle       { font-size: 22px; }
+  .pageDesc        { font-size: 13px; }
+  .filtersRow      { gap: 8px; }
+  .exportBtn       { margin-left: 0; width: 100%; padding: 10px; font-size: 13px; }
+  .filterBtn       { padding: 7px 12px; font-size: 12.5px; }   /* ≥44px combined */
+  .statsStrip      { padding: 12px 14px; gap: 12px 18px; }
+  .statValue       { font-size: 16px; }
+
+  /* Table stays horizontally scrollable; shrink padding for density */
+  .table           { font-size: 12.5px; }
+  .table thead th  { padding: 9px 10px; }
+  .table tbody td  { padding: 9px 10px; }
+  .cellSummary     { max-width: 180px; }
+
+  /* Pagination wraps to two rows on phones */
+  .pagination      { flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .paginationBtns  { flex-wrap: wrap; justify-content: center; }
+  .pageBtn         { padding: 7px 11px; min-width: 36px; }   /* touch target */
+
+  /* Drawer goes full-screen on phones */
+  .drawer          { width: 100vw; }
+  .drawerStatsRow  { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .drawerHeader    { padding: 14px 16px 12px; }
+  .drawerBody      { padding: 14px 16px 20px; }
+}

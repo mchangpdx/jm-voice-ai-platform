@@ -402,3 +402,27 @@
 
 .overrideEndBtn:hover:not(:disabled) { background: #15803d; }
 .overrideEndBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Responsive (per memory rule: 640 phone / 1024 tablet) ─────────────── */
+@media (max-width: 1024px) {
+  .fieldRow      { grid-template-columns: 1fr; gap: 14px; }
+}
+
+@media (max-width: 640px) {
+  .pageTitle     { font-size: 22px; }
+  .pageDesc      { font-size: 13px; }
+  .section       { padding: 18px 16px; border-radius: 10px; }
+  .sectionHeader { gap: 10px; margin-bottom: 16px; }
+  .input         { font-size: 16px; padding: 10px 12px; }   /* iOS no-zoom + 44px touch */
+  .select        { font-size: 14px; padding: 10px 12px; }
+  .saveBtn       { width: 100%; padding: 12px; font-size: 14px; }
+  .scheduleRow   { flex-wrap: wrap; gap: 8px; }
+  .timeSlots     { flex: 1 1 100%; }
+  .overridePanel { flex-direction: column; align-items: stretch; gap: 12px; }
+  .overrideStatus { justify-content: center; }
+  .overrideControls { flex-direction: column; align-items: stretch; }
+  .durationPills { justify-content: space-between; }
+  .durationPill  { flex: 1; text-align: center; }
+  .overrideStartBtn, .overrideEndBtn { width: 100%; padding: 11px; }
+  .toast         { left: 16px; right: 16px; top: 12px; text-align: center; }
+}
