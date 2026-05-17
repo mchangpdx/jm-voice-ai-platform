@@ -112,7 +112,7 @@
 }
 
 .heroKpiNum {
-  font-size: 32px;
+  font-size: clamp(28px, 5vw, 38px);
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #fff;
@@ -384,8 +384,11 @@
 
 .archSvg {
   width: 100%;
+  max-width: 760px;            /* prevents SVG text from oversizing on ultrawide */
   height: auto;
   max-height: 360px;
+  display: block;
+  margin: 0 auto;
 }
 
 .archLayer rect { cursor: pointer; transition: opacity 0.12s; }
@@ -578,7 +581,7 @@
 }
 
 .roiResultNum {
-  font-size: 36px;
+  font-size: clamp(30px, 5vw, 44px);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -753,16 +756,18 @@
 /* ── Desktop ≥ 1024 (TOC sidebar emerges) ──────────────────────────────── */
 @media (min-width: 1024px) {
   .page {
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: clamp(200px, 18vw, 240px) 1fr;
     gap: 32px;
     padding-left: 8px;
   }
   .tocVertical {
     display: block;
     position: sticky;
-    top: 16px;
+    top: 24px;
     align-self: start;
     padding: 16px 12px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
   }
   .tocHorizontal { display: none; }
   .tocLabel {
