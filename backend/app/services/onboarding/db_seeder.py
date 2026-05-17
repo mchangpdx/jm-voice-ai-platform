@@ -26,6 +26,7 @@ from typing import Any, Optional
 import httpx
 
 from app.core.config import settings
+from app.templates._base.validator import _resolve_kind_and_meta
 
 log = logging.getLogger(__name__)
 
@@ -172,6 +173,13 @@ async def seed_menu_items(
             "pos_item_id":    str(uuid.uuid4()),
             "sku":            item["id"],
             "description":    item.get("notes_en"),
+            # Phase 2 schema (2026-05-18) — propagate service-kind columns
+            # from menu.yaml so service_lookup + book_appointment can
+            # quote duration / kind from the catalog. Null for order
+            # verticals — column nullable, zero regression for food.
+            # (service vertical용 컬럼 — order vertical은 NULL 영향 zero)
+            "service_kind":   item.get("service_kind"),
+            "duration_min":   item.get("duration_min"),
             "raw":            {"yaml_id": item["id"], "placeholder_ids": True},
         })
     inserted = await _post(client, "menu_items", rows)
@@ -454,6 +462,19 @@ async def finalize_store(
         "phone":            phone_number,
         "is_active":        True,
     }
+    # Phase 3.6 dispatcher routing — vertical_kind drives ORDER_KIND_TOOLS
+    # vs SERVICE_KIND_TOOLS selection at session.update time. Without this,
+    # service-kind verticals (beauty / spa / barber / auto / home) fall
+    # back to the order tool surface and book_appointment never fires.
+    # Resolved from templates/_base/vertical_kinds.yaml — single source of
+    # truth. NULL when the vertical isn't registered yet, in which case
+    # _resolve_store_id's dispatcher defaults to ORDER (safe fallback).
+    # Live trigger: JM Beauty Salon 2026-05-18 activation needed a manual
+    # PATCH to recover from this gap (#19 in 2026-05-18 automation audit).
+    # (vertical → kind 자동 채움 — service vertical 활성화 시 dispatcher 정확)
+    kind, _persona, _langs = _resolve_kind_and_meta(vertical)
+    if kind:
+        store_payload["vertical_kind"] = kind
     if owner_id:
         store_payload["owner_id"] = owner_id
     if agency_id:

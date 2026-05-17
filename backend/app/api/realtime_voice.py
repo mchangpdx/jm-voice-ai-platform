@@ -437,6 +437,43 @@ async def _dispatch_tool_call(
     timing workarounds. Realtime's native VAD + barge-in handle that pathway.
     (Retell 전용 timing 가드는 생략 — Realtime VAD가 동등 기능 제공)
     """
+    # ── C2 defense-in-depth (2026-05-18) — vertical-aware tool guard ──
+    # OpenAI Realtime only exposes the per-vertical tool list, but the LLM
+    # can still hallucinate a call to a tool it learned from the prompt.
+    # JM Beauty Salon Call CA218629c6 (cancel flow) fired `recent_orders`
+    # — an ORDER tool — on a SERVICE store because the C1-pre prompt
+    # mentioned recent_orders 5×. C1 fixed the prompt; C2 hardens the
+    # dispatcher so a future prompt regression cannot leak again. Tools
+    # outside the store's vertical surface are rejected with an honest
+    # `tool_not_available_for_vertical` reply instead of being executed.
+    # (vertical 가드 — LLM이 hallucinate한 cross-vertical tool 실행 차단)
+    store_row = session_state.get("store_row") or {}
+    allowed_tools = {
+        t["function_declarations"][0]["name"]
+        for t in get_tool_defs_for_store(store_row)
+    }
+    if tool_name not in allowed_tools:
+        log.warning(
+            "[tool] BLOCKED cross-vertical tool=%s vertical_kind=%r "
+            "allowed=%s",
+            tool_name,
+            store_row.get("vertical_kind"),
+            sorted(allowed_tools),
+        )
+        return {
+            "success":        False,
+            "reason":         "tool_not_available_for_vertical",
+            "error":          (
+                f"Tool {tool_name!r} is not exposed for this store's "
+                f"vertical ({store_row.get('vertical_kind') or 'unknown'})."
+            ),
+            "ai_script_hint": "tool_not_available_for_vertical",
+            "message": (
+                "Sorry, I can't do that on this line — let me know how "
+                "else I can help."
+            ),
+        }
+
     # caller_phone_e164 is the carrier-authenticated server source of truth.
     # Override any LLM-provided customer_phone for create_order / make_reservation.
     # (voice_websocket.py:1484 mirror)
@@ -838,8 +875,14 @@ async def _load_store_by_id(store_id: str) -> dict | None:
             headers=_SUPABASE_HEADERS,
             params={
                 "id": f"eq.{store_id}",
-                "select": "id,name,retell_agent_id,system_prompt,temporary_prompt,"
-                          "business_hours,custom_knowledge,menu_cache,is_active",
+                # Phase 3.6 — industry + vertical_kind required so
+                # get_tool_defs_for_store routes order vs service correctly.
+                # Without these two columns every store falls back to the
+                # ORDER tool list (Beauty bug surfaced 2026-05-18 live activation).
+                # (industry/vertical_kind 누락 시 ORDER로 fallback — 회귀 방지)
+                "select": "id,name,industry,vertical_kind,retell_agent_id,"
+                          "system_prompt,temporary_prompt,business_hours,"
+                          "custom_knowledge,menu_cache,is_active",
                 "limit": "1",
             },
         )
