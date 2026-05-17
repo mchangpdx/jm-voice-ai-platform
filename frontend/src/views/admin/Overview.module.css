@@ -42,7 +42,7 @@
 
 .errorBody {
   font-size: 13px;
-  color: #7f1d1d;
+  color: var(--color-danger-deeper);
 }
 
 .kpiRow {

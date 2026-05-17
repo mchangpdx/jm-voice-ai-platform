@@ -13,11 +13,17 @@
      --font-{size}                xs/sm/base/md/lg/xl/2xl/3xl
      --shadow-{level}             sm/md/lg
 
-   Migration policy (2026-05-18 PM):
-     - New components MUST use these variables.
-     - Existing components are migrated opportunistically when touched.
-     - A future Cat E2 pass will sweep the entire codebase. Until then,
-       hardcoded hex values remain valid but discouraged.
+   Migration policy:
+     - 2026-05-18 PM — tokens scaffold + new code obligation.
+     - 2026-05-18 EOD — Cat E2 sweep complete (31 modules, 1,107 hex
+       replaced). All new components MUST use these variables.
+     - Remaining hardcoded hex in CSS modules are intentional palette
+       variations (alternate shades, chart cues). Promote to a token
+       only when the same shade is used in 3+ places with a clear
+       semantic role.
+     - recharts SVG fill attributes need raw hex (CSS vars don't
+       interpolate into SVG attributes); keep those values in sync
+       with the matching token.
 
    Inherits the existing visual palette — adopting these does not change
    how anything looks today; it only renames the colors so a future theme
