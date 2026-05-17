@@ -63,6 +63,27 @@ from app.services.voice.recital import (
     extract_email_from_recital,
     reconcile_email_with_recital,
 )
+from app.skills.appointment.booking import (
+    BOOK_APPOINTMENT_TOOL_DEF,
+    insert_appointment,
+    validate_appointment_args,
+)
+from app.skills.appointment.cancel import (
+    CANCEL_APPOINTMENT_TOOL_DEF,
+    cancel_appointment,
+)
+from app.skills.appointment.list_stylists import (
+    LIST_STYLISTS_TOOL_DEF,
+    list_stylists,
+)
+from app.skills.appointment.modify import (
+    MODIFY_APPOINTMENT_TOOL_DEF,
+    modify_appointment,
+)
+from app.skills.appointment.service_lookup import (
+    SERVICE_LOOKUP_TOOL_DEF,
+    service_lookup,
+)
 from app.skills.menu.allergen import (
     ALLERGEN_LOOKUP_TOOL_DEF,
     allergen_lookup,
@@ -232,13 +253,13 @@ def _gemini_to_openai_tool(gemini_def: dict) -> dict:
     }
 
 
-# 9 voice tools — Phase 2-C.B6 set + transfer_to_manager (2026-05-12 fix).
-# transfer_to_manager was missing — system_prompt told the LLM to call it on
-# severe-allergy events but it wasn't in the registry, so dispatcher returned
-# success:False / ms=0 (live trigger: CAaaeedfd1372f9e383087689316038cc0
-# turn=18). Adding it as the 9th tool unblocks the severe-allergy hand-off.
-# (9개 voice tool — transfer_to_manager 추가 2026-05-12)
-_GEMINI_TOOL_DEFS = [
+# Order-kind verticals (cafe / pizza / mexican / kbbq / sushi / chinese …) —
+# 10 historical tools. NEVER mutate this list — every food-vertical store
+# in production binds against it and any drift here is a global regression.
+# Phase 3.6 add-only contract: service-kind verticals get a DIFFERENT list
+# (`SERVICE_KIND_TOOLS`) rather than appending here.
+# (Order vertical 10개 tool — 절대 변경 금지, 회귀 위험 최대)
+ORDER_KIND_TOOLS = [
     ORDER_TOOL_DEF,
     MODIFY_ORDER_TOOL_DEF,
     CANCEL_ORDER_TOOL_DEF,
@@ -250,7 +271,52 @@ _GEMINI_TOOL_DEFS = [
     RECENT_ORDERS_TOOL_DEF,        # N1 2026-05-17 — cross-call cancel/modify entry
     TRANSFER_TO_MANAGER_TOOL_DEF,
 ]
-OPENAI_REALTIME_TOOLS = [_gemini_to_openai_tool(t) for t in _GEMINI_TOOL_DEFS]
+
+# Service-kind verticals (beauty / spa / barber / future massage / nails) —
+# 5 appointment tools + 2 shared (allergen=chemical sensitivity / hair-color
+# patch testing, transfer=escalation). Phase 3.6 wiring 2026-05-19.
+# (Service vertical 7개 tool — appointment 5 + 공통 2)
+SERVICE_KIND_TOOLS = [
+    BOOK_APPOINTMENT_TOOL_DEF,
+    MODIFY_APPOINTMENT_TOOL_DEF,
+    CANCEL_APPOINTMENT_TOOL_DEF,
+    SERVICE_LOOKUP_TOOL_DEF,
+    LIST_STYLISTS_TOOL_DEF,
+    ALLERGEN_LOOKUP_TOOL_DEF,
+    TRANSFER_TO_MANAGER_TOOL_DEF,
+]
+
+
+def get_tool_defs_for_store(store: dict) -> list[dict]:
+    """Return the Gemini tool def list for the store's vertical_kind.
+    (store의 vertical_kind에 따라 Gemini tool def list 반환 — Phase 3.6)
+
+    - `service` / `service_with_dispatch` → SERVICE_KIND_TOOLS (7)
+    - everything else (default `order`)   → ORDER_KIND_TOOLS (10)
+
+    `service_with_dispatch` verticals (auto repair, home services) currently
+    share the beauty appointment tool surface; their dispatch-specific tools
+    are out of scope for Phase 3.
+    """
+    kind = (store.get("vertical_kind") or "order").strip().lower()
+    if kind.startswith("service"):
+        return SERVICE_KIND_TOOLS
+    return ORDER_KIND_TOOLS
+
+
+def get_openai_tools_for_store(store: dict) -> list[dict]:
+    """Convert get_tool_defs_for_store() output to OpenAI Realtime `tool` shape.
+    (Gemini tool defs → OpenAI tool format 변환)
+    """
+    return [_gemini_to_openai_tool(t) for t in get_tool_defs_for_store(store)]
+
+
+# Legacy aliases — preserved so external imports keep working. Always point
+# at the order-vertical list; new code must call get_tool_defs_for_store()
+# / get_openai_tools_for_store() to be vertical-aware.
+# (레거시 alias — 외부 import 호환용, 새 코드는 store-aware 함수 사용)
+_GEMINI_TOOL_DEFS     = ORDER_KIND_TOOLS
+OPENAI_REALTIME_TOOLS = [_gemini_to_openai_tool(t) for t in ORDER_KIND_TOOLS]
 
 
 # ── call_logs persistence (P2 wire-up, 2026-05-10) ───────────────────────────
@@ -658,6 +724,82 @@ async def _dispatch_tool_call(
             "candidates": candidates,
         }
 
+    # ── Phase 3.6 — service-kind tools (beauty / spa / barber / ...) ────
+    # These branches only fire when the store is registered with
+    # vertical_kind='service' (or 'service_with_dispatch'); for order-kind
+    # stores the tools are not in OPENAI_REALTIME_TOOLS, so the LLM can't
+    # invoke them. Branches are added directly here (not in a sub-dispatch)
+    # to keep one flat tool table for grep'ability with the order side.
+    # (Phase 3.6 — appointment 5 tool. order vertical에선 LLM이 호출 불가)
+
+    if tool_name == "book_appointment":
+        store_row      = session_state.get("store_row") or {}
+        store_timezone = (store_row.get("timezone")
+                          or store_row.get("store_timezone")
+                          or "America/Los_Angeles")
+        # Server-authoritative phone (overrides any LLM-supplied value).
+        if caller_phone_e164:
+            tool_args["customer_phone"] = caller_phone_e164
+        ok, err = validate_appointment_args(tool_args)
+        if not ok:
+            return {"success": False, "reason": "validation_failed",
+                    "error": err, "ai_script_hint": "validation_failed"}
+        try:
+            row = await insert_appointment(
+                store_id       = store_id,
+                call_log_id    = session_state.get("call_log_id") or "",
+                args           = tool_args,
+                store_timezone = store_timezone,
+            )
+        except Exception as exc:
+            log.error("book_appointment insert error: %s", exc)
+            return {"success": False, "reason": "insert_failed",
+                    "error": str(exc)[:200],
+                    "ai_script_hint": "validation_failed"}
+        return {
+            "success":        True,
+            "appointment_id": row.get("id"),
+            "service_type":   row.get("service_type"),
+            "scheduled_at":   row.get("scheduled_at"),
+            "duration_min":   row.get("duration_min"),
+            "price":          row.get("price"),
+            "ai_script_hint": "book_appointment_success",
+        }
+
+    if tool_name == "modify_appointment":
+        store_row      = session_state.get("store_row") or {}
+        store_timezone = (store_row.get("timezone")
+                          or store_row.get("store_timezone")
+                          or "America/Los_Angeles")
+        return await modify_appointment(
+            store_id          = store_id,
+            args              = tool_args,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = session_state.get("call_log_id") or None,
+            store_timezone    = store_timezone,
+        )
+
+    if tool_name == "cancel_appointment":
+        return await cancel_appointment(
+            store_id          = store_id,
+            caller_phone_e164 = caller_phone_e164,
+            call_log_id       = session_state.get("call_log_id") or None,
+        )
+
+    if tool_name == "service_lookup":
+        return await service_lookup(
+            store_id     = store_id,
+            service_name = tool_args.get("service_name") or "",
+        )
+
+    if tool_name == "list_stylists":
+        store_row = session_state.get("store_row") or {}
+        vertical  = (store_row.get("industry") or "").strip().lower()
+        return await list_stylists(
+            vertical         = vertical,
+            specialty_filter = tool_args.get("specialty_filter") or "",
+        )
+
     if tool_name == "transfer_to_manager":
         # Pull manager phone from the store row's custom_knowledge / system_prompt
         # if present; fall back to the founder line we ship with every pilot
@@ -973,6 +1115,11 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 if (store.get("industry") or "").lower() == "pizza"
                 else {"model": "gpt-4o-mini-transcribe"}
             )
+            # Phase 3.6 — vertical-aware tool registry. Order verticals
+            # (cafe/pizza/mexican/kbbq/...) get ORDER_KIND_TOOLS (10);
+            # service verticals (beauty/spa/...) get SERVICE_KIND_TOOLS (7).
+            # (vertical별 tool 분기 — order=10, service=7)
+            _session_tools = get_openai_tools_for_store(store)
             await oai.session.update(
                 session={
                     "type": "realtime",
@@ -1006,13 +1153,14 @@ async def realtime_bridge(ws: WebSocket) -> None:
                         },
                     },
                     "instructions": instructions,
-                    "tools": OPENAI_REALTIME_TOOLS,
+                    "tools": _session_tools,
                     "tool_choice": "auto",
                 }
             )
             _dbg(f"[realtime] ✓ session.update sent (audio/pcmu GA shape, "
                  f"system_prompt={len(instructions)}B, "
-                 f"tools={len(OPENAI_REALTIME_TOOLS)}, "
+                 f"tools={len(_session_tools)}/"
+                 f"kind={store.get('vertical_kind') or 'order'}, "
                  f"vad=server_vad/silence=1200ms + whisper transcription)")
 
             # Phase 4 — trigger initial agent greeting BEFORE caller speaks.
@@ -1172,6 +1320,14 @@ async def realtime_bridge(ws: WebSocket) -> None:
                 # transcripts). Fire-and-forget UPDATE on disconnect.
                 # (전체 turn log를 call_logs.transcript에 저장 — tool 미발사 디버깅용)
                 "transcript_turns":   [],
+                # Phase 3.6 — store row snapshot for vertical-aware dispatch.
+                # Used by service-kind tools (book/modify/cancel_appointment,
+                # service_lookup, list_stylists) to look up vertical / timezone
+                # without an extra REST round-trip per tool call. Was previously
+                # only consumed by transfer_to_manager via fallback, which never
+                # got the actual row.
+                # (store row snapshot — service tool 분기용 + manager_phone 룩업)
+                "store_row":          store,
             }
 
             async def twilio_to_openai() -> None:
