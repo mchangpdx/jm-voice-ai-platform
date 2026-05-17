@@ -228,6 +228,49 @@ def test_beauty_prompt_advertises_supported_languages():
 # ── Emergency rules keyword auto-trigger (C6 piggyback) ────────────────────
 
 
+# ── Returning-customer CRM block — CustomerContext dataclass shape ────────
+
+
+def test_beauty_prompt_accepts_returning_customer_context_without_crash():
+    """CustomerContext is a frozen dataclass (services/crm/customer_lookup.py).
+    The service prompt builder must access fields via attributes — `.get()`
+    raises AttributeError mid-call and silently kills the WebSocket session.
+    Live trigger: JM Beauty Salon calls CAf59994ec / CAddcea88c on
+    2026-05-18, both dropped after 2-3s because the same caller-ID was a
+    returning customer and the dict-style access blew up before
+    session.update could send.
+    (CustomerContext dataclass — dot 접근 필수, .get() 호출 시 통화 끊김)"""
+    from app.services.crm import CustomerContext
+    ctx = CustomerContext(
+        visit_count=    5,
+        recent=         [{"created_at": "2026-05-15T12:00:00+00:00",
+                          "items_json": [], "total_cents": 6500}],
+        usual_eligible= False,
+        name=           "Michael",
+        email=          "michael@example.com",
+    )
+    # Must NOT raise (the regression we are guarding against).
+    prompt = build_system_prompt(_beauty_store(), customer_context=ctx)
+    assert "CUSTOMER CONTEXT" in prompt
+    assert "Michael" in prompt
+    assert "Prior visits: 5" in prompt
+
+
+def test_beauty_prompt_skips_crm_block_for_anonymous_caller():
+    """visit_count==0 / ctx is None must NOT inject the CRM block —
+    matches the order-path semantics so empty blocks don't pollute the
+    prompt with stray '=== CUSTOMER CONTEXT ===' headers.
+    (visit_count=0 또는 None → CRM 블록 skip)"""
+    from app.services.crm import CustomerContext
+    anon = CustomerContext(
+        visit_count=0, recent=[], usual_eligible=False, name=None, email=None,
+    )
+    p_none = build_system_prompt(_beauty_store(), customer_context=None)
+    p_anon = build_system_prompt(_beauty_store(), customer_context=anon)
+    for p in (p_none, p_anon):
+        assert "CUSTOMER CONTEXT" not in p
+
+
 def test_beauty_prompt_injects_emergency_transfer_keywords():
     """Emergency keywords from templates/beauty/emergency_rules.yaml must
     surface in the prompt as auto-fire instructions for transfer_to_manager.

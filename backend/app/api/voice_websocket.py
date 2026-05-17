@@ -372,22 +372,26 @@ def _build_service_prompt(
     except Exception:
         pass
 
-    # CRM Wave 1 — returning-customer block. Same trigger shape as the
-    # order-vertical builder; appears right before the rule block so the
-    # model uses caller history to personalize the appointment recital.
-    if customer_context and customer_context.get("visit_count", 0) > 0:
+    # CRM Wave 1 — returning-customer block. CustomerContext is a frozen
+    # dataclass (services/crm/customer_lookup.py), so access fields via
+    # attributes — `.get()` raises AttributeError and silently kills the
+    # WebSocket session. Live trigger: JM Beauty Salon calls CAf59994ec /
+    # CAddcea88c (2026-05-18) — both 2-3s drops because the same caller-ID
+    # had visit_count>0 and the dict-style access blew up before
+    # session.update could send.
+    # (CustomerContext = frozen dataclass — dot 접근 필수 / .get() 금지)
+    if customer_context is not None and customer_context.visit_count > 0:
         ctx_lines = ["=== CUSTOMER CONTEXT (returning client) ==="]
-        if customer_context.get("first_name"):
-            ctx_lines.append(f"First name: {customer_context['first_name']}")
-        if customer_context.get("visit_count"):
-            ctx_lines.append(f"Prior visits: {customer_context['visit_count']}")
-        if customer_context.get("last_service_type"):
-            ctx_lines.append(f"Last service: {customer_context['last_service_type']}")
-        if customer_context.get("last_visit_human"):
-            ctx_lines.append(f"Last visit: {customer_context['last_visit_human']}")
-        ctx_lines.append("Greet by first name. Offer their last service "
-                         "as a default; never assume they want to re-book "
-                         "without asking.")
+        if customer_context.name:
+            ctx_lines.append(f"Name: {customer_context.name}")
+        ctx_lines.append(f"Prior visits: {customer_context.visit_count}")
+        if customer_context.email:
+            ctx_lines.append(f"Email on file: {customer_context.email}")
+        ctx_lines.append(
+            "Greet by first name in the first sentence. If they ask for "
+            "'the same as last time', confirm the specific service before "
+            "calling book_appointment — never re-book without explicit yes."
+        )
         parts.append("\n".join(ctx_lines))
 
     # ── Compressed RULES (appointment vocabulary only) ─────────────────────
