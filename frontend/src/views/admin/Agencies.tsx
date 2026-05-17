@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react'
 import api from '../../core/api'
 import { SkeletonRow } from '../../components/Skeleton/Skeleton'
+import LoadMore from '../../components/LoadMore/LoadMore'
 import styles from './Agencies.module.css'
+
+const PAGE_SIZE = 50
 
 interface AgencyRow {
   id: string
@@ -27,6 +30,7 @@ export default function AdminAgencies() {
   const [rows, setRows] = useState<AgencyRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
   const [busy, setBusy] = useState<string>('')
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null)
 
@@ -37,6 +41,9 @@ export default function AdminAgencies() {
     setLoading(true)
     refresh().finally(() => setLoading(false))
   }, [])
+
+  // Reset Load More pager whenever the filter pool changes.
+  useEffect(() => { setDisplayLimit(PAGE_SIZE) }, [filter])
 
   const flash = (msg: string, err = false) => {
     setToast({ msg, err })
@@ -184,7 +191,7 @@ export default function AdminAgencies() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((a) => {
+              {visible.slice(0, displayLimit).map((a) => {
                 const isBusy = busy === a.id
                 return (
                   <tr key={a.id} className={isBusy ? styles.rowBusy : ''}>
@@ -220,6 +227,12 @@ export default function AdminAgencies() {
               })}
             </tbody>
           </table>
+          <LoadMore
+            shown={Math.min(displayLimit, visible.length)}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            onLoadMore={() => setDisplayLimit((n) => n + PAGE_SIZE)}
+          />
         </div>
       )}
     </div>

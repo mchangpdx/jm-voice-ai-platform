@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import api from '../../core/api'
 import { SkeletonRow } from '../../components/Skeleton/Skeleton'
+import LoadMore from '../../components/LoadMore/LoadMore'
 import styles from './Users.module.css'
 
 type Role = 'STORE' | 'AGENCY' | 'ADMIN'
@@ -25,6 +26,7 @@ interface UserRow {
 }
 
 const ROLE_OPTIONS: Role[] = ['STORE', 'AGENCY', 'ADMIN']
+const PAGE_SIZE = 50
 
 const fmtDate = (iso: string | null) => {
   if (!iso) return '—'
@@ -55,6 +57,7 @@ export default function AdminUsers() {
   const [busy, setBusy] = useState<string>('')
   const [confirmingDisable, setConfirmingDisable] = useState<string>('')   // user_id awaiting 2nd click
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null)
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
 
   const refresh = () =>
     api.get('/admin/users', { params: { limit: 500 } })
@@ -119,6 +122,9 @@ export default function AdminUsers() {
       setBusy('')
     }
   }
+
+  // Reset Load More pager whenever the filter pool changes.
+  useEffect(() => { setDisplayLimit(PAGE_SIZE) }, [filter, roleFilter])
 
   const visible = useMemo(() => {
     const f = filter.trim().toLowerCase()
@@ -185,7 +191,7 @@ export default function AdminUsers() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((u) => {
+              {visible.slice(0, displayLimit).map((u) => {
                 const isBusy = busy === u.id
                 const ownedCount = u.owned_agencies.length + u.owned_stores.length
                 const ownedSummary =
@@ -241,6 +247,12 @@ export default function AdminUsers() {
               })}
             </tbody>
           </table>
+          <LoadMore
+            shown={Math.min(displayLimit, visible.length)}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            onLoadMore={() => setDisplayLimit((n) => n + PAGE_SIZE)}
+          />
         </div>
       )}
     </div>

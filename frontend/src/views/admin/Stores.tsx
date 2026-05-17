@@ -9,6 +9,7 @@ import StoreViewToggle, {
   saveStoreView,
 } from '../../components/store-view/StoreViewToggle'
 import { SkeletonRow } from '../../components/Skeleton/Skeleton'
+import LoadMore from '../../components/LoadMore/LoadMore'
 import styles from './Stores.module.css'
 
 interface StoreRow {
@@ -24,6 +25,7 @@ interface StoreRow {
 }
 
 const VIEW_STORAGE_KEY = 'jm_admin_store_view'
+const PAGE_SIZE = 50
 
 const fmtDate = (iso: string | null) => {
   if (!iso) return '—'
@@ -52,6 +54,7 @@ export default function AdminStores() {
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null)
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE)
 
   const onViewChange = (next: StoreViewMode) => {
     setView(next)
@@ -70,6 +73,9 @@ export default function AdminStores() {
 
   const refresh = () =>
     api.get('/admin/stores').then((r) => setRows(r.data)).catch(() => {})
+
+  // Reset Load More pager whenever the filter pool changes.
+  useEffect(() => { setDisplayLimit(PAGE_SIZE) }, [filter, vertical])
 
   useEffect(() => {
     setLoading(true)
@@ -273,7 +279,7 @@ export default function AdminStores() {
         <div className={styles.empty}>No stores match these filters.</div>
       ) : view === 'cards' ? (
         <div className={styles.cardGrid}>
-          {visible.map((s) => {
+          {visible.slice(0, displayLimit).map((s) => {
             const meta = getVerticalMeta(s.industry)
             return (
               <div key={s.id} className={styles.card}>
@@ -326,6 +332,12 @@ export default function AdminStores() {
               </div>
             )
           })}
+          <LoadMore
+            shown={Math.min(displayLimit, visible.length)}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            onLoadMore={() => setDisplayLimit((n) => n + PAGE_SIZE)}
+          />
         </div>
       ) : view === 'list' ? (
         <>
@@ -361,12 +373,16 @@ export default function AdminStores() {
                 <th className={styles.checkCell}>
                   <input
                     type="checkbox"
-                    aria-label="Select all visible stores"
-                    checked={visible.length > 0 && visible.every((s) => selected.has(s.id))}
+                    aria-label="Select all currently shown stores"
+                    checked={
+                      visible.slice(0, displayLimit).length > 0 &&
+                      visible.slice(0, displayLimit).every((s) => selected.has(s.id))
+                    }
                     onChange={(e) => {
                       const next = new Set(selected)
-                      if (e.target.checked) visible.forEach((s) => next.add(s.id))
-                      else                  visible.forEach((s) => next.delete(s.id))
+                      const shown = visible.slice(0, displayLimit)
+                      if (e.target.checked) shown.forEach((s) => next.add(s.id))
+                      else                  shown.forEach((s) => next.delete(s.id))
                       setSelected(next)
                     }}
                   />
@@ -382,7 +398,7 @@ export default function AdminStores() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((s) => {
+              {visible.slice(0, displayLimit).map((s) => {
                 const meta = getVerticalMeta(s.industry)
                 return (
                   <tr key={s.id} className={selected.has(s.id) ? styles.rowSelected : ''}>
@@ -435,11 +451,17 @@ export default function AdminStores() {
               })}
             </tbody>
           </table>
+          <LoadMore
+            shown={Math.min(displayLimit, visible.length)}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            onLoadMore={() => setDisplayLimit((n) => n + PAGE_SIZE)}
+          />
         </div>
         </>
       ) : (
         <div className={styles.compactList}>
-          {visible.map((s) => {
+          {visible.slice(0, displayLimit).map((s) => {
             const meta = getVerticalMeta(s.industry)
             return (
               <div key={s.id} className={styles.compactRow}>
@@ -452,6 +474,12 @@ export default function AdminStores() {
               </div>
             )
           })}
+          <LoadMore
+            shown={Math.min(displayLimit, visible.length)}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            onLoadMore={() => setDisplayLimit((n) => n + PAGE_SIZE)}
+          />
         </div>
       )}
     </div>
