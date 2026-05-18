@@ -384,6 +384,31 @@
   font-weight: 500;
 }
 
+/* ── Call history row helpers (Cat B inline-cleanup 2026-05-19) ─────────── */
+.rowClickable {
+  cursor: pointer;
+}
+.cellMuted {
+  color: var(--color-text-secondary);
+  font-size: var(--font-sm);
+}
+.cellDashMuted {
+  color: var(--color-text-muted);
+}
+.expansionCell {
+  background: var(--color-bg-50);
+  padding: var(--space-3) var(--space-4);
+}
+.expansionSummary {
+  font-size: var(--font-base);
+  color: var(--color-text-strong);
+}
+.expansionAudio {
+  margin-top: var(--space-2);
+  display: block;
+  height: 32px;
+}
+
 /* ── Responsive (반응형) ──────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .statsRow {

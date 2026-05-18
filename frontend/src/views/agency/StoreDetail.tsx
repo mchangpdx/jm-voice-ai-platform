@@ -274,23 +274,23 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
               <tr className={styles.emptyRow}><td colSpan={7}>No calls found</td></tr>
             ) : items.map((c) => (
               <Fragment key={c.call_id}>
-                <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded((p) => p === c.call_id ? null : c.call_id)}>
+                <tr className={styles.rowClickable} onClick={() => setExpanded((p) => p === c.call_id ? null : c.call_id)}>
                   <td>{fmtDate(c.start_time)}</td>
-                  <td style={{ color: '#64748b', fontSize: '12px' }}>{c.customer_phone ?? '—'}</td>
+                  <td className={styles.cellMuted}>{c.customer_phone ?? '—'}</td>
                   <td>{fmtDuration(c.duration)}</td>
                   <td><span className={`${styles.statusBadge} ${statusClass(c.call_status)}`}>{c.call_status}</span></td>
                   <td><span className={`${styles.sentimentBadge} ${sentimentClass(c.sentiment)}`}>{c.sentiment ?? '—'}</span></td>
-                  <td>{c.is_store_busy ? <><span className={styles.busyDot} />Peak</> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
-                  <td style={{ color: '#64748b', fontSize: '12px' }}>${c.cost.toFixed(2)}</td>
+                  <td>{c.is_store_busy ? <><span className={styles.busyDot} />Peak</> : <span className={styles.cellDashMuted}>—</span>}</td>
+                  <td className={styles.cellMuted}>${c.cost.toFixed(2)}</td>
                 </tr>
                 {expandedId === c.call_id && (
                   <tr>
-                    <td colSpan={7} style={{ background: '#f8fafc', padding: '12px 16px' }}>
-                      <div style={{ fontSize: '13px', color: '#374151' }}>
+                    <td colSpan={7} className={styles.expansionCell}>
+                      <div className={styles.expansionSummary}>
                         <strong>Summary:</strong> {c.summary ?? 'No summary available.'}
                       </div>
                       {c.recording_url && (
-                        <audio controls src={c.recording_url} style={{ marginTop: 8, display: 'block', height: 32 }} preload="none" onClick={(e) => e.stopPropagation()} />
+                        <audio controls src={c.recording_url} className={styles.expansionAudio} preload="none" onClick={(e) => e.stopPropagation()} />
                       )}
                     </td>
                   </tr>
