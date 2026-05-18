@@ -114,6 +114,9 @@ async def test_no_target_anywhere_returns_no_target():
         )
     assert out["success"] is False
     assert out["ai_script_hint"] == "cancel_appointment_no_target"
+    # N5 — every hint must ship a say_to_caller line for the realtime model.
+    assert "say_to_caller" in out
+    assert "don't see an active appointment" in out["say_to_caller"]
 
 
 @pytest.mark.asyncio
@@ -126,6 +129,7 @@ async def test_already_cancelled_returns_specific_hint():
     assert out["success"] is False
     assert out["ai_script_hint"] == "cancel_appointment_already_canceled"
     assert out["appointment_id"] == 99
+    assert "already cancelled" in out["say_to_caller"]
 
 
 @pytest.mark.asyncio
@@ -155,6 +159,11 @@ async def test_cancel_success_far_future():
     assert out["ai_script_hint"] == "cancel_appointment_success"
     assert out["is_late_cancel"] is False
     assert out["hours_until_appointment"] > 24
+    # N5 — say_to_caller must embed the cancelled_summary so the model
+    # cannot collapse 'haircut on Wednesday, May 22 at 2:00 PM' to 'tomorrow'.
+    say = out["say_to_caller"]
+    assert out["cancelled_summary"] in say
+    assert "cancelled" in say
 
 
 @pytest.mark.asyncio
@@ -170,6 +179,10 @@ async def test_cancel_late_window_returns_late_hint_but_still_succeeds():
     assert out["ai_script_hint"] == "cancel_appointment_late_cancel"
     assert out["is_late_cancel"] is True
     assert out["late_cancel_window_hours"] == 24
+    # N5 — late-cancel script must mention the fee policy + the cancelled summary.
+    say = out["say_to_caller"]
+    assert out["cancelled_summary"] in say
+    assert "late-cancel fee" in say
 
 
 @pytest.mark.asyncio
@@ -182,3 +195,4 @@ async def test_patch_failure_returns_cancel_failed():
     assert out["success"] is False
     assert out["ai_script_hint"] == "cancel_appointment_failed"
     assert out["appointment_id"] == 7
+    assert "manager" in out["say_to_caller"]

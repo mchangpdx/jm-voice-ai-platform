@@ -207,6 +207,39 @@ def _format_appointment_summary(row: dict[str, Any]) -> str:
         return service
 
 
+# N5 fix (2026-05-19) — LLM was paraphrasing the cancel confirmation as
+# generic 'tomorrow' even though cancelled_summary carries service+date+time.
+# Inject an explicit say_to_caller line per hint so the realtime model has
+# a verbatim script to lean on. (live trigger: CAc3581c0c 2026-05-18)
+_SAY_BY_HINT = {
+    "cancel_appointment_success":
+        "Done — your {summary} is cancelled. You'll get a confirmation shortly.",
+    "cancel_appointment_late_cancel":
+        "Your {summary} is cancelled. Heads up — since it's within "
+        "{hours:.0f} hours of the appointment, our late-cancel fee may "
+        "apply per salon policy.",
+    "cancel_appointment_already_canceled":
+        "That appointment was already cancelled — nothing more to do.",
+    "cancel_appointment_no_target":
+        "I don't see an active appointment for you to cancel right now.",
+    "cancel_appointment_failed":
+        "I had trouble cancelling that on our end — let me connect you "
+        "with our manager.",
+}
+
+
+def _say_for_hint(hint: str, *, summary: str = "", hours: float = 0.0) -> str:
+    """Render the say_to_caller script for a given hint. Lenient — unknown
+    hints fall back to a generic confirmation so the LLM never sees None.
+    (hint별 say_to_caller 렌더 — 알 수 없는 hint는 generic fallback)
+    """
+    template = _SAY_BY_HINT.get(hint, "Okay — anything else I can help with?")
+    try:
+        return template.format(summary=summary or "appointment", hours=hours)
+    except (KeyError, IndexError):
+        return template
+
+
 # ── Public flow ──────────────────────────────────────────────────────────────
 
 
@@ -244,11 +277,14 @@ async def cancel_appointment(
                 "reason":          "cancel_appointment_already_canceled",
                 "appointment_id":  recent["id"],
                 "ai_script_hint":  "cancel_appointment_already_canceled",
+                "say_to_caller":   _say_for_hint(
+                    "cancel_appointment_already_canceled"),
             }
         return {
             "success":        False,
             "reason":         "cancel_appointment_no_target",
             "ai_script_hint": "cancel_appointment_no_target",
+            "say_to_caller":  _say_for_hint("cancel_appointment_no_target"),
         }
 
     ok = await _update_appointment_status(
@@ -262,6 +298,7 @@ async def cancel_appointment(
             "reason":         "cancel_appointment_failed",
             "appointment_id": target["id"],
             "ai_script_hint": "cancel_appointment_failed",
+            "say_to_caller":  _say_for_hint("cancel_appointment_failed"),
         }
 
     log.warning("appointment_cancelled id=%s prior_status=%s",
@@ -269,18 +306,23 @@ async def cancel_appointment(
 
     hours_left = hours_until(target.get("scheduled_at") or "")
     is_late    = hours_left < _LATE_CANCEL_WINDOW_HOURS
+    summary    = _format_appointment_summary(target)
+    hint       = (
+        "cancel_appointment_late_cancel" if is_late
+        else "cancel_appointment_success"
+    )
 
     return {
         "success":                  True,
         "appointment_id":           target["id"],
         "prior_status":             target.get("status"),
-        "cancelled_summary":        _format_appointment_summary(target),
+        "cancelled_summary":        summary,
         "hours_until_appointment":  round(hours_left, 2),
         "is_late_cancel":           is_late,
         "late_cancel_window_hours": _LATE_CANCEL_WINDOW_HOURS,
-        "ai_script_hint":           (
-            "cancel_appointment_late_cancel" if is_late
-            else "cancel_appointment_success"
+        "ai_script_hint":           hint,
+        "say_to_caller":            _say_for_hint(
+            hint, summary=summary, hours=max(hours_left, 0.0),
         ),
     }
 
