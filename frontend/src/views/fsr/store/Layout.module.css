@@ -60,6 +60,13 @@
   border-bottom: 1px solid var(--color-bg-100);
 }
 
+.industryBadge {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  padding-left: 12px;
+}
+
 .nav {
   display: flex;
   flex-direction: column;

@@ -69,7 +69,7 @@ export default function StoreLayout() {
         <div className={styles.sectionLabel}>STORE</div>
         <div className={styles.storeName}>{storeName ?? '—'}</div>
         {/* Industry badge (산업 수직 배지) */}
-        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', paddingLeft: '12px' }}>
+        <div className={styles.industryBadge}>
           {meta?.icon} {meta?.industryLabel ?? 'Store'}
         </div>
 
