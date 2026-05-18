@@ -80,7 +80,7 @@
 }
 
 .chipActive:hover {
-  background: #3730a3;
+  background: var(--color-brand-press);
 }
 
 .chipIcon {

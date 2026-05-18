@@ -134,7 +134,7 @@
   transition: background 0.1s;
 }
 
-.primaryBtn:hover:not(:disabled) { background: #3730a3; }
+.primaryBtn:hover:not(:disabled) { background: var(--color-brand-press); }
 .primaryBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .actionCell {

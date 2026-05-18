@@ -247,7 +247,7 @@
 .tempBadge {
   font-size: 10px;
   font-weight: 700;
-  color: #d97706;
+  color: var(--color-warn-mid);
   background: var(--color-warn-bg);
   padding: 2px 7px;
   border-radius: 20px;

@@ -39,7 +39,7 @@
 .statPillLow strong { color: var(--color-danger-deeper); }
 .statPillEdited {
   background: var(--color-brand-bg);
-  color: #3730a3;
+  color: var(--color-brand-press);
 }
 
 .bulkActions { display: flex; gap: 8px; flex-wrap: wrap; }

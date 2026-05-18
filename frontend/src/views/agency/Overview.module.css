@@ -63,8 +63,8 @@
 
 /* 403 / generic API error card (403 안내 + 일반 에러 카드) */
 .errorCard {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: var(--color-orange-soft-bg);
+  border: 1px solid var(--color-orange-soft-border);
   border-radius: 10px;
   padding: 20px 24px;
   margin-top: 8px;
@@ -426,8 +426,8 @@
 
 /* ── Needs attention (주의 필요 스토어) ──────────────────────────────────── */
 .attentionBox {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: var(--color-orange-soft-bg);
+  border: 1px solid var(--color-orange-soft-border);
   border-radius: 10px;
   padding: 16px 20px;
 }

@@ -17,6 +17,9 @@
      - 2026-05-18 PM — tokens scaffold + new code obligation.
      - 2026-05-18 EOD — Cat E2 sweep complete (31 modules, 1,107 hex
        replaced). All new components MUST use these variables.
+     - 2026-05-19 — Cat C conservative pass: promoted 4 shades that hit
+       the "3+ places, single semantic role" bar (brand-press,
+       warn-mid, orange-soft bg+border).
      - Remaining hardcoded hex in CSS modules are intentional palette
        variations (alternate shades, chart cues). Promote to a token
        only when the same shade is used in 3+ places with a clear
@@ -53,6 +56,7 @@
   --color-brand-bg:          #eef2ff;   /* tinted bg */
   --color-brand-soft:        #ede9fe;   /* soft tint (badge bg) */
   --color-brand-soft-border: #c7d2fe;   /* soft border */
+  --color-brand-press:       #3730a3;   /* indigo-800 — primary btn / chip active hover */
 
   /* ── Success (green) ─────────────────────────────────────────────────── */
   --color-success:        #16a34a;
@@ -70,6 +74,11 @@
   --color-warn-soft:        #fffbeb;
   --color-warn-soft-border: #fde68a;
   --color-warn-border:      #fcd34d;
+  --color-warn-mid:         #d97706;   /* amber-600 — "pending" state accent */
+
+  /* ── Orange (attention notice, distinct from amber warn) ─────────────── */
+  --color-orange-soft-bg:     #fff7ed; /* orange-50  — attention/error card bg */
+  --color-orange-soft-border: #fed7aa; /* orange-200 — paired border */
 
   /* ── Danger (red) ────────────────────────────────────────────────────── */
   --color-danger:         #dc2626;

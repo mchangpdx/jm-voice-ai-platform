@@ -23,7 +23,7 @@
 .summaryLabel { font-size: 11px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .05em; }
 .summaryValue { font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin-top: 4px; }
 .summaryValue.confirmed { color: var(--color-success); }
-.summaryValue.pending   { color: #d97706; }
+.summaryValue.pending   { color: var(--color-warn-mid); }
 .summaryValue.seated    { color: var(--color-brand); }
 .summaryValue.cancelled { color: var(--color-text-muted); }
 
@@ -72,7 +72,7 @@
 .statusTabActive { font-weight: 600; }
 .statusTabActive.all       { background: var(--color-text-primary); border-color: var(--color-text-primary); color: white; }
 .statusTabActive.confirmed { background: var(--color-success-bg); border-color: var(--color-success); color: var(--color-success-dark); }
-.statusTabActive.pending   { background: var(--color-warn-bg); border-color: #d97706; color: var(--color-warn-dark); }
+.statusTabActive.pending   { background: var(--color-warn-bg); border-color: var(--color-warn-mid); color: var(--color-warn-dark); }
 .statusTabActive.seated    { background: var(--color-brand-soft); border-color: var(--color-brand); color: var(--color-brand-hover); }
 .statusTabActive.cancelled { background: var(--color-bg-100); border-color: var(--color-text-muted); color: var(--color-text-secondary); }
 

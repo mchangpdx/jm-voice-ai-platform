@@ -35,9 +35,9 @@
 }
 
 .chipRetention {
-  background: #fff7ed;
+  background: var(--color-orange-soft-bg);
   color: #9a3412;
-  border: 1px solid #fed7aa;
+  border: 1px solid var(--color-orange-soft-border);
 }
 
 .title {
