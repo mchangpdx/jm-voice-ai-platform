@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Session 2026-05-18 EVE — Frontend Polish Day — JM Tech One</title>
+<style>
+@page {
+  size: A4;
+  margin: 18mm 16mm 22mm 16mm;
+  @bottom-center {
+    content: "JM Tech One · 2026-05-18 EVE · Frontend Polish Day · Page " counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+html { font-family: -apple-system, "Apple SD Gothic Neo", "Helvetica Neue", "Segoe UI", sans-serif;
+       font-size: 10pt; color: #1a1a1a; }
+body { line-height: 1.50; }
+h1 { font-size: 22pt; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-top: 0; color: #1e3a8a; }
+h2 { font-size: 15pt; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+     margin-top: 22px; page-break-after: avoid; }
+h3 { font-size: 12pt; color: #1f2937; margin-top: 14px; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #374151; margin-top: 10px; }
+p, li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #eff6ff; font-weight: 600; color: #1e3a8a; }
+tr:nth-child(even) td { background: #fafbfc; }
+code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px;
+       font-size: 8.5pt; font-family: "SF Mono", Menlo, Consolas, monospace; }
+pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;
+      padding: 8px 10px; font-size: 8.5pt; overflow-x: auto; page-break-inside: avoid;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.35; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 3px solid #f59e0b; background: #fef3c7;
+             padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+blockquote p { margin: 2px 0; }
+hr { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
+ul, ol { margin: 4px 0 8px 22px; padding: 0; }
+strong { color: #111827; }
+em { color: #4b5563; }
+a { color: #2563eb; text-decoration: none; }
+</style>
+</head>
+<body>
+<h1 id="session-2026-05-18-eve-frontend-polish-day">Session — 2026-05-18 (EVE) — Frontend Polish Day</h1>
+<p><strong>Branch:</strong> <code>feature/openai-realtime-migration</code>
+<strong>Commits this session:</strong> 13 — all pushed
+<strong>HEAD:</strong> <code>f6297a3</code>
+<strong>Scope:</strong> Single-evening frontend polish push. Regression fix on Store Overview KPI cards, full design-token migration across 31 CSS modules, admin / store / agency surface improvements, primitives (Skeleton + LoadMore) introduced and swept across every fetch-bound page, JSON diff viewer for AuditLog with mobile collapse fix, and dependency hygiene around recharts.</p>
+<p>This is the third session of 2026-05-18 (after morning Phase 2 completion and afternoon Frontend Foundation Day). Earlier sessions: <code>docs/sessions/2026-05-18_phase2-completion/</code> and <code>docs/sessions/2026-05-18_responsive-and-proof-v2/</code>.</p>
+<hr>
+<h2 id="1-commit-chain">1. Commit chain</h2>
+<pre><code>f6297a3  feat(agency):     skeleton loading for Overview + StoreDetail tabs
+09adb4a  feat(store):      extend skeleton loading to store pages
+73eefe3  feat(ui):         LoadMore primitive + Users/Agencies/Stores pagination
+84272e9  fix(admin):       AuditLog diff mobile layout collapse
+3886570  feat(ui):         Skeleton primitive + admin loading shimmer sweep
+042a469  chore(deps):      pin recharts + retire one stray hex + record E2 completion
+422d88a  feat(admin):      key-level diff for AuditLog before/after
+af471b8  feat(store):      inline diff viewer for AI persona drafts
+8a8081e  feat(store):      weekly busy schedule heatmap
+9a8330b  feat(admin):      Stores multi-select + bulk Enable/Disable/Delete
+a1ecfec  feat(admin):      donut chart + call volume bar on Overview
+c20bab2  refactor(design): migrate 31 CSS modules to design tokens (Cat E2)
+79b1ecd  fix(store):       stabilize handleMetrics with useCallback to break KPI fetch loop
+</code></pre>
+<p>13 commits · ≈ 50 files touched · ≈ +3,400 / −1,200 LOC.</p>
+<hr>
+<h2 id="2-regression-fix-store-overview-kpi-render-loop">2. Regression fix — Store Overview KPI render loop</h2>
+<h3 id="symptom">Symptom</h3>
+<p>Admin reported KPI cards (MCRR / LCS / Total Monthly Impact / Supporting KPIs) stuck on <code>—</code> on both desktop and phone. Network tab showed <code>/store/metrics</code> resolved 200 with a populated body.</p>
+<h3 id="root-cause">Root cause</h3>
+<p>The <code>2becdac</code> Section Registry refactor introduced a parent → child callback wire (<code>PrimaryKpiSection</code> fetches and notifies <code>Overview</code> via <code>onMetrics</code>). <code>handleMetrics</code> was a fresh function on every render. <code>PrimaryKpiSection</code>'s <code>useEffect([period, onMetrics])</code> therefore re-fired after each successful fetch, set <code>loading = true</code>, and never resolved before the next cycle started.</p>
+<h3 id="fix-79b1ecd">Fix (<code>79b1ecd</code>)</h3>
+<pre><code class="language-tsx">const handleMetrics = useCallback((m: Metrics | null) =&gt; {
+  setMetrics(m); setLoadingMetrics(false);
+}, []);
+</code></pre>
+<p>One-line change. KPIs render normally and the rule is now durable for any future section using an <code>onMetrics</code>-style callback.</p>
+<hr>
+<h2 id="3-cat-e2-design-token-migration-c20bab2">3. Cat E2 — Design token migration (<code>c20bab2</code>)</h2>
+<h3 id="scope">Scope</h3>
+<p><strong>31 / 31 CSS modules</strong> swept. <strong>1,107 hex literals → <code>var(--color-*)</code></strong>. Zero visual change — every token resolves to the original hex.</p>
+<h3 id="token-additions-11">Token additions (11)</h3>
+<p><code>--color-brand-soft</code>, <code>--color-brand-soft-border</code>, <code>--color-brand-darker</code>, <code>--color-warn-soft</code>, <code>--color-warn-soft-border</code>, <code>--color-success-soft</code>, <code>--color-info-soft</code>, plus four sky/blue info shades that were already defined but not in the migration map (<code>--color-info</code>, <code>--color-info-bg</code>, <code>--color-info-border</code>, <code>--color-info-fg</code>).</p>
+<h3 id="migration-policy-in-tokenscss">Migration policy (in <code>tokens.css</code>)</h3>
+<ul>
+<li>2026-05-18 PM — tokens scaffold + new-code obligation.</li>
+<li>2026-05-18 EVE — Cat E2 sweep complete. New components MUST use these variables.</li>
+<li>Remaining sparse hex (≤ 4 uses each: <code>#22c55e</code>, <code>#374151</code>, <code>#3730a3</code>, etc.) are intentional palette variations — promote only when reused in 3+ semantic places.</li>
+<li>recharts <code>&lt;Cell fill&gt;</code> / <code>&lt;Bar fill&gt;</code> need raw hex (SVG attributes don't interpolate CSS vars). Keep hex literals; sync with matching token comment.</li>
+</ul>
+<hr>
+<h2 id="4-cat-c-admin-polish">4. Cat C — Admin polish</h2>
+<h3 id="admin-overview-a1ecfec">Admin Overview (<code>a1ecfec</code>)</h3>
+<p>Replaced the custom horizontal bar list with a recharts donut for <strong>Stores by Vertical</strong> (with swatch+icon legend and percent), and added a <strong>Call Volume</strong> stacked bar fed by <code>/admin/health/calls</code> (1h / 24h / 7d, Successful vs Failed). 2-column chart grid collapses to 1-col at ≤1024 px; KPI row drops to 1-col at ≤640 px.</p>
+<h3 id="admin-stores-multi-select-bulk-9a8330b">Admin Stores — multi-select + bulk (<code>9a8330b</code>)</h3>
+<p>List view gains a checkbox column with select-all bound to the <strong>currently displayed slice</strong> (so selection grows predictably as Load more reveals more rows). A bulk bar appears when ≥1 row is selected: <code>Enable · Disable · Delete · Clear</code>. Each bulk action confirms with a 3-store preview + <code>+N more</code> suffix, then fires <code>Promise.allSettled</code> so partial failures surface in the toast (<code>Disabled 2 / 3 (1 failed)</code>). Cards / compact views are left selection-less and clear selection on view switch.</p>
+<h3 id="system-health">System Health</h3>
+<p>Already shipped 30s polling + last-updated stamp + auto-refresh toggle in a prior session — left untouched.</p>
+<hr>
+<h2 id="5-cat-d2-store-polish">5. Cat D2 — Store polish</h2>
+<h3 id="settings-weekly-busy-heatmap-8a8081e">Settings — Weekly Busy heatmap (<code>8a8081e</code>)</h3>
+<p>A <strong>7 × 24 visual heatmap</strong> above the editable schedule rows. Hour cells whose interval overlaps any saved busy window light up brand-blue. Day labels are buttons that smooth-scroll to the matching editable row. On phone the heatmap scrolls horizontally and cells shrink slightly. The existing chip + Add editor remains the source of truth.</p>
+<h3 id="ai-voice-bot-inline-persona-diff-af471b8">AI Voice Bot — inline persona diff (<code>af471b8</code>)</h3>
+<p>Both persona textareas (Core AI Persona, Daily Instructions) gain a <strong>Show diff</strong> toggle that only appears when the draft differs from the saved value. Toggling renders an <strong>LCS-based line diff</strong> under the textarea — additions in green, removals in red, unchanged lines in slate — with a <code>+N / −M</code> summary header. LCS table is O(N×M), fine for a few hundred lines.</p>
+<hr>
+<h2 id="6-cat-f1-auditlog-key-level-json-diff-422d88a">6. Cat F1 — AuditLog key-level JSON diff (<code>422d88a</code>)</h2>
+<p>Replaced the side-by-side raw JSON blocks with a primary <strong>key-level diff</strong> view:</p>
+<table>
+<thead>
+<tr>
+<th>Symbol</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code> green</td>
+<td>Added key</td>
+</tr>
+<tr>
+<td><code>−</code> red</td>
+<td>Removed key</td>
+</tr>
+<tr>
+<td><code>~</code> amber</td>
+<td>Modified value (<code>old → new</code>)</td>
+</tr>
+<tr>
+<td>(blank)</td>
+<td>Unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>A header chip shows <code>+N / −N / ~N</code> counts and a <strong>Raw JSON</strong> toggle keeps the original pretty-printed payload one click away for verification. Top-level keys only; nested values compare by <code>JSON.stringify</code> equality, which matches how audit payloads are written (flat row diff).</p>
+<h3 id="mobile-follow-up-fix-84272e9">Mobile follow-up fix (<code>84272e9</code>)</h3>
+<p>Phone display showed values broken one glyph per line. Cause: 2-column grid <code>[16px, 1fr]</code> plus <code>word-break: break-word</code> forced long values into the narrow mark slot. Fix: at ≤640 px, collapse to a single column, hide the <code>+/−</code> mark, prefix old/new with sign glyphs inline, and switch to <code>overflow-wrap: anywhere</code> so wrapping prefers word boundaries.</p>
+<hr>
+<h2 id="7-p0-cleanup-042a469">7. P0 cleanup (<code>042a469</code>)</h2>
+<p>Three small but load-bearing hygiene items bundled:
+1. <strong><code>recharts ^3.8.1</code> pinned in <code>package.json</code></strong> — the import was added in commit <code>a1ecfec</code> but the dependency was never declared. It survived locally because an earlier <code>--no-save</code> install left it on disk. <code>npm install</code> pruned it and broke the build. Pinning restores fresh-checkout reproducibility (+40 transitive packages).
+2. <strong><code>#7f1d1d</code> → <code>var(--color-danger-deeper)</code></strong> — the last hex laggard in <code>Overview.module.css</code>.
+3. <strong><code>tokens.css</code> migration policy comment</strong> updated to reflect E2 closure and the SVG-attribute caveat.</p>
+<hr>
+<h2 id="8-skeleton-sweep-admin-store-agency-3886570-09adb4a-f6297a3">8. Skeleton sweep — Admin + Store + Agency (<code>3886570</code>, <code>09adb4a</code>, <code>f6297a3</code>)</h2>
+<p>Introduced a shared <code>&lt;Skeleton&gt;</code> primitive (<code>components/Skeleton/</code>) — a shimmer block that respects <code>prefers-reduced-motion</code>, is <code>aria-hidden</code>, and comes with a <code>&lt;SkeletonRow cells={N}&gt;</code> table-shape helper.</p>
+<h3 id="applied-to-13-surfaces">Applied to 13 surfaces</h3>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Skeleton form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Admin / Overview</td>
+<td>4 KPI tiles + 2 chart panels</td>
+</tr>
+<tr>
+<td>Admin / Audit Log</td>
+<td>6 timeline rows</td>
+</tr>
+<tr>
+<td>Admin / Stores</td>
+<td>6 table rows</td>
+</tr>
+<tr>
+<td>Admin / Users</td>
+<td>6 table rows</td>
+</tr>
+<tr>
+<td>Admin / Agencies</td>
+<td>5 table rows</td>
+</tr>
+<tr>
+<td>Store / Reservations</td>
+<td>6 table rows (7 cells)</td>
+</tr>
+<tr>
+<td>Store / Call History</td>
+<td>6 table rows (8 cells)</td>
+</tr>
+<tr>
+<td>Store / Settings</td>
+<td>3 section panels</td>
+</tr>
+<tr>
+<td>Store / AI Voice Bot</td>
+<td>4 section panels + Agent card</td>
+</tr>
+<tr>
+<td>Store / Overview (Primary)</td>
+<td>3 KPI values (per card)</td>
+</tr>
+<tr>
+<td>Store / Overview (Support)</td>
+<td>5 KPI values</td>
+</tr>
+<tr>
+<td>Store / Live Orders</td>
+<td>4 row skeletons</td>
+</tr>
+<tr>
+<td>Store / Recent Calls</td>
+<td>4 row skeletons</td>
+</tr>
+<tr>
+<td>Agency / Overview</td>
+<td>4 summary badges + 4 store cards</td>
+</tr>
+<tr>
+<td>Agency / StoreDetail Overview tab</td>
+<td>4 KPI cards + impact banner</td>
+</tr>
+<tr>
+<td>Agency / StoreDetail Call History tab</td>
+<td>6 table rows</td>
+</tr>
+<tr>
+<td>Agency / StoreDetail Domain tab</td>
+<td>6 table rows</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="9-loadmore-primitive-pagination-73eefe3">9. LoadMore primitive + pagination (<code>73eefe3</code>)</h2>
+<p>Shared <code>&lt;LoadMore&gt;</code> component (<code>components/LoadMore/</code>) renders one of three states:
+- <code>Showing N of M  [Load 50 more]</code>
+- <code>✓ All N loaded</code>
+- nothing (when total is 0)</p>
+<p>Applied to <strong>Users / Agencies / Stores</strong> as client-side pagination — a <code>displayLimit</code> state (init 50) is incremented in 50-row chunks and reset on filter change. Stores applies it across all three views (cards / list / compact). The list-view select-all now targets only the currently displayed slice, so the meaning of "select all visible" stays predictable as Load more grows the set.</p>
+<p><strong>AuditLog</strong> (server-side Load more, paged via <code>offset/limit</code>) and <strong>Reservations / CallHistory</strong> (server-side <code>Prev / Next + page jump</code>) keep their existing pagers — both patterns are already a better fit there than a flat client-side Load more.</p>
+<hr>
+<h2 id="10-environment-verification">10. Environment + verification</h2>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tsc --noEmit</code></td>
+<td>clean after every commit</td>
+</tr>
+<tr>
+<td><code>vite build</code></td>
+<td>OK throughout (2.4 – 3.1 s, ArchProof 23.44 kB / 7.96 kB gzip stable)</td>
+</tr>
+<tr>
+<td>Live phone test</td>
+<td>confirmed by user after each commit at <code>http://192.168.0.135:5173</code></td>
+</tr>
+<tr>
+<td>Dev server PID</td>
+<td>5032 alive (background, since AM session)</td>
+</tr>
+<tr>
+<td>LAN IP mid-session</td>
+<td>changed from <code>192.168.219.106</code> → <code>192.168.0.135</code> (location move)</td>
+</tr>
+<tr>
+<td>Backend ngrok</td>
+<td>untouched (<code>jmtechone.ngrok.app → :8000</code>) — Twilio webhook live</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="11-do-not-touch-without-thinking">11. DO NOT TOUCH WITHOUT THINKING</h2>
+<table>
+<thead>
+<tr>
+<th>Why</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backend track parallel ownership</td>
+<td><code>backend/app/templates/</code>, <code>skills/appointment/</code>, <code>realtime_voice.py</code> — separate worker. Beauty MVP Phase 5 live.</td>
+</tr>
+<tr>
+<td><code>tokens.css</code> is contract</td>
+<td>40 vars used across 31 modules. Renaming <code>--color-brand-soft</code> etc. breaks daily-use surface.</td>
+</tr>
+<tr>
+<td>Section Registry pattern</td>
+<td><code>OVERVIEW_SECTIONS</code> (Store) / <code>PROOF_SECTIONS</code> (ArchProof) — adding a section MUST be 1 array entry + 1 component file. Never edit orchestrators.</td>
+</tr>
+<tr>
+<td>Mobile rule permanent</td>
+<td>All new CSS 640 / 1024 only.</td>
+</tr>
+<tr>
+<td>KPI fetch-loop guard</td>
+<td>Any new section taking an <code>onMetrics</code>-style callback prop MUST wrap it in <code>useCallback</code> in the parent.</td>
+</tr>
+<tr>
+<td>recharts SVG fill</td>
+<td><code>&lt;Cell fill&gt;</code> / <code>&lt;Bar fill&gt;</code> cannot use CSS vars — keep hex literals with matching token comment.</td>
+</tr>
+<tr>
+<td>package-lock drift</td>
+<td>recharts pin pulled +40 packages. Don't <code>npm prune</code> without re-checking.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="12-inflight-observations-for-next-session">12. Inflight observations (for next session)</h2>
+<ul>
+<li>7 sparse hex left in CSS (<code>#22c55e</code> × 4, <code>#374151</code> × 4, <code>#3730a3</code> × 3, etc.) — intentional palette variations. No token promotion warranted unless they cluster.</li>
+<li><code>Overview.tsx</code> (admin) has <code>'rgba(99, 102, 241, 0.06)'</code> in a recharts cursor — alpha cannot be cleanly derived from a hex CSS var without <code>color-mix()</code>; leave as-is.</li>
+<li>StoreDetail has small inline <code>style={{ color: '#64748b' }}</code> etc. — minor cleanup candidate.</li>
+<li>Onboarding wizard steps not yet swept for Skeleton; <code>Step6_TestCall</code> still in backend-pending holding pattern.</li>
+<li>Login page is short and well-formed — no polish target.</li>
+</ul>
+<hr>
+<h2 id="13-next-session-see-next-session-frontend-2026-05-19">13. Next session — see <code>[[next-session-frontend-2026-05-19]]</code></h2>
+<p>Candidate options (frontend-owned, ordered by likely impact):
+1. <strong>A. Onboarding wizard Skeleton + Step polish</strong> (~30 min)
+2. <strong>B. StoreDetail inline-style cleanup</strong> (~20 min)
+3. <strong>C. Sparse hex policy decision</strong> (~15 min, optional)
+4. <strong>D. P2 vertical-aware widgets</strong> — blocked on backend <code>/api/store/appointments</code>
+5. <strong>E. Login / Layout polish</strong> — low impact
+6. <strong>F. Bundle size investigation</strong> (~30 min)</p>
+<hr>
+<h2 id="14-related-memories">14. Related memories</h2>
+<ul>
+<li><code>[[session-resume-2026-05-18-eve-frontend-polish]]</code> — this session's machine-readable resume</li>
+<li><code>[[next-session-frontend-2026-05-19]]</code> — updated entry guide</li>
+<li><code>[[session-resume-2026-05-18-responsive]]</code> — yesterday afternoon (Foundation Day)</li>
+<li><code>[[feedback-mobile-responsive-mandatory]]</code>, <code>[[feedback-careful-change-protocol]]</code>, <code>[[feedback-no-edits-during-live-call]]</code>, <code>[[feedback-session-end-pdf-archive]]</code></li>
+</ul>
+</body>
+</html>
