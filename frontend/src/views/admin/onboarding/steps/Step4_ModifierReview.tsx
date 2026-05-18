@@ -5,6 +5,7 @@
 // (Step 4 — preview-yaml 호출, 추출된 modifier group을 read-only로 표시.
 //  편집 UI는 아직 없음, yaml은 Step 5로 forward)
 import { useEffect, useState } from 'react'
+import Skeleton from '../../../../components/Skeleton/Skeleton'
 import { previewYaml } from '../api/onboardingClient'
 import type {
   ModifierGroup, ModifierGroupsYaml, NormalizedMenuItem, RawMenuExtraction,
@@ -80,8 +81,25 @@ export default function Step4_ModifierReview({ raw, normalized, onBack, onContin
       {error && <div style={errorStyle}>{error}</div>}
 
       {loading && !error && (
-        <div style={{ color: '#64748b', fontSize: 14 }}>
-          Building modifier preview…
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+          aria-busy="true"
+          aria-label="Building modifier preview"
+        >
+          {[0, 1, 2].map((i) => (
+            <div key={i} style={cardStyle}>
+              <div style={cardHeaderStyle}>
+                <Skeleton w={140} h={15} />
+                <Skeleton w={160} h={20} radius={999} />
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <Skeleton w={220} h={11} />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <Skeleton h={96} radius={6} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
