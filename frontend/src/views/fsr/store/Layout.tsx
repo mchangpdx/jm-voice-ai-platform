@@ -90,7 +90,7 @@ export default function StoreLayout() {
         </nav>
 
         {/* Security section (보안 섹션) */}
-        <div className={styles.sectionLabel} style={{ marginTop: 12 }}>SECURITY</div>
+        <div className={`${styles.sectionLabel} ${styles.sectionLabelSpaced}`}>SECURITY</div>
         <nav className={styles.nav}>
           {SECURITY_ITEMS.map(({ to, label, icon }) => (
             <NavLink

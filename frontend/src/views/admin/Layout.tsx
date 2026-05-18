@@ -59,14 +59,14 @@ export default function AdminLayout() {
           </NavLink>
         </nav>
 
-        <div className={styles.sectionLabel} style={{ marginTop: 12 }}>TOOLS</div>
+        <div className={`${styles.sectionLabel} ${styles.sectionLabelSpaced}`}>TOOLS</div>
         <nav className={styles.nav}>
           <NavLink to="/admin/onboarding/new" className={navItem}>
             <span className={styles.navIcon}>＋</span> New Store Onboarding
           </NavLink>
         </nav>
 
-        <div className={styles.sectionLabel} style={{ marginTop: 12 }}>MARKETING</div>
+        <div className={`${styles.sectionLabel} ${styles.sectionLabelSpaced}`}>MARKETING</div>
         <nav className={styles.nav}>
           <NavLink to="/admin/marketing/architecture-proof" className={navItem}>
             <span className={styles.navIcon}>📐</span> Architecture Proof

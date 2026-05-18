@@ -52,6 +52,9 @@
   padding: 14px 16px 4px;
   text-transform: uppercase;
 }
+.sectionLabelSpaced {
+  margin-top: 12px;
+}
 
 .nav {
   display: flex;

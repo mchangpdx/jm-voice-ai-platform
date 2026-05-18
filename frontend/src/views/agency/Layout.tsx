@@ -63,7 +63,7 @@ export default function AgencyLayout() {
         <div className={styles.agencyName}>{agencyName}</div>
 
         {/* Store navigation (스토어 네비게이션) */}
-        <div className={styles.sectionLabel} style={{ marginTop: 12 }}>STORES</div>
+        <div className={`${styles.sectionLabel} ${styles.sectionLabelSpaced}`}>STORES</div>
         <nav className={styles.nav}>
           <NavLink
             to="/agency/overview"
