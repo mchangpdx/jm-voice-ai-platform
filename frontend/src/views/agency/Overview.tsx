@@ -10,6 +10,7 @@ import StoreViewToggle, {
   loadStoreView,
   saveStoreView,
 } from '../../components/store-view/StoreViewToggle'
+import Skeleton from '../../components/Skeleton/Skeleton'
 import styles from './Overview.module.css'
 
 const VIEW_STORAGE_KEY = 'jm_agency_store_view'
@@ -115,7 +116,26 @@ export default function AgencyOverview() {
           <div className={styles.errorBody}>Please retry or contact support if this persists.</div>
         </div>
       ) : loading ? (
-        <div className={styles.loading}>Loading…</div>
+        <>
+          <div className={styles.summaryRow}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={styles.badge}>
+                <Skeleton w={100} h={24} />
+                <div style={{ height: 8 }} />
+                <Skeleton w={80} h={11} />
+              </div>
+            ))}
+          </div>
+          <div className={styles.cardGrid}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={styles.storeCard}>
+                <Skeleton h={20} />
+                <div style={{ height: 12 }} />
+                <Skeleton h={60} />
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <>
           {/* Summary badges (집계 배지) */}

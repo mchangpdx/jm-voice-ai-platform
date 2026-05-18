@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import api from '../../core/api'
 import { getVerticalMeta } from '../../core/verticalLabels'
 import Analytics from '../fsr/store/Analytics'
+import Skeleton from '../../components/Skeleton/Skeleton'
 import styles from './StoreDetail.module.css'
 
 type Period = 'today' | 'week' | 'month' | 'all'
@@ -108,7 +109,27 @@ function OverviewTab({ storeId, period }: { storeId: string; period: Period }) {
       .finally(() => setLoading(false))
   }, [storeId, period])
 
-  if (loading) return <div className={styles.loading}>Loading…</div>
+  if (loading) {
+    return (
+      <>
+        <div className={styles.kpiGrid}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className={styles.kpiCard}>
+              <Skeleton w={80} h={11} />
+              <div style={{ height: 10 }} />
+              <Skeleton w={120} h={26} />
+              <div style={{ height: 6 }} />
+              <Skeleton w={150} h={11} />
+            </div>
+          ))}
+        </div>
+        <div className={styles.impactBanner}>
+          <Skeleton w={200} h={20} />
+          <Skeleton w={140} h={28} />
+        </div>
+      </>
+    )
+  }
   if (!data)   return <div className={styles.loading}>No data available.</div>
 
   return (
@@ -242,7 +263,13 @@ function CallHistoryTab({ storeId, period }: { storeId: string; period: Period }
           </thead>
           <tbody>
             {loading ? (
-              <tr className={styles.emptyRow}><td colSpan={7}>Loading…</td></tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  {Array.from({ length: 7 }).map((_, j) => (
+                    <td key={j}><Skeleton h={14} /></td>
+                  ))}
+                </tr>
+              ))
             ) : items.length === 0 ? (
               <tr className={styles.emptyRow}><td colSpan={7}>No calls found</td></tr>
             ) : items.map((c) => (
@@ -377,7 +404,13 @@ function DomainTab({ storeId, period, industry }: { storeId: string; period: Per
         </thead>
         <tbody>
           {loading ? (
-            <tr className={styles.emptyRow}><td colSpan={colSpan}>Loading…</td></tr>
+            Array.from({ length: 6 }).map((_, i) => (
+              <tr key={`sk-${i}`}>
+                {Array.from({ length: colSpan }).map((_, j) => (
+                  <td key={j}><Skeleton h={14} /></td>
+                ))}
+              </tr>
+            ))
           ) : items.length === 0 ? (
             <tr className={styles.emptyRow}><td colSpan={colSpan}>No records found for this period</td></tr>
           ) : items.map((r, i) => {
