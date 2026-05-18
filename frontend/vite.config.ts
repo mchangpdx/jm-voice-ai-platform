@@ -10,6 +10,17 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Pull React + Router into a stable vendor chunk so app-code edits
+    // don't bust their cache (vendor 분리 — 앱 변경에도 vendor 캐시 유지).
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor':  ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,                  // bind 0.0.0.0 so phones/tablets on same Wi-Fi can connect
